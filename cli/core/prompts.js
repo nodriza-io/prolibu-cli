@@ -1,4 +1,4 @@
-const config = require('../config/config');
+const config = require('../../config/config');
 
 // Prompts for domain, apiKey, and scriptName (prefix)
 async function runPrompts(env, scriptName, domain) {

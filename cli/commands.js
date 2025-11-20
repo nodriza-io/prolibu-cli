@@ -1,8 +1,7 @@
-const apiClient = require('../api/client');
+const apiClient = require('../api/scriptClient');
 const config = require('../config/config');
 const path = require('path');
 const fs = require('fs');
-const { bundleScript } = require('./bundle');
 
 
 // Runs the script in the specified environment and watches for changes

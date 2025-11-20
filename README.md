@@ -1,32 +1,36 @@
-# Script Builder CLI
+# Prolibu CLI
 
+**Official CLI for Prolibu v2** - Build, test and deploy Scripts, Sites and Plugins with automation, modularity, and seamless API integration.
 
-Script Builder CLI is a modern, developer-focused framework for building, testing, and deploying Prolibu v2 scripts with automation, modularity, and seamless API integration.
+## What you can do with Prolibu CLI
 
-## What you can do with Script Builder CLI
+Prolibu CLI is a modern, developer-focused framework for building and deploying:
+
+- **Scripts**: Lifecycle hooks, integrations, and automation workflows
+- **Sites**: Static sites and Single Page Applications (SPAs)
+- **Plugins**: UI extensions (coming soon)
 
 Key features:
-- Interactive script scaffolding (domain, API key, git repo, script code)
-- Git repo cloning and template-based initialization
-- Real-time file watching and API sync while in "run" mode
-- Bundling/minification for production (esbuild, per domain config)
-- Per-domain config (API keys, minification, git repo URL)
-- Automatic README.md sync to API
-- Modular code via lib/ or load from global lib/
-- Dev/prod environment support
-- Live log streaming while in run mode
-- Error handling and debugging support
-- Comprehensive testing framework
+- 🎯 Interactive scaffolding for scripts and sites
+- 🔄 Git repository integration and cloning
+- 🔥 Real-time file watching with hot reload
+- 📦 Automatic bundling and minification (scripts)
+- 🗜️ Automatic zipping and deployment (sites)
+- 🧪 Comprehensive testing framework
+- 🌐 Local development server for sites
+- 📝 Automatic README sync to API
+- 🔧 Modular code via shared lib/ folder
+- 🌍 Dev/prod environment support
 
 ---
 
 ## Requirements
 
-[Script Builder CLI]
 - Node.js (v18 or higher recommended)
 - npm (to install dependencies)
-- A valid Prolibu API key for each domain
-- Git (for cloning repos)
+- A valid Prolibu API key for your domain
+- Git (for cloning repositories)
+
 ---
 
 ## Installation
@@ -34,246 +38,422 @@ Key features:
 ### Quick Start
 
 ```bash
-git clone https://github.com/nodriza-io/script-builder.git
-cd script-builder
+git clone https://github.com/nodriza-io/prolibu-cli.git
+cd prolibu-cli
 npm install
-chmod +x script # To make the script executable
+chmod +x prolibu script site  # Make executables
 ```
+
+---
 
 ## Usage
 
-### Interactive mode
-If you run a command without flags, the CLI will prompt for missing values:
+### Main Command Structure
 
 ```bash
-./script create
-# Prompts for domain, API key, scriptCode, repo, lifecycleHooks
-
-# Prompts explained:
-
-# Domain: Use your Prolibu domain, e.g. my-company.prolibu.com
-# API key: Generate an API key from your Prolibu account, by clicking on your profile picture in the top right corner, selecting "Api Keys", and creating a new key with appropriate permissions.
-# ScriptCode: Enter a unique name for your script (e.g. "erp-integration").
-# Repo: Create a new repository and paste the repo URL here.
-# Lifecycle Hooks: Specify any lifecycle hooks you want to use (e.g. "Invoice,Contact").
-
-./script dev
-# Prompts for domain, scriptCode
-
-./script prod
-# Prompts for domain, scriptCode
-
-./script import
-# Prompts for domain, scriptCode, repo
-
-./script test
-# Prompts for domain, scriptCode, optionally file and watch
+./prolibu <object> <command> [options]
 ```
 
-### One-liner mode (no prompts)
-If you provide all flags, the CLI runs non-interactively:
+**Objects:**
+- `script` - Manage Prolibu scripts
+- `site` - Manage static sites and SPAs
+- `plugin` - Manage UI plugins (coming soon)
+
+**Commands:**
+- `create` - Create a new object
+- `dev` - Run in development mode
+- `prod` - Run in production mode
+- `import` - Import from git repository
+- `test` - Run tests (scripts only)
+
+---
+
+## Working with Scripts
+
+### Create a script
 
 ```bash
-./script create \
+# Interactive mode (prompts for all values)
+./prolibu script create
+
+# One-liner mode
+./prolibu script create \
   --domain dev10.prolibu.com \
   --apikey <your-api-key> \
-  --scriptPrefix hook-sample \
+  --prefix hook-sample \
   --repo https://github.com/nodriza-io/hook-sample.git \
   --lifecycleHooks "Invoice,Contact"
+```
 
-./script dev \
+### Development mode
+
+```bash
+# Interactive
+./prolibu script dev
+
+# With flags
+./prolibu script dev \
   --domain dev10.prolibu.com \
-  --scriptPrefix hook-sample \
-  --watch # Watch for changes and sync
+  --prefix hook-sample \
+  --watch
 
 # Use a different entry file
-./script dev \
+./prolibu script dev \
   --domain dev10.prolibu.com \
-  --scriptPrefix hook-sample \
+  --prefix hook-sample \
   --file other-index \
   --watch
+```
 
-./script prod \
+### Production mode
+
+```bash
+./prolibu script prod \
   --domain dev10.prolibu.com \
-  --scriptPrefix hook-sample \
+  --prefix hook-sample \
   --watch
+```
 
-./script import \
+### Import existing script
+
+```bash
+./prolibu script import \
   --domain dev10.prolibu.com \
-  --scriptPrefix hook-sample \
+  --prefix hook-sample \
   --repo https://github.com/nodriza-io/hook-sample.git
+```
 
-./script test \
+### Run tests
+
+```bash
+# Run default test file
+./prolibu script test \
   --domain dev10.prolibu.com \
-  --scriptPrefix hook-sample \
+  --prefix hook-sample
+
+# Run specific test file with watch mode
+./prolibu script test \
+  --domain dev10.prolibu.com \
+  --prefix hook-sample \
   --file integration-test \
   --watch
 ```
 
-### Entry File Configuration
+---
 
-By default, Script Builder CLI uses `index.js` as the main entry point for your script. You can specify an alternative entry file using the `--file` flag:
+## Working with Sites
+
+### Create a site
 
 ```bash
-# Default: uses index.js
-./script dev --domain dev10.prolibu.com --scriptPrefix my-script --watch
+# Interactive mode
+./prolibu site create
 
-# Custom: uses custom-entry.js
-./script dev --domain dev10.prolibu.com --scriptPrefix my-script --file custom-entry --watch
+# One-liner mode
+./prolibu site create \
+  --domain dev10.prolibu.com \
+  --apikey <your-api-key> \
+  --prefix my-landing-page \
+  --siteType Static \
+  --repo https://github.com/user/my-site.git
 ```
 
-**File Structure:**
+**Site Types:**
+- `Static` - Static HTML/CSS/JS sites
+- `SPA` - Single Page Applications
+
+### Development mode with hot reload
+
+```bash
+./prolibu site dev \
+  --domain dev10.prolibu.com \
+  --prefix my-landing-page \
+  --watch \
+  --port 3000 \
+  --ext html,css,js
 ```
-accounts/
-  dev10.prolibu.com/
-    my-script/
-      index.js           ← Default entry file
-      custom-entry.js    ← Alternative entry file
-      lib/
-        utils.js
-      test/
-        index.test.js
+
+This will:
+1. Zip the `public/` folder
+2. Upload to Prolibu
+3. Start local server at `http://localhost:3000`
+4. Watch for file changes and auto-sync
+
+### Production deployment
+
+```bash
+./prolibu site prod \
+  --domain dev10.prolibu.com \
+  --prefix my-landing-page
 ```
 
-### Watch Mode
-* If you provide `--watch` (or `-w`), the CLI will watch for file changes and automatically sync after build/publish.
-* While in watch mode, you can listen to real-time console logs from your script via socket connection (live output in your terminal).
-* If you do NOT provide `--watch`, it will only build and publish once, then exit.
+### Import existing site
 
-### Real-time log streaming
+```bash
+./prolibu site import \
+  --domain dev10.prolibu.com \
+  --prefix my-landing-page \
+  --repo https://github.com/user/my-site.git
+```
 
-When you run a script in development mode with the `--watch` flag (e.g., `./script dev --domain <domain> --scriptPrefix <scriptName> --watch`), Script Builder CLI establishes a real-time connection to the Prolibu platform via socket.io to stream console logs directly to your terminal.
+---
 
-- **Live Output:** Console logs from your script are streamed directly to your terminal as the script executes, allowing you to monitor behavior and debug in real time.
-- **Automatic Reconnection:** If the connection drops, the CLI will attempt to reconnect automatically.
-- **Log Filtering:** Only logs from the current script and environment are displayed, so you see relevant output.
-- **Manual Trigger:** You can trigger a script run by pressing `R` in the terminal while in dev mode (if your terminal supports raw input).
-- **Error Reporting:** Any errors or exceptions thrown by your script are also streamed and displayed instantly.
+## Backward Compatibility
 
-This system helps you iterate quickly, catch issues early, and understand script behavior as you develop.
+For users migrating from Script Builder CLI, the old commands still work:
+
+```bash
+# Old command
+./script dev --domain dev10.prolibu.com --scriptPrefix my-hook --watch
+
+# New command (recommended)
+./prolibu script dev --domain dev10.prolibu.com --prefix my-hook --watch
+
+# Also works with new prefix flag
+./script dev --domain dev10.prolibu.com --prefix my-hook --watch
+```
+
+Both `./script` and `./site` are wrappers that redirect to `./prolibu script` and `./prolibu site`.
+
+**Flag Compatibility:**
+- `--prefix` - New unified flag (recommended)
+- `--scriptPrefix` - Still works for backward compatibility
+- `--sitePrefix` - Still works for backward compatibility
 
 ---
 
 ## Project Structure
 
 ```
-accounts/
-  └── <domain>/
-    ├── profile.json         # Domain-level config (apiKey)
-    ├── <scriptName>/        # Script folder
-    │   ├── code.js          # Main script code
-    │   ├── variables.json   # Variables for the script
-    │   ├── payload.json     # Payload data for the script
-    │   ├── lifecycleHooks.json # Lifecycle hooks configuration
-    │   ├── config.json      # Script-level config (e.g., minifyProductionCode, removeComments)
-    │   ├── lib/             # Local script utilities
-    │   │   └── Utils.js     # Example utility
-    │   └── README.md        # Script documentation
-    ├── suite-hooks/         # Suite-level hooks folder
-    │   └── .gitignore       # Ignore files for suite-hooks
-lib/
-  └── utils/
-    └── sleep.js             # Shared utility for sleep
-cli/
-  ├── bundle.js              # Bundling logic (esbuild)
-  ├── commands.js            # CLI command handlers
-  ├── cookieUtil.js          # Cookie utilities
-  ├── flags.js               # CLI flag parsing
-  ├── prompts.js             # Interactive CLI prompts
-  └── socketLog.js           # Real-time log streaming
-config/
-  └── config.js              # Config management logic
-api/
-  └── client.js              # API client for Prolibu
-templates/
-  ├── .gitignore             # Template for .gitignore
-  ├── code.js                # Template for code.js
-  ├── variables.json         # Template for variables.json
-  ├── payload.json           # Template for payload.json
-  ├── lifecycleHooks.json    # Template for lifecycleHooks.json
-  └── lib/
-      └── Utils.js           # Template utility
-  └── config.json            # Template for script-level config
-  
- test/
-  ├── commands.test.js       # Jest tests for CLI and script creation
-  ├── config.json            # Test config (domain, apiKey)
-  └── config.json.template   # Template for test config
-.gitignore                   # Ignore files for git
-README.md                    # Project documentation
-index.js                     # Main CLI entrypoint
-package.json                 # Project metadata and dependencies
-package-lock.json            # Dependency lock file
-script                       # CLI executable
-node_modules/                # Installed dependencies
-build/                       # Build artifacts
+prolibu-cli/
+├── prolibu                  # Main executable
+├── script                   # Backward compatibility wrapper
+├── site                     # Backward compatibility wrapper
+├── cli/
+│   ├── core/               # Core CLI utilities
+│   │   ├── flags.js        # Flag parsing
+│   │   ├── prompts.js      # Interactive prompts
+│   │   └── cookieUtil.js   # Cookie utilities
+│   ├── commands/           # Command handlers by object type
+│   │   ├── script/
+│   │   │   ├── index.js    # Script command router
+│   │   │   ├── create.js   # Create script
+│   │   │   ├── run.js      # Run dev/prod
+│   │   │   ├── import.js   # Import from git
+│   │   │   └── test.js     # Run tests
+│   │   └── site/
+│   │       ├── index.js    # Site command router
+│   │       ├── create.js   # Create site
+│   │       ├── run.js      # Run dev/prod
+│   │       └── import.js   # Import from git
+│   ├── builders/           # Build logic per object type
+│   │   ├── scriptBuilder.js # esbuild bundling for scripts
+│   │   └── siteBuilder.js   # Zip creation for sites
+│   └── socketLog.js        # Real-time log streaming
+├── api/
+│   ├── client.js           # Base API client (legacy)
+│   ├── scriptClient.js     # Script-specific API calls
+│   └── siteClient.js       # Site-specific API calls
+├── config/
+│   └── config.js           # Configuration management
+├── templates/
+│   ├── script/             # Script templates
+│   │   ├── index.js
+│   │   ├── config.json     # Model data (uploaded to API)
+│   │   ├── settings.json   # Build settings (local only)
+│   │   ├── .gitignore
+│   │   └── lib/
+│   └── site/               # Site templates
+│       ├── config.json     # Model data (uploaded to API)
+│       ├── settings.json   # Build settings (local only)
+│       ├── README.md
+│       ├── .gitignore
+│       └── public/
+│           └── index.html
+├── lib/                    # Shared libraries
+│   ├── utils/
+│   └── vendors/
+│       ├── sendgrid/
+│       ├── salesforce/
+│       ├── hubspot/
+│       ├── ultramsg/
+│       ├── prolibu/
+│       └── ai/
+├── accounts/               # Your workspaces
+│   └── <domain>/
+│       ├── profile.json    # Domain config (API key)
+│       ├── <scriptName>/   # Script project
+│       │   ├── index.js
+│       │   ├── config.json     # Model data (variables, hooks, git)
+│       │   ├── settings.json   # Build settings (minify, comments)
+│       │   ├── lib/
+│       │   ├── test/
+│       │   └── README.md       # Synced to config.json.readme
+│       └── <siteName>/     # Site project
+│           ├── config.json     # Model data (siteType, git)
+│           ├── settings.json   # Build settings (port)
+│           ├── README.md       # Synced to config.json.readme
+│           ├── dist.zip        # Generated package
+│           └── public/         # Source files
+│               ├── index.html
+│               ├── styles.css
+│               └── app.js
+├── test/                   # CLI framework tests
+│   ├── script.test.js      # Script tests (19 tests)
+│   ├── site.test.js        # Site tests (7 tests)
+│   └── config.json         # Test configuration (gitignored)
+├── package.json
+└── README.md
 ```
 
-## Importing libraries in your scripts
+## Features Deep Dive
 
-You can import libraries in your scripts from:
+### Scripts
 
-- **Local script lib folder** (relative to your script):
-  ```js
-  // Using require()
-  const sleep = require('./lib/utils/sleep');
-  const salesforce = require('./lib/vendors/salesforce');
-  ```
+**Entry File Configuration**
 
-- **Global project lib folder** (shared across all scripts):
-  ```js
-  // Using require()
-  const sleep = require('lib/utils/sleep');
-  const salesforce = require('lib/vendors/salesforce');
-  ```
+By default, scripts use `index.js` as the main entry point. You can specify an alternative entry file:
 
-This allows you to share utilities and vendor integrations across all scripts in the project, or keep script-specific logic in the local lib folder.
+```bash
+# Default: uses index.js
+./prolibu script dev --domain dev10.prolibu.com --prefix my-script --watch
 
-## Script Configuration
+# Custom: uses custom-entry.js
+./prolibu script dev --domain dev10.prolibu.com --prefix my-script --file custom-entry --watch
+```
 
-Each script has a `config.json` file with the following options:
+**Watch Mode**
+
+- With `--watch`, the CLI watches for file changes and automatically syncs
+- Real-time console logs via socket.io
+- Press `R` to manually trigger script execution
+- Watches: entry file, lib/ folder, config.json, settings.json, README.md
+
+**Real-time Log Streaming**
+
+When in watch mode, Prolibu CLI establishes a socket.io connection to stream console logs:
+- Live output directly in your terminal
+- Automatic reconnection if connection drops
+- Filtered logs (only your script + environment)
+- Color-coded disconnect/reconnect messages
+- Error reporting and stack traces
+
+**Dual Configuration System**
+
+Prolibu CLI uses two configuration files to separate concerns:
+
+**1. `config.json` - Model Data (uploaded to API)**
+
+This file contains data that defines your script/site and is synced to Prolibu:
 
 ```json
 {
-  "minifyProductionCode": false,
-  "removeComments": true
+  "variables": [
+    { "key": "API_KEY", "value": "secret123" },
+    { "key": "ENDPOINT", "value": "https://api.example.com" }
+  ],
+  "lifecycleHooks": ["Contact", "Account"],
+  "readme": "# My Script\n\nDetailed documentation...",
+  "git": {
+    "repositoryUrl": "https://github.com/user/repo.git"
+  }
 }
 ```
 
-### Configuration Options:
+**2. `settings.json` - Build Settings (local only, NOT uploaded)**
 
-- **`minifyProductionCode`** (boolean, default: `false`)
-  - When `true`, minifies the bundled code for production (`./script prod`)
-  - Only applies to production environment
-  - Reduces file size and obfuscates code
-  - Works with both regular and watch mode
+This file contains local build configuration that affects how your code is bundled:
 
-- **`removeComments`** (boolean, default: `true`)
-  - When `true`, removes all comments from the bundled code
-  - Applies to both dev and prod environments
-  - Reduces bundle size and keeps uploaded code clean
-  - Works with both regular and watch mode
-
-**Example usage:**
-```bash
-# Production with minification and comment removal
-./script prod --domain dev10.prolibu.com --scriptPrefix my-script --watch
-# If config.json has minifyProductionCode: true and removeComments: true
-# The uploaded code will be minified and without comments
-
-# Development with comment removal only
-./script dev --domain dev10.prolibu.com --scriptPrefix my-script --watch
-# If config.json has removeComments: true
-# The uploaded code will have comments removed but won't be minified
+```json
+{
+  "minifyProductionCode": false,  // Minify code in production mode
+  "removeComments": true          // Strip comments from bundle
+}
 ```
 
+**Why two files?**
+- ✅ Clear separation: Model data vs build configuration
+- ✅ Security: Build settings stay local, not exposed in API
+- ✅ Flexibility: Change build settings without touching model data
+- ✅ Version control: Easier to track changes to business logic vs build config
 
-## API Contract (summary)
-API endpoints:
-- PATCH `/v2/script/{scriptCode}`: Update code, variables, payload, hooks, etc.
-- POST `/v2/run`: Run script
-- GET `/v2/run/{runId}`
-Auth: `Authorization: Bearer <PROLIBU_TOKEN>`
+**README.md ↔ config.json.readme Sync**
+
+- `README.md` is automatically synced to `config.json.readme`
+- Edit `README.md` in VS Code (easier for markdown)
+- Changes are detected and synced to config.json
+- Both files are watched and uploaded in real-time
+- `config.json.readme` is sent to the API on every change
+
+### Sites
+
+**Site Structure**
+
+All site files must be in the `public/` folder:
+
+```
+my-site/
+├── config.json
+├── README.md
+├── dist.zip          # Generated automatically
+└── public/           # Your site files
+    ├── index.html
+    ├── styles.css
+    ├── app.js
+    └── assets/
+        └── logo.png
+```
+
+**Development Workflow**
+
+1. Edit files in `public/`
+2. Changes are detected automatically
+3. Public folder is zipped
+4. Zip is uploaded to Prolibu
+5. Site is updated with new package
+6. Local server shows changes instantly
+
+**Site Configuration Files**
+
+**`config.json` - Model Data (uploaded to API)**
+```json
+{
+  "siteType": "Static",           // Static or SPA
+  "readme": "# My Site\n\n...",   // Site documentation
+  "git": {
+    "repositoryUrl": "https://github.com/user/site.git"
+  }
+}
+```
+
+**`settings.json` - Build Settings (local only)**
+```json
+{
+  "port": 3000                    // Local dev server port
+}
+```
+
+---
+
+## Running Tests
+
+Prolibu CLI includes comprehensive test coverage with Jest:
+
+```bash
+# Run all tests (scripts + sites)
+npm test
+
+# Run only script tests
+npm run test:script
+
+# Run only site tests
+npm run test:site
+
+# Run all tests explicitly
+npm run test:all
+```
+
+---
 
 # Test System
 
@@ -312,14 +492,14 @@ accounts/<domain>/<scriptPrefix>/test/
 
 **Basic usage:**
 ```bash
-./script test \
+./prolibu script test \
   --domain <domain> \
   --scriptPrefix <scriptPrefix>
 ```
 
 **With custom test file:**
 ```bash
-./script test \
+./prolibu script test \
   --domain <domain> \
   --scriptPrefix <scriptPrefix> \
   --file <testFileName>
@@ -327,7 +507,7 @@ accounts/<domain>/<scriptPrefix>/test/
 
 **With watch mode (auto-rerun on changes):**
 ```bash
-./script test \
+./prolibu script test \
   --domain <domain> \
   --scriptPrefix <scriptPrefix> \
   --file <testFileName> \
@@ -351,5 +531,102 @@ accounts/<domain>/<scriptPrefix>/test/
 - Script tests: Manual cleanup may be required for external API resources
 - Important: Scripts created during tests are not deleted from the Prolibu platform automatically
 
-# Pending for documentation
-- explain how lifecycle events are managed
+---
+
+## Importing Libraries
+
+### For Scripts
+
+You can import libraries from:
+
+**Local script lib folder:**
+```js
+const utils = require('./lib/utils/helper');
+const myVendor = require('./lib/vendors/custom');
+```
+
+**Global project lib folder:**
+```js
+const sleep = require('lib/utils/sleep');
+const SendGrid = require('lib/vendors/sendgrid/SendGrid');
+const Salesforce = require('lib/vendors/salesforce/Salesforce');
+const HubSpot = require('lib/vendors/hubspot/HubSpot');
+const UltraMsg = require('lib/vendors/ultramsg/UltraMsg');
+const DeviceApi = require('lib/vendors/prolibu/DeviceApi');
+```
+
+### Available Vendor Integrations
+
+- **SendGrid** - Email sending
+- **Salesforce** - CRM integration
+- **HubSpot** - Marketing & CRM
+- **UltraMsg** - WhatsApp messaging
+- **Prolibu DeviceApi** - IoT device control (ESP32)
+- **AI Providers** - DeepSeek, OpenAI, Anthropic
+
+---
+
+## API Endpoints
+
+### Scripts
+- `POST /v2/script` - Create script
+- `GET /v2/script/{scriptCode}` - Get script
+- `PATCH /v2/script/{scriptCode}` - Update (code, variables, hooks, readme, git)
+- `GET /v2/script/run?scriptId={scriptCode}` - Run script
+
+### Sites
+- `POST /v2/site` - Create site
+- `GET /v2/site/{siteCode}` - Get site
+- `PATCH /v2/site/{siteCode}` - Update site fields
+  - `package` field: Upload ZIP directly with multipart/form-data
+  - Other fields: `readme`, `git.repositoryUrl`, `siteType`, etc.
+
+**Authentication:** `Authorization: Bearer <API_KEY>`
+
+---
+
+## Migration from Script Builder CLI
+
+If you're upgrading from the old Script Builder CLI:
+
+1. **Update your local repo:**
+   ```bash
+   git pull origin main
+   npm install
+   chmod +x prolibu script site
+   ```
+
+2. **Commands still work:**
+   - Old: `./script dev --domain ... --scriptPrefix ...`
+   - New: `./prolibu script dev --domain ... --prefix ...`
+   - Both work! `./script` redirects to `./prolibu script`
+
+3. **Use the new `--prefix` flag:**
+   - Replaces `--scriptPrefix` and `--sitePrefix`
+   - More consistent across all commands
+   - Old flags still work for compatibility
+
+4. **No code changes needed:**
+   - Your existing scripts work as-is
+   - Same folder structure
+   - Same config files
+
+---
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+MIT
+
+## Support
+
+For issues, questions, or feature requests, please visit:
+- GitHub: https://github.com/nodriza-io/prolibu-cli
+- Documentation: https://docs.prolibu.com
+
+---
+
+**Built with ❤️ by the Prolibu team**

@@ -1,0 +1,56 @@
+#!/usr/bin/env node
+
+const { parseFlags } = require('./cli/core/flags');
+
+const argv = process.argv;
+const flags = parseFlags(argv);
+const args = argv.slice(2);
+const objectType = args[0]; // script, site, plugin
+const command = args[1]; // create, dev, prod, import, test
+
+(async () => {
+  // Show help if no arguments
+  if (!objectType) {
+    console.log('Prolibu CLI - Official CLI for Prolibu v2');
+    console.log('');
+    console.log('Usage: ./prolibu <object> <command> [options]');
+    console.log('');
+    console.log('Objects:');
+    console.log('  script   Manage Prolibu scripts (lifecycle hooks, integrations)');
+    console.log('  site     Manage static sites and SPAs');
+    console.log('  plugin   Manage UI plugins (coming soon)');
+    console.log('');
+    console.log('Commands:');
+    console.log('  create   Create a new object (interactive or one-liner)');
+    console.log('  dev      Run object in development mode');
+    console.log('  prod     Run object in production mode');
+    console.log('  import   Import object from git repository');
+    console.log('  test     Run tests (scripts only)');
+    console.log('');
+    console.log('Examples:');
+    console.log('  ./prolibu script create --domain dev10.prolibu.com --prefix my-hook');
+    console.log('  ./prolibu script dev --domain dev10.prolibu.com --prefix my-hook --watch');
+    console.log('  ./prolibu site create --domain dev10.prolibu.com --prefix my-site --siteType Static');
+    console.log('  ./prolibu site dev --domain dev10.prolibu.com --prefix my-site --watch --port 3000');
+    console.log('');
+    console.log('For more information: https://github.com/nodriza-io/prolibu-cli');
+    return;
+  }
+
+  // Route to object-specific handlers
+  if (objectType === 'script') {
+    const scriptHandler = require('./cli/commands/script/index');
+    await scriptHandler(command, flags, args);
+  } else if (objectType === 'site') {
+    const siteHandler = require('./cli/commands/site/index');
+    await siteHandler(command, flags, args);
+  } else if (objectType === 'plugin') {
+    console.log('🚧 Plugin support is coming soon!');
+    console.log('Stay tuned for updates at https://github.com/nodriza-io/prolibu-cli');
+  } else {
+    console.error(`❌ Unknown object type: ${objectType}`);
+    console.log('Available types: script, site, plugin');
+    console.log('Run ./prolibu for help');
+    process.exit(1);
+  }
+})();

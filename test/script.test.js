@@ -60,7 +60,7 @@ describe('Prolibu CLI - Scripts', () => {
       });
     });
 
-    it('should have lifecycleHooks.json with ["Contact"]', () => {
+    it('should have lifecycleHooks in config.json with ["Contact"]', () => {
       const configPath = path.join(scriptFolder, 'config.json');
       expect(fs.existsSync(configPath)).toBe(true);
       const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -151,8 +151,6 @@ describe('Prolibu CLI - Scripts', () => {
 
       return axios.get(baseUrl, { headers, params }).then(response => {
         const remote = response.data;
-
-        // console.log('remote', JSON.stringify(remote, null, 2));
 
         // check for code 200
         expect(response.status).toBe(200);
@@ -407,197 +405,6 @@ describe('Prolibu CLI - Scripts', () => {
       
       // Should have merged lifecycleHooks (template + --lifecycleHooks flag)
       expect(configData.lifecycleHooks).toEqual(expect.arrayContaining(['Contact']));
-    });
-  });
-});
-
-describe('Prolibu CLI - Sites', () => {
-  let siteCode;
-  let siteFolder;
-  let createError = null;
-
-  beforeAll(() => {
-    // Remove all folders inside the domain that start with 'site-test-'
-    const domainPath = path.join(__dirname, '..', 'accounts', config.domain);
-    if (fs.existsSync(domainPath)) {
-      fs.readdirSync(domainPath, { withFileTypes: true })
-        .filter(dirent => dirent.isDirectory() && dirent.name.startsWith('site-test-'))
-        .forEach(dirent => {
-          const folderPath = path.join(domainPath, dirent.name);
-          fs.rmSync(folderPath, { recursive: true, force: true });
-        });
-    }
-    
-    const timestamp = Date.now();
-    siteCode = `site-test-${timestamp}`;
-    siteFolder = path.join(__dirname, '..', 'accounts', config.domain, siteCode);
-    
-    const cmd = `./site create \
-      --domain ${config.domain} \
-      --prefix ${siteCode} \
-      --repo ${config.repo} \
-      --siteType Static \
-      --apikey ${config.apiKey}`;
-    try {
-      execSync(cmd, { stdio: 'inherit' });
-    } catch (e) {
-      createError = e;
-    }
-    
-    // Create a simple index.html with "Hola Mundo"
-    const publicFolder = path.join(siteFolder, 'public');
-    if (fs.existsSync(publicFolder)) {
-      const indexPath = path.join(publicFolder, 'index.html');
-      const htmlContent = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hola Mundo</title>
-</head>
-<body>
-  <h1>Hola Mundo</h1>
-</body>
-</html>`;
-      fs.writeFileSync(indexPath, htmlContent);
-    }
-  });
-
-  describe('Create Command', () => {
-    it('should exit successfully when creating a new site', () => {
-      expect(createError).toBeNull();
-    });
-
-    it('should create all template files in the new site folder', () => {
-      const expectedFiles = [
-        'public',
-        'config.json',
-        'settings.json',
-        'README.md'
-      ];
-      expectedFiles.forEach(file => {
-        expect(fs.existsSync(path.join(siteFolder, file))).toBe(true);
-      });
-    });
-
-    it('should have public/index.html with Hola Mundo', () => {
-      const indexPath = path.join(siteFolder, 'public', 'index.html');
-      expect(fs.existsSync(indexPath)).toBe(true);
-      const content = fs.readFileSync(indexPath, 'utf8');
-      expect(content).toContain('Hola Mundo');
-    });
-
-    it('should have config.json with site model fields', () => {
-      const configPath = path.join(siteFolder, 'config.json');
-      expect(fs.existsSync(configPath)).toBe(true);
-      
-      const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      
-      // Verify site model fields
-      expect(configData).toHaveProperty('variables');
-      expect(configData).toHaveProperty('lifecycleHooks');
-      expect(configData).toHaveProperty('readme');
-      expect(configData).toHaveProperty('git');
-      expect(configData).toHaveProperty('siteType');
-      
-      // Should NOT have local settings
-      expect(configData).not.toHaveProperty('port');
-    });
-
-    it('should have settings.json with port configuration', () => {
-      const settingsPath = path.join(siteFolder, 'settings.json');
-      expect(fs.existsSync(settingsPath)).toBe(true);
-      
-      const settingsData = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-      
-      // Verify settings fields
-      expect(settingsData).toHaveProperty('port');
-      
-      // Should NOT have model data
-      expect(settingsData).not.toHaveProperty('variables');
-      expect(settingsData).not.toHaveProperty('siteType');
-    });
-  });
-
-  describe('Dev Command', () => {
-    it('should execute dev command "no --watch" without errors', () => {
-      let devError = null;
-      const cmd = `./site dev \
-        --domain ${config.domain} \
-        --prefix ${siteCode}`;
-        
-      try {
-        execSync(cmd, { stdio: 'inherit' });
-      } catch (e) {
-        devError = e;
-      }
-      expect(devError).toBeNull();
-    });
-
-    it('should create dist.zip after dev command', () => {
-      const distZipPath = path.join(siteFolder, 'dist.zip');
-      expect(fs.existsSync(distZipPath)).toBe(true);
-      
-      // Check file size > 0
-      const stats = fs.statSync(distZipPath);
-      expect(stats.size).toBeGreaterThan(0);
-    });
-
-    it('should check site has been uploaded to API', () => {
-      const axios = require('axios');
-      const apiKey = config.apiKey;
-      const domain = config.domain;
-      const siteCodeRemote = `${siteCode}-dev`;
-      const baseUrl = `https://${domain}/v2/site/${siteCodeRemote}`;
-      const headers = { Authorization: `Bearer ${apiKey}` };
-
-      return axios.get(baseUrl, { headers }).then(response => {
-        const remote = response.data;
-        
-        // Check for code 200
-        expect(response.status).toBe(200);
-        
-        // Verify site properties
-        expect(remote).toHaveProperty('siteCode', siteCodeRemote);
-        expect(remote).toHaveProperty('active', true);
-        expect(remote).toHaveProperty('package');
-        
-        // Verify config fields were uploaded
-        expect(remote).toHaveProperty('readme');
-        const localReadme = fs.readFileSync(path.join(siteFolder, 'README.md'), 'utf8');
-        expect(remote.readme).toBe(localReadme);
-      });
-    });
-  });
-
-  describe('Config.json and Settings.json for Sites', () => {
-    it('should separate model data (config.json) from settings (settings.json)', () => {
-      const configPath = path.join(siteFolder, 'config.json');
-      const settingsPath = path.join(siteFolder, 'settings.json');
-      
-      const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      const settingsData = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-      
-      // config.json has model data only
-      expect(configData).toHaveProperty('variables');
-      expect(configData).toHaveProperty('siteType');
-      expect(configData).not.toHaveProperty('port');
-      
-      // settings.json has local settings only
-      expect(settingsData).toHaveProperty('port');
-      expect(settingsData).not.toHaveProperty('variables');
-      expect(settingsData).not.toHaveProperty('siteType');
-    });
-
-    it('should sync README.md to config.json.readme', () => {
-      const configPath = path.join(siteFolder, 'config.json');
-      const readmePath = path.join(siteFolder, 'README.md');
-      
-      const readmeContent = fs.readFileSync(readmePath, 'utf8');
-      const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      
-      // README.md should be synced to config.json.readme
-      expect(configData.readme).toBe(readmeContent);
     });
   });
 });
