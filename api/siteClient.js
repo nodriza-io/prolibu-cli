@@ -192,14 +192,16 @@ async function runDevSite(sitePrefix, env, domain, apiKey, watch = false, port =
     fs.writeFileSync(settingsPath, JSON.stringify(defaultSettings, null, 2));
   }
 
-  // Read settings.json for port override
-  try {
-    const settingsData = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-    if (settingsData.port) {
-      port = settingsData.port;
+  // Read settings.json for port override (only if port was not explicitly provided)
+  if (port === 3000) {
+    try {
+      const settingsData = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      if (settingsData.port) {
+        port = settingsData.port;
+      }
+    } catch (e) {
+      console.error(`[ERROR] Failed to parse settings.json: ${e.message}`);
     }
-  } catch (e) {
-    console.error(`[ERROR] Failed to parse settings.json: ${e.message}`);
   }
 
   // Ensure README.md exists
@@ -245,42 +247,115 @@ async function runDevSite(sitePrefix, env, domain, apiKey, watch = false, port =
   console.log(`[UPLOAD] Site '${siteCode}' package uploaded successfully`);
 
   if (watch) {
+    // Check if port is already in use
+    const { execSync, spawn } = require('child_process');
+    const os = require('os');
+    
+    try {
+      const pidOutput = execSync(`lsof -ti:${port}`, { encoding: 'utf8' }).trim();
+      if (pidOutput) {
+        const pid = pidOutput.split('\n')[0];
+        let processName = 'Unknown';
+        try {
+          processName = execSync(`ps -p ${pid} -o comm=`, { encoding: 'utf8' }).trim();
+        } catch (e) {
+          // ignore
+        }
+        
+        const inquirer = await import('inquirer');
+        const chalk = (await import('chalk')).default;
+        
+        console.log('');
+        console.log(chalk.yellow(`⚠️  Port ${port} is already in use`));
+        console.log(chalk.dim(`   Process: ${processName} (PID: ${pid})`));
+        console.log('');
+        
+        const { killProcess } = await inquirer.default.prompt({
+          type: 'confirm',
+          name: 'killProcess',
+          message: `Kill the process and continue?`,
+          default: true
+        });
+        
+        if (killProcess) {
+          execSync(`kill -9 ${pid}`);
+          console.log(chalk.green(`✓ Process killed successfully`));
+          console.log('');
+        } else {
+          console.log(chalk.yellow('Aborted. Please use a different port with --port flag.'));
+          process.exit(0);
+        }
+      }
+    } catch (e) {
+      // Port is free, continue
+    }
+    
     // Start local server
-    const { spawn } = require('child_process');
-    const serverProcess = spawn('npx', ['http-server', publicFolder, '-p', port.toString(), '-c-1'], {
-      stdio: 'inherit'
+    
+    // Get local IP addresses first
+    const networkInterfaces = os.networkInterfaces();
+    const addresses = [];
+    for (const name of Object.keys(networkInterfaces)) {
+      for (const net of networkInterfaces[name]) {
+        if (net.family === 'IPv4' && !net.internal) {
+          addresses.push(net.address);
+        }
+      }
+    }
+    
+    // Use live-server for auto-reload in watch mode
+    const serverProcess = spawn('npx', [
+      'live-server',
+      publicFolder,
+      '--port=' + port.toString(),
+      '--no-browser',
+      '--quiet',
+      '--wait=200'
+    ], {
+      stdio: 'ignore'
     });
     
-    console.log(`[SERVER] Running at http://localhost:${port}`);
+    const chalk = (await import('chalk')).default;
+    
+    // ASCII Art Logo
+    console.log('');
+    console.log('    ' + chalk.blue('◯') + chalk.yellow(' || ') + chalk.hex('#E91E63')('▶') + chalk.bold.white(' Prolibu CLI') + chalk.dim(' v2.0'));
+    console.log('');
+    console.log('    ' + chalk.green('✓') + ' Server running on port ' + chalk.cyan(port));
+    console.log('');
+    console.log('    ' + chalk.bold('Available on:'));
+    console.log(`      ${chalk.cyan(`http://localhost:${port}`)}`);
+    console.log(`      ${chalk.cyan(`http://127.0.0.1:${port}`)}`);
+    addresses.forEach(addr => console.log(`      ${chalk.cyan(`http://${addr}:${port}`)}`));
+    console.log('');
     
     const extArray = extensions.split(',').map(e => e.trim());
     const watchPatterns = extArray.map(ext => `*.${ext}`);
-    console.log(`[WATCH] Watching ${watchPatterns.join(', ')} for changes...`);
+    console.log(`    ${chalk.dim('📁 Watching')} ${chalk.cyan(watchPatterns.join(', '))} ${chalk.dim('in')} ${chalk.cyan('public/')}`);
+    console.log(`    ${chalk.dim('💡 Browser will auto-reload on changes (no upload needed)')}`);
+    console.log('');
 
-    // Watch public folder
+    // Watch public folder (ignoring node_modules and common build folders)
+    // In watch mode, we just serve files locally - no need to re-upload on every change
     const chokidar = require('chokidar');
     const watcher = chokidar.watch(publicFolder, {
       persistent: true,
       ignoreInitial: true,
       depth: 99,
       awaitWriteFinish: true,
+      ignored: ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/.DS_Store']
     });
 
-    const triggerUpload = async (event, filePath) => {
-      console.log(`[WATCH] ${event} detected in ${filePath}. Re-zipping and uploading...`);
-      try {
-        await zipSite(publicFolder, distZip);
-        await patchSite(domain, apiKey, siteCode, distZip, 'package');
-        const chalk = (await import('chalk')).default;
-        console.log(chalk.green.bold(`[SYNC] Site package uploaded for ${siteCode}`));
-      } catch (err) {
-        console.error(`[ERROR] Upload failed: ${err.message}`);
-      }
-    };
-
-    watcher.on('add', (filePath) => triggerUpload('add', filePath));
-    watcher.on('change', (filePath) => triggerUpload('change', filePath));
-    watcher.on('unlink', (filePath) => triggerUpload('unlink', filePath));
+    // Just log file changes (browser will auto-reload via http-server)
+    watcher.on('add', (filePath) => {
+      console.log(`${chalk.dim('[FILE]')} ${chalk.green('added')} ${chalk.dim(path.relative(publicFolder, filePath))}`);
+    });
+    watcher.on('change', (filePath) => {
+      console.log(`${chalk.dim('[FILE]')} ${chalk.cyan('changed')} ${chalk.dim(path.relative(publicFolder, filePath))}`);
+    });
+    watcher.on('unlink', (filePath) => {
+      console.log(`${chalk.dim('[FILE]')} ${chalk.red('deleted')} ${chalk.dim(path.relative(publicFolder, filePath))}`);
+    });
 
     // Watch README.md and sync to config.json
     fs.watchFile(readmePath, { interval: 500 }, async (curr, prev) => {

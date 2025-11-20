@@ -8,7 +8,15 @@
     "script": "./script",
     "site": "./site"
   },
-  "keywords": ["prolibu", "cli", "scripts", "sites", "plugins", "automation", "low-code"],
+  "keywords": [
+    "prolibu",
+    "cli",
+    "scripts",
+    "sites",
+    "plugins",
+    "automation",
+    "low-code"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/nodriza-io/prolibu-cli.git"
@@ -22,6 +30,7 @@
     "form-data": "^4.0.0",
     "http-server": "^14.1.1",
     "inquirer": "^9.0.0",
+    "live-server": "^1.2.2",
     "lodash": "^4.17.21",
     "minimist": "^1.2.8",
     "moment": "^2.29.4",

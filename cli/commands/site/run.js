@@ -6,7 +6,7 @@ module.exports = async function runSite(env, flags, args) {
   let domain = flags.domain;
   let sitePrefix = flags.sitePrefix;
   let watchFlag = flags.watch || args.includes('--watch');
-  let port = flags.port || 3000;
+  let port = parseInt(flags.port) || 3000;
   let extensions = flags.ext || 'html,css,js';
 
   // Interactive prompts for missing values
