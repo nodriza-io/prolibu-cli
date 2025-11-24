@@ -13,7 +13,7 @@ module.exports = async function siteHandler(command, flags, args) {
     console.log('  --prefix <name>              Site name prefix');
     console.log('  --siteType <Static|SPA>      Site type (default: Static)');
     console.log('  --watch, -w                  Watch for changes and hot reload');
-    console.log('  --port <port>                Local server port (default: 3000)');
+    console.log('  --port <port>                Local server port (default: 3030)');
     console.log('  --ext <extensions>           File extensions to watch (default: html,css,js)');
     console.log('  --repo <url>                 Git repository URL');
     console.log('  --apikey <key>               Prolibu API key');

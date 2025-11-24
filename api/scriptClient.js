@@ -158,7 +158,7 @@ async function runScript(domain, apiKey, scriptCode) {
  */
 async function runDevScript(scriptPrefix, env, domain, watch = false, fileName = 'index') {
   const { listenScriptLog } = require('../cli/socketLog');
-  const scriptCode = `${scriptPrefix}-${env}`;
+  const scriptCode = env === 'prod' ? scriptPrefix : `${scriptPrefix}-${env}`;
   const apiKey = config.get('apiKey', domain);
   
   const scriptExists = await ensureScriptExists(domain, apiKey, scriptCode);
@@ -389,7 +389,7 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
  * Creates a script for the specified environment
  */
 async function createScript(scriptPrefix, env, domain, gitRepo, fileName = 'index') {
-  const scriptCode = `${scriptPrefix}-${env}`;
+  const scriptCode = env === 'prod' ? scriptPrefix : `${scriptPrefix}-${env}`;
   const apiKey = config.get('apiKey', domain);
   config.ensureScriptCode(domain, scriptPrefix, fileName);
   const code = config.readScriptCode(domain, scriptPrefix, fileName);

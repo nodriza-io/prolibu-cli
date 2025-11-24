@@ -1,6 +1,7 @@
 module.exports = async function createSite(flags) {
   const inquirer = await import('inquirer');
   const siteClient = require('../../../api/siteClient');
+  const config = require('../../../config/config');
   const path = require('path');
   const fs = require('fs');
   const { execSync } = require('child_process');
@@ -11,9 +12,6 @@ module.exports = async function createSite(flags) {
   let siteType = flags.siteType;
   let apiKey = flags.apikey;
 
-  // Interactive mode
-  const profilePath = path.join(process.cwd(), 'accounts', domain || 'tmp', 'profile.json');
-  
   // 1. domain
   if (!domain) {
     const response = await inquirer.default.prompt({
@@ -25,14 +23,9 @@ module.exports = async function createSite(flags) {
     domain = response.domain;
   }
 
-  // 2. apiKey
-  if (fs.existsSync(profilePath)) {
-    try {
-      const profileData = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
-      if (!apiKey) apiKey = profileData.apiKey;
-    } catch (e) {
-      // ignore
-    }
+  // 2. apiKey - use config module like script does
+  if (!apiKey) {
+    apiKey = config.get('apiKey', domain);
   }
   if (!apiKey) {
     const response = await inquirer.default.prompt({
@@ -42,13 +35,8 @@ module.exports = async function createSite(flags) {
       validate: input => input ? true : 'API key is required.'
     });
     apiKey = response.apiKey;
+    config.set('apiKey', apiKey, domain);
   }
-  
-  const domainDir = path.dirname(profilePath);
-  if (!fs.existsSync(domainDir)) {
-    fs.mkdirSync(domainDir, { recursive: true });
-  }
-  fs.writeFileSync(profilePath, JSON.stringify({ apiKey }, null, 2));
 
   // 3. sitePrefix
   if (!sitePrefix) {

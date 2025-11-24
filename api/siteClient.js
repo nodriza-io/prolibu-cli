@@ -5,6 +5,27 @@ const FormData = require('form-data');
 const { zipSite } = require('../cli/builders/siteBuilder');
 
 /**
+ * Format axios error for user-friendly display
+ */
+function formatAxiosError(err, context = '') {
+  if (err.response?.data) {
+    const data = err.response.data;
+    // If there's a structured error message
+    if (data.error) {
+      let message = `❌ ${context ? context + ': ' : ''}${data.error}`;
+      if (data.details?.code) {
+        message += ` (${data.details.code})`;
+      }
+      return message;
+    }
+    // Fallback to status text
+    return `❌ ${context ? context + ': ' : ''}${err.response.statusText || 'Request failed'} (${err.response.status})`;
+  }
+  // Network or other errors
+  return `❌ ${context ? context + ': ' : ''}${err.message}`;
+}
+
+/**
  * Upload zip file to /v2/file
  * @returns {string} fileId
  */
@@ -28,8 +49,8 @@ async function uploadZipFile(domain, apiKey, zipPath) {
     
     return response.data._id || response.data.fileId;
   } catch (err) {
-    console.error(`Failed to upload zip file:`, err.response?.data || err.message);
-    throw err;
+    console.error(formatAxiosError(err, 'Failed to upload zip file'));
+    process.exit(1);
   }
 }
 
@@ -40,6 +61,7 @@ async function uploadZipFile(domain, apiKey, zipPath) {
 async function patchSite(domain, apiKey, siteCode, value, field) {
   const url = `https://${domain}/v2/site/${siteCode}`;
   try {
+    let response;
     if (field === 'package' && typeof value === 'string' && fs.existsSync(value)) {
       // Upload package ZIP using multipart/form-data
       const formData = new FormData();
@@ -48,7 +70,7 @@ async function patchSite(domain, apiKey, siteCode, value, field) {
         contentType: 'application/zip'
       });
       
-      await axios.patch(url, formData, {
+      response = await axios.patch(url, formData, {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           ...formData.getHeaders()
@@ -58,7 +80,7 @@ async function patchSite(domain, apiKey, siteCode, value, field) {
       });
     } else {
       // Regular JSON patch
-      await axios.patch(url, { [field]: value }, {
+      response = await axios.patch(url, { [field]: value }, {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
@@ -66,9 +88,10 @@ async function patchSite(domain, apiKey, siteCode, value, field) {
         },
       });
     }
+    return response.data;
   } catch (err) {
-    console.error(`Failed to PATCH ${field} for ${siteCode}:`, err.response?.data || err.message);
-    throw err;
+    console.error(formatAxiosError(err, `Failed to update ${field} for ${siteCode}`));
+    process.exit(1);
   }
 }
 
@@ -93,7 +116,7 @@ async function createSiteDoc(domain, apiKey, siteCode, siteName, siteType, extra
       },
     });
   } catch (err) {
-    console.error(`Failed to create site ${siteCode}:`, err.response?.data || err.message);
+    console.error(formatAxiosError(err, `Failed to create site ${siteCode}`));
   }
 }
 
@@ -116,7 +139,7 @@ async function ensureSiteExists(domain, apiKey, siteCode, siteName, siteType) {
       await createSiteDoc(domain, apiKey, siteCode, siteName, siteType);
       console.log(`[AUTO-CREATE] Site '${siteCode}' created automatically.`);
     } else {
-      console.error(`Failed to check if site ${siteCode} exists:`, err.response?.data || err.message);
+      console.error(formatAxiosError(err, `Failed to check if site ${siteCode} exists`));
     }
   }
 }
@@ -126,7 +149,7 @@ async function ensureSiteExists(domain, apiKey, siteCode, siteName, siteType) {
  */
 async function createSite(sitePrefix, env, domain, siteType, gitRepo) {
   const config = require('../config/config');
-  const siteCode = `${sitePrefix}-${env}`;
+  const siteCode = env === 'prod' ? sitePrefix : `${sitePrefix}-${env}`;
   const apiKey = config.get('apiKey', domain);
   const envLabel = env === 'dev' ? 'Dev' : 'Prod';
   const siteNameLabel = `${sitePrefix} - ${envLabel}`;
@@ -143,8 +166,8 @@ async function createSite(sitePrefix, env, domain, siteType, gitRepo) {
 /**
  * Runs the site in the specified environment and watches for changes
  */
-async function runDevSite(sitePrefix, env, domain, apiKey, watch = false, port = 3000, extensions = 'html,css,js') {
-  const siteCode = `${sitePrefix}-${env}`;
+async function runDevSite(sitePrefix, env, domain, apiKey, watch = false, port = 3030, extensions = 'html,css,js') {
+  const siteCode = env === 'prod' ? sitePrefix : `${sitePrefix}-${env}`;
   const envLabel = env === 'dev' ? 'Dev' : 'Prod';
   const siteNameLabel = `${sitePrefix} - ${envLabel}`;
   
@@ -187,13 +210,13 @@ async function runDevSite(sitePrefix, env, domain, apiKey, watch = false, port =
   // Ensure settings.json exists with default values (local settings)
   if (!fs.existsSync(settingsPath)) {
     const defaultSettings = {
-      port: 3000
+      port: 3030
     };
     fs.writeFileSync(settingsPath, JSON.stringify(defaultSettings, null, 2));
   }
 
   // Read settings.json for port override (only if port was not explicitly provided)
-  if (port === 3000) {
+  if (port === 3030) {
     try {
       const settingsData = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
       if (settingsData.port) {
@@ -243,8 +266,20 @@ async function runDevSite(sitePrefix, env, domain, apiKey, watch = false, port =
   console.log(`[ZIP] Created dist.zip (${fileSizeMB} MB)`);
   
   console.log(`[UPLOAD] Uploading package to site...`);
-  await patchSite(domain, apiKey, siteCode, distZip, 'package');
+  const siteData = await patchSite(domain, apiKey, siteCode, distZip, 'package');
   console.log(`[UPLOAD] Site '${siteCode}' package uploaded successfully`);
+  
+  // Show site URLs after upload
+  const chalk = (await import('chalk')).default;
+  console.log('');
+  console.log(chalk.bold('  🌐 Site Published:'));
+  if (siteData.url) {
+    console.log(`    ${chalk.cyan(siteData.url)}`);
+  }
+  if (siteData.shortUrl && siteData.shortUrl !== siteData.url) {
+    console.log(`    ${chalk.cyan(siteData.shortUrl)} ${chalk.dim('(short)')}`);
+  }
+  console.log('');
 
   if (watch) {
     // Check if port is already in use

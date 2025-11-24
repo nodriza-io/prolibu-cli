@@ -7,7 +7,7 @@ const fs = require('fs');
 // Runs the script in the specified environment and watches for changes
 async function runDevScript(scriptPrefix, env, domain, watch = false, fileName = 'index') {
   const { listenScriptLog } = require('./socketLog');
-  const scriptCode = `${scriptPrefix}-${env}`;
+  const scriptCode = env === 'prod' ? scriptPrefix : `${scriptPrefix}-${env}`;
   const apiKey = config.get('apiKey', domain);
   
   const scriptExists = await apiClient.ensureScriptExists(domain, apiKey, scriptCode);

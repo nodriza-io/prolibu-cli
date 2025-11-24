@@ -223,7 +223,7 @@ describe('Prolibu CLI - Scripts', () => {
       const apiKey = config.apiKey;
       const domain = config.domain;
       const scriptName = scriptCode;
-      const scriptCodeRemote = `${scriptName}-prod`;
+      const scriptCodeRemote = scriptName; // prod doesn't use -prod suffix anymore
       const baseUrl = `https://${domain}/v2/script/${scriptCodeRemote}`;
       const headers = { Authorization: `Bearer ${apiKey}` };
 

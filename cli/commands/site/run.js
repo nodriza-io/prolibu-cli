@@ -6,7 +6,7 @@ module.exports = async function runSite(env, flags, args) {
   let domain = flags.domain;
   let sitePrefix = flags.sitePrefix;
   let watchFlag = flags.watch || args.includes('--watch');
-  let port = parseInt(flags.port) || 3000;
+  let port = parseInt(flags.port) || 3030;
   let extensions = flags.ext || 'html,css,js';
 
   // Interactive prompts for missing values
@@ -30,6 +30,18 @@ module.exports = async function runSite(env, flags, args) {
     sitePrefix = response.sitePrefix;
   }
 
-  const apiKey = config.get('apiKey', domain);
+  // Check for apiKey in profile, prompt if missing
+  let apiKey = config.get('apiKey', domain);
+  if (!apiKey) {
+    const response = await inquirer.default.prompt({
+      type: 'input',
+      name: 'apiKey',
+      message: `Enter API key for domain '${domain}':`,
+      validate: input => input ? true : 'API key is required.'
+    });
+    apiKey = response.apiKey;
+    config.set('apiKey', apiKey, domain);
+  }
+
   await siteClient.runDevSite(sitePrefix, env, domain, apiKey, watchFlag, port, extensions);
 };
