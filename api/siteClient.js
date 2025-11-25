@@ -387,23 +387,20 @@ window.__PROLIBU_CONFIG__ = {
     console.log('');
     console.log('    ' + chalk.blue('◯') + chalk.yellow(' || ') + chalk.hex('#E91E63')('▶') + chalk.bold.white(' Prolibu CLI') + chalk.dim(' v2.0'));
     console.log('');
-    console.log('    ' + chalk.green('✓') + ' Server running on port ' + chalk.cyan(port));
-    console.log('');
-    console.log('    ' + chalk.bold('Available on:'));
-    console.log(`      ${chalk.cyan(`http://localhost:${port}`)}`);
-    console.log(`      ${chalk.cyan(`http://127.0.0.1:${port}`)}`);
-    addresses.forEach(addr => console.log(`      ${chalk.cyan(`http://${addr}:${port}`)}`));
-    console.log('');
-    console.log('');
     
     // Show QR code for mobile access
     const qrUrl = addresses.length > 0 ? `http://${addresses[0]}:${port}` : `http://localhost:${port}`;
-    console.log('    ' + chalk.bold('📱 Scan QR code for mobile access:'));
-    console.log('');
+    console.log('    ' + chalk.bold('📱 Scan QR code for mobile access on ') + chalk.cyan(qrUrl));
     qrcode.generate(qrUrl, { small: true }, (qr) => {
       qr.split('\n').forEach(line => console.log('    ' + line));
       console.log('');
     });
+    
+    console.log('    ' + chalk.bold('Server available on:'));
+    console.log(`      ${chalk.cyan(`http://localhost:${port}`)}`);
+    console.log(`      ${chalk.cyan(`http://127.0.0.1:${port}`)}`);
+    addresses.forEach(addr => console.log(`      ${chalk.cyan(`http://${addr}:${port}`)}`));
+    console.log('');
     
     const extArray = extensions.split(',').map(e => e.trim());
     const watchPatterns = extArray.map(ext => `*.${ext}`);
