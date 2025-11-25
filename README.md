@@ -12,15 +12,19 @@ Prolibu CLI is a modern, developer-focused framework for building and deploying:
 
 Key features:
 - 🎯 Interactive scaffolding for scripts and sites
-- 🔄 Git repository integration and cloning
+- 🔄 Git repository integration and cloning (optional)
 - 🔥 Real-time file watching with hot reload
 - 📦 Automatic bundling and minification (scripts)
 - 🗜️ Automatic zipping and deployment (sites)
 - 🧪 Comprehensive testing framework
-- 🌐 Local development server for sites
+- 🌐 Local development server with live reload
+- 📱 QR code generation for mobile access (dev & prod)
+- 🔐 Built-in authentication system for sites
 - 📝 Automatic README sync to API
 - 🔧 Modular code via shared lib/ folder
 - 🌍 Dev/prod environment support
+- ⌨️ Interactive watch mode (press 'p' to publish, 'x' to exit)
+- 🎨 Pre-configured site templates with Prolibu branding
 
 ---
 
@@ -149,7 +153,14 @@ chmod +x prolibu script site  # Make executables
 # Interactive mode
 ./prolibu site create
 
-# One-liner mode
+# One-liner mode (git repo optional)
+./prolibu site create \
+  --domain dev10.prolibu.com \
+  --apikey <your-api-key> \
+  --prefix my-landing-page \
+  --siteType Static
+
+# With git repository
 ./prolibu site create \
   --domain dev10.prolibu.com \
   --apikey <your-api-key> \
@@ -159,8 +170,10 @@ chmod +x prolibu script site  # Make executables
 ```
 
 **Site Types:**
-- `Static` - Static HTML/CSS/JS sites
-- `SPA` - Single Page Applications
+- `Static` - Static HTML/CSS/JS sites (case-insensitive)
+- `SPA` - Single Page Applications (case-insensitive)
+
+**Note:** Git repository is now optional. You can create sites from templates without a repo.
 
 ### Development mode with hot reload
 
@@ -174,10 +187,21 @@ chmod +x prolibu script site  # Make executables
 ```
 
 This will:
-1. Zip the `public/` folder
-2. Upload to Prolibu
-3. Start local server at `http://localhost:3000`
-4. Watch for file changes and auto-sync
+1. Create `_prolibu_config.js` with domain configuration
+2. Start local server at `http://localhost:3000`
+3. Display QR code for mobile access (uses local IP)
+4. Watch for file changes and auto-reload browser
+5. Press `p` to publish to dev/prod environment
+6. Press `x` to exit and cleanup
+
+**Interactive Commands:**
+- `p` or `P` - Publish site to Prolibu (creates zip, uploads, shows QR)
+- `x` or `X` - Exit watch mode and cleanup
+- `Ctrl+C` - Also exits and cleanup
+
+**Auto-generated Files:**
+- `_prolibu_config.js` - Contains domain configuration for API calls (auto-removed on exit)
+- `dist.zip` - Site package (created when publishing)
 
 ### Production deployment
 
@@ -394,30 +418,61 @@ All site files must be in the `public/` folder:
 ```
 my-site/
 ├── config.json
+├── settings.json
 ├── README.md
 ├── dist.zip          # Generated automatically
 └── public/           # Your site files
     ├── index.html
     ├── styles.css
-    ├── app.js
+    ├── script.js
+    ├── _prolibu_config.js  # Auto-generated in dev mode
     └── assets/
         └── logo.png
 ```
 
+**Built-in Authentication System**
+
+New sites come with a pre-configured authentication system:
+- Login form with email/password
+- Validates credentials against `/v2/auth/signin`
+- Stores `apiKey` in localStorage (without Bearer prefix)
+- Fetches user info from `/v2/user/me` and caches in localStorage
+- Redirects to Prolibu signin if on `.prolibu.com` domain
+- Shows user name and logout in header
+- Auto-validates on page load
+
+**API Configuration**
+
+In development mode, `_prolibu_config.js` is automatically created with:
+```javascript
+window.__PROLIBU_CONFIG__ = {
+  domain: 'dev10.prolibu.com',
+  apiBaseUrl: 'https://dev10.prolibu.com/v2',
+  isDev: true
+};
+```
+
+Your `script.js` uses this to make API calls to the correct domain:
+- Dev mode (localhost:3000) → API calls go to `dev10.prolibu.com`
+- Production mode → API calls go to current domain
+
 **Development Workflow**
 
-1. Edit files in `public/`
-2. Changes are detected automatically
-3. Public folder is zipped
-4. Zip is uploaded to Prolibu
-5. Site is updated with new package
-6. Local server shows changes instantly
+1. Run `./prolibu site dev --watch`
+2. Local server starts with QR code for mobile testing
+3. Edit files in `public/`
+4. Browser auto-reloads on file changes
+5. Press `p` to publish to Prolibu
+6. QR code shows for easy mobile access to published site
+7. Press `x` to exit (auto-cleanup of `_prolibu_config.js`)
 
 **Site Configuration Files**
 
 **`config.json` - Model Data (uploaded to API)**
 ```json
 {
+  "variables": [],                // Environment variables
+  "lifecycleHooks": [],           // Lifecycle hooks (if any)
   "siteType": "Static",           // Static or SPA
   "readme": "# My Site\n\n...",   // Site documentation
   "git": {
@@ -432,6 +487,81 @@ my-site/
   "port": 3000                    // Local dev server port
 }
 ```
+
+**Default Site Template**
+
+New sites come with:
+- Responsive HTML structure
+- Prolibu branding header with logo
+- Separated CSS and JavaScript files
+- Authentication system (signin/logout)
+- API utility functions (`fetchAPI`, `getApiConfig`)
+- User profile display with name truncation
+- Mobile-friendly responsive design
+
+---
+
+## QR Code Features
+
+### Development Mode
+When you run `./prolibu site dev --watch`, you'll see:
+```
+◯ || ▶ Prolibu CLI v2.0
+✓ Server running on port 3030
+
+Available on:
+  http://localhost:3030
+  http://127.0.0.1:3030
+  http://192.168.0.23:3030
+
+📱 Scan QR code for mobile access:
+█████████████████████████████
+█████████████████████████████
+██ ▄▄▄▄▄ █▀█ █▄█▀█ ▄▄▄▄▄ ██
+██ █   █ █▀▀▀▄ ▄▀█ █   █ ██
+...
+```
+The QR code points to your local IP address for easy mobile testing.
+
+### Production Mode
+When you publish with `p`, you'll see:
+```
+✓ Site 'my-site-dev' published successfully
+
+🌐 Site URLs:
+  https://dev10.prolibu.com/sites/.../my-site-dev/
+  https://dev10.prolibu.com/r/my-site-dev (short)
+
+📱 Scan QR code for mobile access:
+█████████████████████████████
+...
+```
+The QR code points to the short URL for quick mobile access.
+
+---
+
+## Watch Mode Process Management
+
+The CLI now includes robust process management for watch mode:
+
+**Cleanup Features:**
+- Kills all child processes (live-server, etc.)
+- Removes auto-generated files (`_prolibu_config.js`)
+- Frees up ports properly
+- Unwatches all file watchers
+- Resets terminal state
+
+**Exit Methods:**
+1. Press `x` or `X` - Clean exit
+2. Press `Ctrl+C` - Signal interrupt exit
+3. Terminal close - Automatic cleanup
+
+**Process Handling:**
+- Uses `SIGKILL` for force termination
+- Kills entire process tree with `pkill -P`
+- Cleans up ports with `lsof` (macOS/Linux)
+- Removes stdin listeners
+- Resets terminal raw mode
 
 ---
 

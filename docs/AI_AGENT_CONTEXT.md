@@ -179,8 +179,8 @@ const response = await fetch(`https://${DOMAIN}/v2/{Model}`, {
 
 // With pagination (recommended)
 const limit = 40;
-const offset = 0;
-const response = await fetch(`https://${DOMAIN}/v2/{Model}?limit=${limit}&offset=${offset}`, {
+const page = 0;
+const response = await fetch(`https://${DOMAIN}/v2/{Model}?limit=${limit}&page=${page}`, {
     headers: { 'Authorization': `Bearer ${apiKey}` }
 });
 

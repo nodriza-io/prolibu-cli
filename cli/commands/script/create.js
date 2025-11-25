@@ -104,6 +104,7 @@ module.exports = async function createScript(flags) {
 
   try {
     let repoConfig = {};
+    const repoConfigPath = path.join(repoDir, 'config.json');
     
     // Clone repo if provided
     if (repo && repo.trim()) {
@@ -111,7 +112,6 @@ module.exports = async function createScript(flags) {
       console.log(`[GIT] Repository cloned to ${repoDir}`);
       
       // Read existing config.json from cloned repo (if exists)
-      const repoConfigPath = path.join(repoDir, 'config.json');
       if (fs.existsSync(repoConfigPath)) {
         try {
           repoConfig = JSON.parse(fs.readFileSync(repoConfigPath, 'utf8'));
