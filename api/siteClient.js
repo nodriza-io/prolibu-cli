@@ -257,29 +257,32 @@ async function runDevSite(sitePrefix, env, domain, apiKey, watch = false, port =
     await patchSite(domain, apiKey, siteCode, { repositoryUrl: configData.git.repositoryUrl }, 'git');
   }
 
-  // Initial zip and upload
-  console.log(`[ZIP] Creating package from ${publicFolder}...`);
-  await zipSite(publicFolder, distZip);
-  
-  const fileStat = fs.statSync(distZip);
-  const fileSizeMB = (fileStat.size / (1024 * 1024)).toFixed(2);
-  console.log(`[ZIP] Created dist.zip (${fileSizeMB} MB)`);
-  
-  console.log(`[UPLOAD] Uploading package to site...`);
-  const siteData = await patchSite(domain, apiKey, siteCode, distZip, 'package');
-  console.log(`[UPLOAD] Site '${siteCode}' package uploaded successfully`);
-  
-  // Show site URLs after upload
-  const chalk = (await import('chalk')).default;
-  console.log('');
-  console.log(chalk.bold('  🌐 Site Published:'));
-  if (siteData.url) {
-    console.log(`    ${chalk.cyan(siteData.url)}`);
+  // Only do initial zip and upload if NOT in watch mode
+  if (!watch) {
+    // Initial zip and upload
+    console.log(`[ZIP] Creating package from ${publicFolder}...`);
+    await zipSite(publicFolder, distZip);
+    
+    const fileStat = fs.statSync(distZip);
+    const fileSizeMB = (fileStat.size / (1024 * 1024)).toFixed(2);
+    console.log(`[ZIP] Created dist.zip (${fileSizeMB} MB)`);
+    
+    console.log(`[UPLOAD] Uploading package to site...`);
+    const siteData = await patchSite(domain, apiKey, siteCode, distZip, 'package');
+    console.log(`[UPLOAD] Site '${siteCode}' package uploaded successfully`);
+    
+    // Show site URLs after upload
+    const chalk = (await import('chalk')).default;
+    console.log('');
+    console.log(chalk.bold('  🌐 Site Published:'));
+    if (siteData.url) {
+      console.log(`    ${chalk.cyan(siteData.url)}`);
+    }
+    if (siteData.shortUrl && siteData.shortUrl !== siteData.url) {
+      console.log(`    ${chalk.cyan(siteData.shortUrl)} ${chalk.dim('(short)')}`);
+    }
+    console.log('');
   }
-  if (siteData.shortUrl && siteData.shortUrl !== siteData.url) {
-    console.log(`    ${chalk.cyan(siteData.shortUrl)} ${chalk.dim('(short)')}`);
-  }
-  console.log('');
 
   if (watch) {
     // Check if port is already in use
@@ -347,8 +350,12 @@ async function runDevSite(sitePrefix, env, domain, apiKey, watch = false, port =
       '--quiet',
       '--wait=200'
     ], {
-      stdio: 'ignore'
+      stdio: 'ignore',
+      detached: false
     });
+    
+    // Store the PID for cleanup
+    const serverPid = serverProcess.pid;
     
     const chalk = (await import('chalk')).default;
     
@@ -368,6 +375,8 @@ async function runDevSite(sitePrefix, env, domain, apiKey, watch = false, port =
     const watchPatterns = extArray.map(ext => `*.${ext}`);
     console.log(`    ${chalk.dim('📁 Watching')} ${chalk.cyan(watchPatterns.join(', '))} ${chalk.dim('in')} ${chalk.cyan('public/')}`);
     console.log(`    ${chalk.dim('💡 Browser will auto-reload on changes (no upload needed)')}`);
+    console.log('');
+    console.log(`    ${chalk.dim('Press')} ${chalk.bold.cyan('p')} ${chalk.dim('to publish to')} ${chalk.bold(envLabel)} ${chalk.dim('or')} ${chalk.bold.red('x')} ${chalk.dim('to exit')}`);
     console.log('');
 
     // Watch public folder (ignoring node_modules and common build folders)
@@ -390,6 +399,141 @@ async function runDevSite(sitePrefix, env, domain, apiKey, watch = false, port =
     });
     watcher.on('unlink', (filePath) => {
       console.log(`${chalk.dim('[FILE]')} ${chalk.red('deleted')} ${chalk.dim(path.relative(publicFolder, filePath))}`);
+    });
+
+    // Listen for keypress to publish or exit
+    const readline = require('readline');
+    readline.emitKeypressEvents(process.stdin);
+    
+    let isRawMode = false;
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+      isRawMode = true;
+    }
+    
+    const cleanupAndExit = async () => {
+      console.log('');
+      console.log(chalk.yellow('[INFO] Stopping server and watcher...'));
+      
+      // Remove all listeners first
+      process.stdin.removeAllListeners('keypress');
+      process.removeAllListeners('SIGINT');
+      process.removeAllListeners('SIGTERM');
+      
+      // Stop file watchers
+      try {
+        fs.unwatchFile(readmePath);
+        fs.unwatchFile(configPath);
+      } catch (e) {
+        // ignore
+      }
+      
+      // Kill the server process tree
+      try {
+        if (serverProcess && !serverProcess.killed) {
+          // Kill the entire process tree
+          const { execSync } = require('child_process');
+          try {
+            // Find all child processes of live-server
+            if (process.platform === 'darwin' || process.platform === 'linux') {
+              execSync(`pkill -P ${serverPid}`, { stdio: 'ignore' });
+            }
+          } catch (e) {
+            // Ignore if no children
+          }
+          
+          serverProcess.kill('SIGKILL');
+          
+          // Wait a bit for cleanup
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+          // Force kill anything still on the port
+          try {
+            if (process.platform === 'darwin' || process.platform === 'linux') {
+              execSync(`lsof -ti:${port} | xargs kill -9`, { stdio: 'ignore' });
+            }
+          } catch (e) {
+            // Port already free
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+      
+      try {
+        if (watcher) {
+          await watcher.close();
+        }
+      } catch (e) {
+        // ignore
+      }
+      
+      try {
+        if (isRawMode && process.stdin.isTTY) {
+          process.stdin.setRawMode(false);
+        }
+        process.stdin.pause();
+        process.stdin.destroy();
+      } catch (e) {
+        // ignore
+      }
+      
+      console.log(chalk.green('✓ Cleanup complete'));
+      
+      // Force exit
+      process.exit(0);
+    };
+    
+    process.stdin.on('keypress', async (str, key) => {
+      // Ctrl+C
+      if (key && key.ctrl && key.name === 'c') {
+        cleanupAndExit();
+        return;
+      }
+      
+      // x or X to exit
+      if (str === 'x' || str === 'X') {
+        cleanupAndExit();
+        return;
+      }
+      
+      // p or P to publish
+      if (str === 'p' || str === 'P') {
+        console.log('');
+        console.log(chalk.yellow(`📦 Publishing to ${envLabel}...`));
+        console.log('');
+        
+        try {
+          // Create zip
+          console.log(`${chalk.dim('[ZIP]')} Creating package from ${chalk.cyan('public/')}...`);
+          await zipSite(publicFolder, distZip);
+          
+          const fileStat = fs.statSync(distZip);
+          const fileSizeMB = (fileStat.size / (1024 * 1024)).toFixed(2);
+          console.log(`${chalk.dim('[ZIP]')} Created dist.zip (${fileSizeMB} MB)`);
+          
+          // Upload
+          console.log(`${chalk.dim('[UPLOAD]')} Uploading package to site...`);
+          const siteData = await patchSite(domain, apiKey, siteCode, distZip, 'package');
+          console.log(`${chalk.green('✓')} Site '${chalk.bold(siteCode)}' published successfully`);
+          console.log('');
+          console.log(chalk.bold('  🌐 Site URLs:'));
+          if (siteData.url) {
+            console.log(`    ${chalk.cyan(siteData.url)}`);
+          }
+          if (siteData.shortUrl && siteData.shortUrl !== siteData.url) {
+            console.log(`    ${chalk.cyan(siteData.shortUrl)} ${chalk.dim('(short)')}`);
+          }
+          console.log('');
+          console.log(`    ${chalk.dim('Press')} ${chalk.bold.cyan('p')} ${chalk.dim('to publish again or')} ${chalk.bold.red('x')} ${chalk.dim('to exit')}`);
+          console.log('');
+        } catch (err) {
+          console.error(chalk.red('✗ Publish failed:'), err.message);
+          console.log('');
+          console.log(`    ${chalk.dim('Press')} ${chalk.bold.cyan('p')} ${chalk.dim('to try again or')} ${chalk.bold.red('x')} ${chalk.dim('to exit')}`);
+          console.log('');
+        }
+      }
     });
 
     // Watch README.md and sync to config.json
@@ -438,12 +582,8 @@ async function runDevSite(sitePrefix, env, domain, apiKey, watch = false, port =
     });
 
     // Handle Ctrl+C to cleanup
-    process.on('SIGINT', () => {
-      console.log('\n[INFO] Stopping server and watcher...');
-      serverProcess.kill();
-      watcher.close();
-      process.exit(0);
-    });
+    process.on('SIGINT', cleanupAndExit);
+    process.on('SIGTERM', cleanupAndExit);
   } else {
     process.exit(0);
   }

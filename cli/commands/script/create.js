@@ -58,13 +58,13 @@ module.exports = async function createScript(flags) {
     scriptPrefix = response.scriptPrefix;
   }
 
-  // 4. repo
+  // 4. repo (optional)
   if (!repo) {
     const response = await inquirer.default.prompt({
       type: 'input',
       name: 'repo',
-      message: 'Enter git repository URL:',
-      validate: input => input ? true : 'Git repository URL is required.'
+      message: 'Enter git repository URL (optional, press Enter to skip):',
+      default: ''
     });
     repo = response.repo;
   }
@@ -85,7 +85,7 @@ module.exports = async function createScript(flags) {
     hooksArr = lifecycleHooks.split(',').map(h => h.trim()).filter(Boolean);
   }
 
-  // Clone repo and copy templates
+  // Create script directory
   const repoDir = path.join(process.cwd(), 'accounts', domain, scriptPrefix);
   if (fs.existsSync(repoDir) && fs.readdirSync(repoDir).length > 0) {
     const { confirmDelete } = await inquirer.default.prompt({
@@ -103,18 +103,26 @@ module.exports = async function createScript(flags) {
   }
 
   try {
-    execSync(`git clone ${repo} ${repoDir}`, { stdio: 'inherit' });
-    console.log(`[GIT] Repository cloned to ${repoDir}`);
-    
-    // Read existing config.json from cloned repo (if exists)
-    const repoConfigPath = path.join(repoDir, 'config.json');
     let repoConfig = {};
-    if (fs.existsSync(repoConfigPath)) {
-      try {
-        repoConfig = JSON.parse(fs.readFileSync(repoConfigPath, 'utf8'));
-      } catch (e) {
-        console.warn(`[WARN] Failed to parse existing config.json from repo: ${e.message}`);
+    
+    // Clone repo if provided
+    if (repo && repo.trim()) {
+      execSync(`git clone ${repo} ${repoDir}`, { stdio: 'inherit' });
+      console.log(`[GIT] Repository cloned to ${repoDir}`);
+      
+      // Read existing config.json from cloned repo (if exists)
+      const repoConfigPath = path.join(repoDir, 'config.json');
+      if (fs.existsSync(repoConfigPath)) {
+        try {
+          repoConfig = JSON.parse(fs.readFileSync(repoConfigPath, 'utf8'));
+        } catch (e) {
+          console.warn(`[WARN] Failed to parse existing config.json from repo: ${e.message}`);
+        }
       }
+    } else {
+      // No repo provided, create directory from template
+      console.log(`[TEMPLATE] Creating script from template...`);
+      fs.mkdirSync(repoDir, { recursive: true });
     }
     
     // Copy all files and folders from templates/script directory

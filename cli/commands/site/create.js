@@ -59,20 +59,29 @@ module.exports = async function createSite(flags) {
       default: 'Static'
     });
     siteType = response.siteType;
+  } else {
+    // Normalize siteType from CLI flag (case-insensitive)
+    siteType = siteType.charAt(0).toUpperCase() + siteType.slice(1).toLowerCase();
+    if (!['Static', 'Spa'].includes(siteType)) {
+      console.error(`Invalid siteType: ${siteType}. Must be 'static' or 'spa'.`);
+      process.exit(1);
+    }
+    // Normalize 'Spa' to 'SPA'
+    if (siteType === 'Spa') siteType = 'SPA';
   }
 
-  // 5. repo
+  // 5. repo (optional)
   if (!repo) {
     const response = await inquirer.default.prompt({
       type: 'input',
       name: 'repo',
-      message: 'Enter git repository URL:',
-      validate: input => input ? true : 'Git repository URL is required.'
+      message: 'Enter git repository URL (optional, press Enter to skip):',
+      default: ''
     });
     repo = response.repo;
   }
 
-  // Clone repo and copy templates
+  // Create site directory
   const repoDir = path.join(process.cwd(), 'accounts', domain, sitePrefix);
   if (fs.existsSync(repoDir) && fs.readdirSync(repoDir).length > 0) {
     const { confirmDelete } = await inquirer.default.prompt({
@@ -90,18 +99,26 @@ module.exports = async function createSite(flags) {
   }
 
   try {
-    execSync(`git clone ${repo} ${repoDir}`, { stdio: 'inherit' });
-    console.log(`[GIT] Repository cloned to ${repoDir}`);
-    
-    // Read existing config.json from cloned repo (if exists)
-    const repoConfigPath = path.join(repoDir, 'config.json');
     let repoConfig = {};
-    if (fs.existsSync(repoConfigPath)) {
-      try {
-        repoConfig = JSON.parse(fs.readFileSync(repoConfigPath, 'utf8'));
-      } catch (e) {
-        console.warn(`[WARN] Failed to parse existing config.json from repo: ${e.message}`);
+    
+    // Clone repo if provided
+    if (repo && repo.trim()) {
+      execSync(`git clone ${repo} ${repoDir}`, { stdio: 'inherit' });
+      console.log(`[GIT] Repository cloned to ${repoDir}`);
+      
+      // Read existing config.json from cloned repo (if exists)
+      const repoConfigPath = path.join(repoDir, 'config.json');
+      if (fs.existsSync(repoConfigPath)) {
+        try {
+          repoConfig = JSON.parse(fs.readFileSync(repoConfigPath, 'utf8'));
+        } catch (e) {
+          console.warn(`[WARN] Failed to parse existing config.json from repo: ${e.message}`);
+        }
       }
+    } else {
+      // No repo provided, create directory from template
+      console.log(`[TEMPLATE] Creating site from template...`);
+      fs.mkdirSync(repoDir, { recursive: true });
     }
     
     // Copy template files from templates/site
@@ -144,7 +161,8 @@ module.exports = async function createSite(flags) {
       siteType: siteType
     };
     
-    fs.writeFileSync(repoConfigPath, JSON.stringify(mergedConfig, null, 2));
+    const finalConfigPath = path.join(repoDir, 'config.json');
+    fs.writeFileSync(finalConfigPath, JSON.stringify(mergedConfig, null, 2));
     
     // Copy settings.json from template (local build settings)
     const templateSettingsPath = path.join(templateDir, 'settings.json');

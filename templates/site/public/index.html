@@ -4,110 +4,80 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Prolibu Site</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        
-        .container {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            padding: 60px 40px;
-            max-width: 600px;
-            text-align: center;
-        }
-        
-        h1 {
-            font-size: 3em;
-            color: #333;
-            margin-bottom: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        
-        p {
-            font-size: 1.2em;
-            color: #666;
-            line-height: 1.6;
-            margin-bottom: 30px;
-        }
-        
-        .badge {
-            display: inline-block;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 50px;
-            font-size: 0.9em;
-            font-weight: 600;
-            margin-top: 20px;
-        }
-        
-        .features {
-            margin-top: 40px;
-            text-align: left;
-        }
-        
-        .feature {
-            margin: 15px 0;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            border-left: 4px solid #667eea;
-        }
-        
-        .feature-title {
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 5px;
-        }
-        
-        .feature-desc {
-            font-size: 0.9em;
-            color: #666;
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
-        <h1>🚀 Prolibu Site</h1>
-        <p>Your site is successfully deployed and running!</p>
-        <div class="badge">✨ Powered by Prolibu CLI</div>
-        
-        <div class="features">
-            <div class="feature">
-                <div class="feature-title">📦 Easy Deployment</div>
-                <div class="feature-desc">Deploy your site with a single command</div>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <img 
+                src="https://s3.us-east-1.amazonaws.com/public.prolibu.com/cdn/assets/logo/svg/safe-black-logo-horizontal.svg" 
+                alt="Prolibu" 
+                class="logo"
+            >
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+        <div class="container">
+            <h1>🚀 Welcome to Prolibu</h1>
+            <p class="subtitle">Your site is successfully deployed and running!</p>
+            
+            <div class="card">
+                <h2>Getting Started</h2>
+                <p>Edit the files in the <code>public/</code> folder to customize your site:</p>
+                
+                <div class="file-list">
+                    <div class="file-item">
+                        <span class="file-icon">📄</span>
+                        <div>
+                            <strong>index.html</strong>
+                            <p>Main HTML structure</p>
+                        </div>
+                    </div>
+                    <div class="file-item">
+                        <span class="file-icon">🎨</span>
+                        <div>
+                            <strong>styles.css</strong>
+                            <p>Styling and design</p>
+                        </div>
+                    </div>
+                    <div class="file-item">
+                        <span class="file-icon">⚡</span>
+                        <div>
+                            <strong>script.js</strong>
+                            <p>JavaScript functionality</p>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="feature">
-                <div class="feature-title">🔥 Hot Reload</div>
-                <div class="feature-desc">Watch mode automatically syncs your changes</div>
-            </div>
-            <div class="feature">
-                <div class="feature-title">⚡ Fast & Simple</div>
-                <div class="feature-desc">Built for speed and developer experience</div>
+
+            <div class="features">
+                <div class="feature">
+                    <div class="feature-icon">📦</div>
+                    <div class="feature-title">Easy Deployment</div>
+                    <div class="feature-desc">Deploy your site with a single command</div>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">🔥</div>
+                    <div class="feature-title">Hot Reload</div>
+                    <div class="feature-desc">Watch mode automatically syncs your changes</div>
+                </div>
+                <div class="feature">
+                    <div class="feature-icon">⚡</div>
+                    <div class="feature-title">Fast & Simple</div>
+                    <div class="feature-desc">Built for speed and developer experience</div>
+                </div>
             </div>
         </div>
-    </div>
-    
-    <script>
-        console.log('🚀 Prolibu Site loaded successfully!');
-        console.log('Edit public/index.html to customize your site');
-    </script>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>Powered by <strong>Prolibu CLI</strong></p>
+    </footer>
+
+    <script src="script.js"></script>
 </body>
 </html>
