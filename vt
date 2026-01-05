@@ -1,0 +1,19 @@
+#!/usr/bin/env node
+
+// Wrapper for ./vt command
+// Redirects to ./prolibu vt
+
+const { spawn } = require('child_process');
+const path = require('path');
+
+const prolibuPath = path.join(__dirname, 'prolibu');
+const args = ['vt', ...process.argv.slice(2)];
+
+const child = spawn(prolibuPath, args, {
+    stdio: 'inherit',
+    cwd: process.cwd()
+});
+
+child.on('exit', (code) => {
+    process.exit(code);
+});

@@ -18,6 +18,7 @@ const command = args[1]; // create, dev, prod, import, test
     console.log('Objects:');
     console.log('  script   Manage Prolibu scripts (lifecycle hooks, integrations)');
     console.log('  site     Manage static sites and SPAs');
+    console.log('  vt       Manage virtual tours (bulk upload)');
     console.log('  plugin   Manage UI plugins (coming soon)');
     console.log('');
     console.log('Commands:');
@@ -26,12 +27,15 @@ const command = args[1]; // create, dev, prod, import, test
     console.log('  prod     Run object in production mode');
     console.log('  import   Import object from git repository');
     console.log('  test     Run tests (scripts only)');
+    console.log('  bulk     Upload virtual tours in bulk (vt only)');
     console.log('');
     console.log('Examples:');
     console.log('  ./prolibu script create --domain dev10.prolibu.com --prefix my-hook');
     console.log('  ./prolibu script dev --domain dev10.prolibu.com --prefix my-hook --watch');
     console.log('  ./prolibu site create --domain dev10.prolibu.com --prefix my-site --siteType Static');
     console.log('  ./prolibu site dev --domain dev10.prolibu.com --prefix my-site --watch --port 3000');
+    console.log('  ./prolibu vt create --domain dev11.prolibu.com --prefix my-vt-project');
+    console.log('  ./prolibu vt bulk --domain dev11.prolibu.com --prefix my-vt-project --watch');
     console.log('');
     console.log('For more information: https://github.com/nodriza-io/prolibu-cli');
     return;
@@ -44,12 +48,15 @@ const command = args[1]; // create, dev, prod, import, test
   } else if (objectType === 'site') {
     const siteHandler = require('./cli/commands/site/index');
     await siteHandler(command, flags, args);
+  } else if (objectType === 'vt') {
+    const vtHandler = require('./cli/commands/vt/index');
+    await vtHandler(command, flags, args);
   } else if (objectType === 'plugin') {
     console.log('🚧 Plugin support is coming soon!');
     console.log('Stay tuned for updates at https://github.com/nodriza-io/prolibu-cli');
   } else {
     console.error(`❌ Unknown object type: ${objectType}`);
-    console.log('Available types: script, site, plugin');
+    console.log('Available types: script, site, vt, plugin');
     console.log('Run ./prolibu for help');
     process.exit(1);
   }

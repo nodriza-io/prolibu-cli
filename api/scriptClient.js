@@ -6,25 +6,26 @@ const config = require('../config/config');
 
 /**
  * Check if script exists, create if not
+ * @returns {Object|null} Script data including _id, or null if failed
  */
 async function ensureScriptExists(domain, apiKey, scriptCode) {
   const checkUrl = `https://${domain}/v2/script/${scriptCode}`;
-  
+
   try {
-    await axios.get(checkUrl, {
+    const response = await axios.get(checkUrl, {
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Accept': 'application/json',
       },
     });
-    return true;
+    return response.data; // Returns script data including _id
   } catch (error) {
     if (error.response?.status === 404) {
       console.log(`🔧 Script '${scriptCode}' not found. Creating...`);
-      
+
       try {
         const createUrl = `https://${domain}/v2/script`;
-        await axios.post(createUrl, {
+        const createResponse = await axios.post(createUrl, {
           scriptCode,
           scriptName: scriptCode,
           code: '// Script will be synced from local files',
@@ -39,17 +40,17 @@ async function ensureScriptExists(domain, apiKey, scriptCode) {
             'Accept': 'application/json',
           },
         });
-        
+
         console.log(`✅ Script '${scriptCode}' created successfully!`);
-        return true;
+        return createResponse.data; // Returns created script data including _id
       } catch (createError) {
         console.error(`❌ Failed to create script '${scriptCode}':`, createError.response?.data || createError.message);
-        return false;
+        return null;
       }
     }
-    
+
     console.error(`❌ Error checking script '${scriptCode}':`, error.response?.data || error.message);
-    return false;
+    return null;
   }
 }
 
@@ -97,10 +98,11 @@ async function createScriptDoc(domain, apiKey, scriptCode, scriptName, code, ext
 }
 
 /**
- * GET /v2/script/run with body { scriptId: scriptCode }
+ * GET /v2/script/run
+ * @param {string} scriptId - Can be _id (preferred) or scriptCode
  */
-async function runScript(domain, apiKey, scriptCode) {
-  const url = `https://${domain}/v2/script/run?scriptId=${scriptCode}`;
+async function runScript(domain, apiKey, scriptId) {
+  const url = `https://${domain}/v2/script/run?scriptId=${scriptId}`;
   try {
     const response = await axios({
       method: 'get',
@@ -111,12 +113,12 @@ async function runScript(domain, apiKey, scriptCode) {
         'Accept': 'application/json',
       },
     });
-    
+
     const result = response.data;
-    
+
     // Wait a bit for socket logs to arrive before showing results
     await new Promise(resolve => setTimeout(resolve, 500));
-    
+
     let chalk;
     try {
       chalk = await import('chalk');
@@ -127,29 +129,29 @@ async function runScript(domain, apiKey, scriptCode) {
     const gray = (str) => chalk ? chalk.default.gray(str) : str;
     const green = (str) => chalk ? chalk.default.green(str) : str;
     const red = (str) => chalk ? chalk.default.red(str) : str;
-    
+
     // Errors block
     if (result.error) {
       console.log(`\n${red('[DONE WITH ERRORS]')}\n`);
       console.error(red(result.error?.error || result.error));
     }
-    
+
     // Output block - only show if not empty
     if (result.output !== undefined && !_.isEmpty(result.output)) {
       console.log(`\n${green('[OUTPUT] ' + '-'.repeat(60))}\n`);
       console.dir(result.output, { depth: null, colors: true });
     }
-    
+
     // Execution time
     if (result.timeMs !== undefined) {
       console.log(`\n${gray('Execution time: ' + result.timeMs + ' ms')}`);
     }
-    
+
     // Message to rerun script
     console.log(gray('Press [R] to run the script again (No build/upload)'));
     return result;
   } catch (err) {
-    console.error(`Failed to run script ${scriptCode}:`, err.response?.data || err.message);
+    console.error(`Failed to run script ${scriptId}:`, err.response?.data || err.message);
   }
 }
 
@@ -160,26 +162,29 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
   const { listenScriptLog } = require('../cli/socketLog');
   const scriptCode = env === 'prod' ? scriptPrefix : `${scriptPrefix}-${env}`;
   const apiKey = config.get('apiKey', domain);
-  
-  const scriptExists = await ensureScriptExists(domain, apiKey, scriptCode);
-  
-  if (!scriptExists) {
+
+  const scriptData = await ensureScriptExists(domain, apiKey, scriptCode);
+
+  if (!scriptData) {
     console.error(`❌ Could not create or verify script '${scriptCode}'. Exiting.`);
     process.exit(1);
   }
-  
+
+  // Use _id for running script (better cache consistency)
+  const scriptId = scriptData._id;
+
   const codePath = config.getScriptEntryPath(domain, scriptPrefix, fileName);
   const scriptFolder = path.dirname(codePath);
-  
+
   if (!fs.existsSync(scriptFolder)) {
     fs.mkdirSync(scriptFolder, { recursive: true });
   }
-  
+
   const configPath = path.join(scriptFolder, 'config.json');
   const settingsPath = path.join(scriptFolder, 'settings.json');
   const distPath = path.join(scriptFolder, 'dist', 'bundle.js');
   const readmePath = path.join(scriptFolder, 'README.md');
-  
+
   // Ensure config.json exists with default values (model data)
   config.ensureScriptCode(domain, scriptPrefix);
   if (!fs.existsSync(configPath)) {
@@ -191,7 +196,7 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
     };
     fs.writeFileSync(configPath, JSON.stringify(defaultConfig, null, 2));
   }
-  
+
   // Ensure settings.json exists with default values (build settings)
   if (!fs.existsSync(settingsPath)) {
     const defaultSettings = {
@@ -200,12 +205,12 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
     };
     fs.writeFileSync(settingsPath, JSON.stringify(defaultSettings, null, 2));
   }
-  
+
   // Ensure README.md exists
   if (!fs.existsSync(readmePath)) {
     fs.writeFileSync(readmePath, '');
   }
-  
+
   // Sync README.md → config.json on startup
   const readmeContent = fs.readFileSync(readmePath, 'utf8');
   let configData = {};
@@ -216,7 +221,7 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
   } catch (e) {
     console.error(`[ERROR] Failed to sync README.md to config.json: ${e.message}`);
   }
-  
+
   // Read settings.json for build configuration
   let minifyProductionCode = false;
   let removeComments = false;
@@ -227,7 +232,7 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
   } catch (e) {
     console.error(`[ERROR] Failed to parse settings.json: ${e.message}`);
   }
-  
+
   const gitRepositoryUrl = configData.git?.repositoryUrl || '';
 
   // Helper function to process bundled code based on config
@@ -240,16 +245,16 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
       platform: 'node',
       format: 'cjs',
     };
-    
+
     if (shouldMinify) {
       buildOptions.minify = true;
     }
-    
+
     if (shouldRemoveComments) {
       buildOptions.minifySyntax = true;
       buildOptions.legalComments = 'none';
     }
-    
+
     await esbuild.build(buildOptions);
     return fs.readFileSync(outputPath, 'utf8');
   };
@@ -258,11 +263,11 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
   fs.mkdirSync(path.dirname(distPath), { recursive: true });
   const shouldMinify = env === 'prod' && minifyProductionCode;
   const bundledCode = await processBundledCode(codePath, distPath, shouldMinify, removeComments);
-  
+
   if (shouldMinify) {
     console.log(`[MINIFY] Production build: minifyProductionCode enabled in config.json, script was minified.`);
   }
-  
+
   // Upload all config fields (variables, lifecycleHooks, readme, git)
   if (configData.variables) {
     await patchScript(domain, apiKey, scriptCode, configData.variables, 'variables');
@@ -276,15 +281,15 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
   if (gitRepositoryUrl) {
     await patchScript(domain, apiKey, scriptCode, { repositoryUrl: gitRepositoryUrl }, 'git');
   }
-  
+
   // Upload bundled code
   await patchScript(domain, apiKey, scriptCode, bundledCode, 'code');
-  
+
   if (watch) {
     // Connect to socket.io and listen for script logs
     await new Promise((resolve) => {
       listenScriptLog(domain, scriptPrefix, env, apiKey, () => {
-        runScript(domain, apiKey, scriptCode).then(resolve);
+        runScript(domain, apiKey, scriptId).then(resolve);
       });
     });
 
@@ -296,14 +301,14 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
       process.stdin.on('data', async (key) => {
         if (key.toLowerCase() === 'r') {
           const chalk = (await import('chalk')).default;
-          await runScript(domain, apiKey, scriptCode);
+          await runScript(domain, apiKey, scriptId);
         }
         if (key === '\u0003') {
           process.exit();
         }
       });
     }
-  
+
     // Watch code entry file and lib/
     const libPath = path.join(scriptFolder, 'lib');
     const chokidar = require('chokidar');
@@ -313,7 +318,7 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
       depth: 99,
       awaitWriteFinish: true,
     });
-    
+
     const triggerBundle = async (event, filePath) => {
       process.stdout.write('\x1Bc');
       console.log(`[WATCH] ${event} detected in ${filePath}. Bundling and uploading...`);
@@ -321,14 +326,18 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
         const shouldMinify = env === 'prod' && minifyProductionCode;
         const bundledCode = await processBundledCode(codePath, distPath, shouldMinify, removeComments);
         await patchScript(domain, apiKey, scriptCode, bundledCode, 'code');
-        await runScript(domain, apiKey, scriptCode);
+
+        // Small delay to ensure cache invalidation is complete
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        await runScript(domain, apiKey, scriptId);
         const chalk = (await import('chalk')).default;
         console.log(chalk.green.bold(`[SYNC] Bundled code uploaded for ${scriptCode}`));
       } catch (err) {
         console.error(`[ERROR] Bundling/upload failed: ${err.message}`);
       }
     };
-    
+
     watcher.on('add', (filePath) => triggerBundle('add', filePath));
     watcher.on('change', (filePath) => triggerBundle('change', filePath));
     watcher.on('unlink', (filePath) => triggerBundle('unlink', filePath));
@@ -341,7 +350,7 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
           const updatedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
           updatedConfig.readme = readmeContent;
           fs.writeFileSync(configPath, JSON.stringify(updatedConfig, null, 2));
-          
+
           // PATCH readme
           await patchScript(domain, apiKey, scriptCode, readmeContent, 'readme');
           console.log(`[SYNC] README.md synced to config.json and uploaded for '${scriptCode}'`);
@@ -356,7 +365,7 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
       if (curr.mtime !== prev.mtime) {
         try {
           const updatedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-          
+
           // PATCH all config fields
           if (updatedConfig.variables) {
             await patchScript(domain, apiKey, scriptCode, updatedConfig.variables, 'variables');
@@ -370,8 +379,8 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
           if (updatedConfig.git?.repositoryUrl) {
             await patchScript(domain, apiKey, scriptCode, { repositoryUrl: updatedConfig.git.repositoryUrl }, 'git');
           }
-          
-          await runScript(domain, apiKey, scriptCode);
+
+          await runScript(domain, apiKey, scriptId);
           console.log(`[CONFIG] config.json updated for '${scriptCode}' - all fields synced.`);
         } catch (err) {
           console.error(`[ERROR] Failed to process config.json: ${err.message}`);
@@ -379,7 +388,7 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
       }
     });
   }
-  
+
   if (!watch) {
     process.exit(0);
   }
@@ -395,12 +404,12 @@ async function createScript(scriptPrefix, env, domain, gitRepo, fileName = 'inde
   const code = config.readScriptCode(domain, scriptPrefix, fileName);
   const envLabel = env === 'dev' ? 'Dev' : 'Prod';
   const scriptNameLabel = `${scriptPrefix} - ${envLabel}`;
-  
+
   const extra = {};
   if (gitRepo) {
     extra.git = { repositoryUrl: gitRepo };
   }
-  
+
   await createScriptDoc(domain, apiKey, scriptCode, scriptNameLabel, code, extra);
   console.log(`Creating script: ${scriptCode} (domain: ${domain}) as '${scriptNameLabel}'`);
 }
