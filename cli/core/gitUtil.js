@@ -67,9 +67,10 @@ function createGitignore(domainPath) {
  * @param {string} domainPath - Path to the domain folder
  * @param {string} domain - Domain name for display
  * @param {boolean} skipGit - If true, skip git initialization entirely
+ * @param {string} providedRemoteUrl - Optional remote URL (if provided, won't prompt for it)
  * @returns {Promise<boolean>} - True if git was initialized or already exists
  */
-async function ensureDomainGit(domainPath, domain, skipGit = false) {
+async function ensureDomainGit(domainPath, domain, skipGit = false, providedRemoteUrl = null) {
   // Skip if --no-git flag is set
   if (skipGit) {
     return false;
@@ -82,6 +83,19 @@ async function ensureDomainGit(domainPath, domain, skipGit = false) {
   
   const inquirer = await import('inquirer');
   const chalk = (await import('chalk')).default;
+  
+  // If remote URL was already provided, skip prompts and just init
+  if (providedRemoteUrl) {
+    const success = initGitRepo(domainPath, providedRemoteUrl);
+    if (success) {
+      console.log(chalk.green(`✓ Git initialized in accounts/${domain}/`));
+      console.log(chalk.green(`✓ Remote 'origin' added`));
+      if (createGitignore(domainPath)) {
+        console.log(chalk.green(`✓ .gitignore created`));
+      }
+    }
+    return success;
+  }
   
   console.log('');
   console.log(chalk.yellow(`⚠️  No git repository found for domain '${domain}'`));

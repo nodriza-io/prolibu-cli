@@ -58,8 +58,11 @@ module.exports = async function createScript(flags) {
     scriptPrefix = response.scriptPrefix;
   }
 
-  // 4. repo (optional)
-  if (!repo) {
+  // 4. repo (optional) - only ask if no .git exists in domain (for initial clone)
+  const domainPath = path.join(process.cwd(), 'accounts', domain);
+  const hasExistingGit = fs.existsSync(path.join(domainPath, '.git'));
+  
+  if (!repo && !hasExistingGit) {
     const response = await inquirer.default.prompt({
       type: 'input',
       name: 'repo',
@@ -110,6 +113,13 @@ module.exports = async function createScript(flags) {
     if (repo && repo.trim()) {
       execSync(`git clone ${repo} ${repoDir}`, { stdio: 'inherit' });
       console.log(`[GIT] Repository cloned to ${repoDir}`);
+      
+      // Remove .git from cloned repo - git will be managed at domain level
+      const clonedGitDir = path.join(repoDir, '.git');
+      if (fs.existsSync(clonedGitDir)) {
+        fs.rmSync(clonedGitDir, { recursive: true, force: true });
+        console.log(`[GIT] Removed .git from script folder (domain-level git will be used)`);
+      }
       
       // Read existing config.json from cloned repo (if exists)
       if (fs.existsSync(repoConfigPath)) {
@@ -203,8 +213,7 @@ module.exports = async function createScript(flags) {
   console.log(`To start development, run:\n  ${chalk.green(`./prolibu script dev --domain ${domain} --prefix ${scriptPrefix} --watch`)}`);
   console.log(`To start production, run:\n  ${chalk.green(`./prolibu script prod --domain ${domain} --prefix ${scriptPrefix} --watch`)}`);
 
-  // Ensure git repository for domain
+  // Ensure git repository for domain (domainPath already defined above)
   const { ensureDomainGit } = require('../../core/gitUtil');
-  const domainPath = path.join(process.cwd(), 'accounts', domain);
-  await ensureDomainGit(domainPath, domain, flags.noGit);
+  await ensureDomainGit(domainPath, domain, flags.noGit, repo);
 };

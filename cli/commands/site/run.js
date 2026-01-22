@@ -1,7 +1,9 @@
 module.exports = async function runSite(env, flags, args) {
   const inquirer = await import('inquirer');
+  const path = require('path');
   const siteClient = require('../../../api/siteClient');
   const config = require('../../../config/config');
+  const { ensureDomainGit } = require('../../core/gitUtil');
   
   let domain = flags.domain;
   let sitePrefix = flags.sitePrefix;
@@ -45,6 +47,10 @@ module.exports = async function runSite(env, flags, args) {
     apiKey = response.apiKey;
     config.set('apiKey', apiKey, domain);
   }
+
+  // Ensure domain has git repository
+  const domainPath = path.join(process.cwd(), 'accounts', domain);
+  await ensureDomainGit(domainPath, domain, flags.noGit);
 
   await siteClient.runDevSite(sitePrefix, env, domain, apiKey, watchFlag, port, extensions);
 };

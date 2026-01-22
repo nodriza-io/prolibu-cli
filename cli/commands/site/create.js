@@ -70,8 +70,11 @@ module.exports = async function createSite(flags) {
     if (siteType === 'Spa') siteType = 'SPA';
   }
 
-  // 5. repo (optional)
-  if (!repo) {
+  // 5. repo (optional) - only ask if no .git exists in domain (for initial clone)
+  const domainPath = path.join(process.cwd(), 'accounts', domain);
+  const hasExistingGit = fs.existsSync(path.join(domainPath, '.git'));
+  
+  if (!repo && !hasExistingGit) {
     const response = await inquirer.default.prompt({
       type: 'input',
       name: 'repo',
@@ -105,6 +108,13 @@ module.exports = async function createSite(flags) {
     if (repo && repo.trim()) {
       execSync(`git clone ${repo} ${repoDir}`, { stdio: 'inherit' });
       console.log(`[GIT] Repository cloned to ${repoDir}`);
+      
+      // Remove .git from cloned repo - git will be managed at domain level
+      const clonedGitDir = path.join(repoDir, '.git');
+      if (fs.existsSync(clonedGitDir)) {
+        fs.rmSync(clonedGitDir, { recursive: true, force: true });
+        console.log(`[GIT] Removed .git from site folder (domain-level git will be used)`);
+      }
       
       // Read existing config.json from cloned repo (if exists)
       const repoConfigPath = path.join(repoDir, 'config.json');
@@ -185,10 +195,9 @@ module.exports = async function createSite(flags) {
   console.log(`Sites '${sitePrefix}-dev' and '${sitePrefix}-prod' created for domain '${domain}'.`);
   console.log('\nNext steps:');
   console.log(`To start development, run:\n  ${chalk.green(`./prolibu site dev --domain ${domain} --prefix ${sitePrefix} --watch`)}`);
-  console.log(`To start production, run:\n  ${chalk.green(`./prolibu site prod --domain ${domain} --prefix ${sitePrefix}`)}`);;
+  console.log(`To start production, run:\n  ${chalk.green(`./prolibu site prod --domain ${domain} --prefix ${sitePrefix}`)}`);
 
-  // Ensure git repository for domain
+  // Ensure git repository for domain (domainPath already defined above)
   const { ensureDomainGit } = require('../../core/gitUtil');
-  const domainPath = path.join(process.cwd(), 'accounts', domain);
-  await ensureDomainGit(domainPath, domain, flags.noGit);
+  await ensureDomainGit(domainPath, domain, flags.noGit, repo);
 };

@@ -97,6 +97,7 @@ async function patchSite(domain, apiKey, siteCode, value, field) {
 
 /**
  * POST initial site document to /v2/site
+ * @returns {boolean} true if created successfully, false otherwise
  */
 async function createSiteDoc(domain, apiKey, siteCode, siteName, siteType, extra = {}) {
   const url = `https://${domain}/v2/site`;
@@ -115,8 +116,10 @@ async function createSiteDoc(domain, apiKey, siteCode, siteName, siteType, extra
         'Accept': 'application/json',
       },
     });
+    return true;
   } catch (err) {
     console.error(formatAxiosError(err, `Failed to create site ${siteCode}`));
+    return false;
   }
 }
 
@@ -145,7 +148,7 @@ async function ensureSiteExists(domain, apiKey, siteCode, siteName, siteType) {
 }
 
 /**
- * Creates a site for the specified environment
+ * Creates a site for the specified environment (uses ensureSiteExists to avoid duplicates)
  */
 async function createSite(sitePrefix, env, domain, siteType, gitRepo) {
   const config = require('../config/config');
@@ -154,13 +157,32 @@ async function createSite(sitePrefix, env, domain, siteType, gitRepo) {
   const envLabel = env === 'dev' ? 'Dev' : 'Prod';
   const siteNameLabel = `${sitePrefix} - ${envLabel}`;
   
-  const extra = {};
-  if (gitRepo) {
-    extra.git = { repositoryUrl: gitRepo };
+  // Check if site already exists, create only if not found
+  const url = `https://${domain}/v2/site/${siteCode}`;
+  try {
+    await axios.get(url, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Accept': 'application/json',
+      },
+    });
+    // Site exists, just log it
+    console.log(`Site ${siteCode} already exists on ${domain}`);
+  } catch (err) {
+    if (err.response?.status === 404) {
+      // Site doesn't exist, create it
+      const extra = {};
+      if (gitRepo) {
+        extra.git = { repositoryUrl: gitRepo };
+      }
+      const created = await createSiteDoc(domain, apiKey, siteCode, siteNameLabel, siteType, extra);
+      if (created) {
+        console.log(`✓ Site created: ${siteCode} (domain: ${domain}) as '${siteNameLabel}'`);
+      }
+    } else {
+      console.error(formatAxiosError(err, `Failed to check if site ${siteCode} exists`));
+    }
   }
-  
-  await createSiteDoc(domain, apiKey, siteCode, siteNameLabel, siteType, extra);
-  console.log(`Creating site: ${siteCode} (domain: ${domain}) as '${siteNameLabel}'`);
 }
 
 /**

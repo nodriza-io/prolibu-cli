@@ -1,7 +1,9 @@
 module.exports = async function runScript(env, flags, args) {
   const inquirer = await import('inquirer');
+  const path = require('path');
   const apiClient = require('../../../api/scriptClient');
   const config = require('../../../config/config');
+  const { ensureDomainGit } = require('../../core/gitUtil');
   
   let domain = flags.domain;
   let scriptPrefix = flags.scriptPrefix;
@@ -28,6 +30,10 @@ module.exports = async function runScript(env, flags, args) {
     });
     scriptPrefix = response.scriptPrefix;
   }
+
+  // Ensure domain has git repository
+  const domainPath = path.join(process.cwd(), 'accounts', domain);
+  await ensureDomainGit(domainPath, domain, flags.noGit);
 
   const { runPrompts } = require('../../core/prompts');
   await runPrompts(env, scriptPrefix, domain);
