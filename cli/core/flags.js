@@ -20,7 +20,8 @@ function parseFlags(argv) {
     ],
     boolean: [
       'watch',
-      'run'
+      'run',
+      'no-git'
     ],
     alias: {
       domain: 'd',
@@ -30,7 +31,8 @@ function parseFlags(argv) {
       lifecycleHooks: 'l',
       apikey: 'a',
       file: 'f',
-      watch: 'w'
+      watch: 'w',
+      'no-git': 'G'
     },
     default: {}
   });
@@ -44,6 +46,9 @@ function parseFlags(argv) {
   } else if (parsed.sitePrefix) {
     parsed.prefix = parsed.sitePrefix;
   }
+  
+  // Normalize --no-git to noGit
+  parsed.noGit = parsed['no-git'] || false;
   
   return parsed;
 }

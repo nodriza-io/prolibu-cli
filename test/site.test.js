@@ -183,4 +183,31 @@ describe('Prolibu CLI - Sites', () => {
       });
     });
   });
+
+  describe('Domain Git Repository', () => {
+    const domainPath = path.join(__dirname, '..', 'accounts', config.domain);
+
+    it('should have .gitignore in domain folder', () => {
+      const gitignorePath = path.join(domainPath, '.gitignore');
+      expect(fs.existsSync(gitignorePath)).toBe(true);
+    });
+
+    it('should have profile.json in .gitignore for security', () => {
+      const gitignorePath = path.join(domainPath, '.gitignore');
+      const content = fs.readFileSync(gitignorePath, 'utf8');
+      expect(content).toContain('profile.json');
+    });
+
+    it('should have dist.zip in .gitignore', () => {
+      const gitignorePath = path.join(domainPath, '.gitignore');
+      const content = fs.readFileSync(gitignorePath, 'utf8');
+      expect(content).toContain('dist.zip');
+    });
+
+    it('should have node_modules in .gitignore', () => {
+      const gitignorePath = path.join(domainPath, '.gitignore');
+      const content = fs.readFileSync(gitignorePath, 'utf8');
+      expect(content).toContain('node_modules');
+    });
+  });
 });

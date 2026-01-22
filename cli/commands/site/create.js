@@ -185,5 +185,10 @@ module.exports = async function createSite(flags) {
   console.log(`Sites '${sitePrefix}-dev' and '${sitePrefix}-prod' created for domain '${domain}'.`);
   console.log('\nNext steps:');
   console.log(`To start development, run:\n  ${chalk.green(`./prolibu site dev --domain ${domain} --prefix ${sitePrefix} --watch`)}`);
-  console.log(`To start production, run:\n  ${chalk.green(`./prolibu site prod --domain ${domain} --prefix ${sitePrefix}`)}`);
+  console.log(`To start production, run:\n  ${chalk.green(`./prolibu site prod --domain ${domain} --prefix ${sitePrefix}`)}`);;
+
+  // Ensure git repository for domain
+  const { ensureDomainGit } = require('../../core/gitUtil');
+  const domainPath = path.join(process.cwd(), 'accounts', domain);
+  await ensureDomainGit(domainPath, domain, flags.noGit);
 };

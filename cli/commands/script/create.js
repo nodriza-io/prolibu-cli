@@ -202,4 +202,9 @@ module.exports = async function createScript(flags) {
   console.log('\nNext steps:');
   console.log(`To start development, run:\n  ${chalk.green(`./prolibu script dev --domain ${domain} --prefix ${scriptPrefix} --watch`)}`);
   console.log(`To start production, run:\n  ${chalk.green(`./prolibu script prod --domain ${domain} --prefix ${scriptPrefix} --watch`)}`);
+
+  // Ensure git repository for domain
+  const { ensureDomainGit } = require('../../core/gitUtil');
+  const domainPath = path.join(process.cwd(), 'accounts', domain);
+  await ensureDomainGit(domainPath, domain, flags.noGit);
 };

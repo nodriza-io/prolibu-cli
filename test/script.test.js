@@ -4,11 +4,13 @@ const { execSync } = require('child_process');
 /* global describe, beforeAll, it, expect */
 
 const config = require('./config.json');
+const { createGitignore, initGitRepo } = require('../cli/core/gitUtil');
 
 describe('Prolibu CLI - Scripts', () => {
   let scriptCode;
   let scriptFolder;
   let createError = null;
+  const domainPath = path.join(__dirname, '..', 'accounts', config.domain);
 
   beforeAll(() => {
     // Remove profile.json so it is created by the test
@@ -16,8 +18,18 @@ describe('Prolibu CLI - Scripts', () => {
     if (fs.existsSync(profilePath)) {
       fs.unlinkSync(profilePath);
     }
+    
+    // Remove .git and .gitignore for testing git initialization
+    const gitPath = path.join(domainPath, '.git');
+    const gitignorePath = path.join(domainPath, '.gitignore');
+    if (fs.existsSync(gitPath)) {
+      fs.rmSync(gitPath, { recursive: true, force: true });
+    }
+    if (fs.existsSync(gitignorePath)) {
+      fs.unlinkSync(gitignorePath);
+    }
+    
     // Remove all folders inside the domain that start with 'hook-test-'
-    const domainPath = path.join(__dirname, '..', 'accounts', config.domain);
     if (fs.existsSync(domainPath)) {
       fs.readdirSync(domainPath, { withFileTypes: true })
         .filter(dirent => dirent.isDirectory() && dirent.name.startsWith('hook-test-'))
@@ -29,14 +41,21 @@ describe('Prolibu CLI - Scripts', () => {
     const timestamp = Date.now();
     scriptCode = `hook-test-${timestamp}`;
     scriptFolder = path.join(__dirname, '..', 'accounts', config.domain, scriptCode);
+    
+    // Use --no-git to skip interactive prompt, then init git manually
     const cmd = `./script create \
       --domain ${config.domain} \
       --prefix ${scriptCode} \
       --repo ${config.repo} \
       --lifecycleHooks "Contact" \
-      --apikey ${config.apiKey}`;
+      --apikey ${config.apiKey} \
+      --no-git`;
     try {
       execSync(cmd, { stdio: 'inherit' });
+      
+      // Initialize git and create .gitignore manually (simulating user saying yes)
+      initGitRepo(domainPath);
+      createGitignore(domainPath);
     } catch (e) {
       createError = e;
     }
@@ -405,6 +424,33 @@ describe('Prolibu CLI - Scripts', () => {
       
       // Should have merged lifecycleHooks (template + --lifecycleHooks flag)
       expect(configData.lifecycleHooks).toEqual(expect.arrayContaining(['Contact']));
+    });
+  });
+
+  describe('Domain Git Repository', () => {
+    const domainPath = path.join(__dirname, '..', 'accounts', config.domain);
+
+    it('should have .gitignore in domain folder', () => {
+      const gitignorePath = path.join(domainPath, '.gitignore');
+      expect(fs.existsSync(gitignorePath)).toBe(true);
+    });
+
+    it('should have profile.json in .gitignore for security', () => {
+      const gitignorePath = path.join(domainPath, '.gitignore');
+      const content = fs.readFileSync(gitignorePath, 'utf8');
+      expect(content).toContain('profile.json');
+    });
+
+    it('should have dist.zip in .gitignore', () => {
+      const gitignorePath = path.join(domainPath, '.gitignore');
+      const content = fs.readFileSync(gitignorePath, 'utf8');
+      expect(content).toContain('dist.zip');
+    });
+
+    it('should have node_modules in .gitignore', () => {
+      const gitignorePath = path.join(domainPath, '.gitignore');
+      const content = fs.readFileSync(gitignorePath, 'utf8');
+      expect(content).toContain('node_modules');
     });
   });
 });
