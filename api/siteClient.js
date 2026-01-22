@@ -463,6 +463,7 @@ window.__PROLIBU_CONFIG__ = {
       process.stdin.setRawMode(true);
       isRawMode = true;
     }
+    process.stdin.resume();
     
     const cleanupAndExit = async () => {
       console.log('');
