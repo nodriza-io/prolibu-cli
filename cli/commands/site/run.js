@@ -8,6 +8,7 @@ module.exports = async function runSite(env, flags, args) {
   let watchFlag = flags.watch || args.includes('--watch');
   let port = parseInt(flags.port) || 3030;
   let extensions = flags.ext || 'html,css,js';
+  let apiKey = flags.apikey;
 
   // Interactive prompts for missing values
   if (!domain) {
@@ -30,8 +31,10 @@ module.exports = async function runSite(env, flags, args) {
     sitePrefix = response.sitePrefix;
   }
 
-  // Check for apiKey in profile, prompt if missing
-  let apiKey = config.get('apiKey', domain);
+  // Check for apiKey: CLI flag > profile config > prompt
+  if (!apiKey) {
+    apiKey = config.get('apiKey', domain);
+  }
   if (!apiKey) {
     const response = await inquirer.default.prompt({
       type: 'input',
