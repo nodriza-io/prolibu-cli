@@ -1,0 +1,96 @@
+{
+  "doc": {
+    "dealName": "Propuesta de Ejemplo",
+    "proposal": {
+      "quote": {
+        "lineItems": [
+          {
+            "productCode": "SVC-001",
+            "productName": "Servicio de Consultoría",
+            "productFamily": {
+              "productFamilyCode": "servicios",
+              "productFamilyName": "Servicios Profesionales"
+            },
+            "quantity": 10,
+            "price": 150000,
+            "netUnitPrice": 150000,
+            "netTotal": 1500000,
+            "total": 1785000,
+            "discountAmount": 0,
+            "discountRate": 0,
+            "taxes": [
+              {
+                "taxName": "IVA",
+                "rate": 19,
+                "unitAmount": 28500
+              }
+            ]
+          },
+          {
+            "productCode": "SVC-002",
+            "productName": "Capacitación",
+            "productFamily": {
+              "productFamilyCode": "servicios",
+              "productFamilyName": "Servicios Profesionales"
+            },
+            "quantity": 5,
+            "price": 200000,
+            "netUnitPrice": 200000,
+            "netTotal": 1000000,
+            "total": 1190000,
+            "discountAmount": 0,
+            "discountRate": 0,
+            "taxes": [
+              {
+                "taxName": "IVA",
+                "rate": 19,
+                "unitAmount": 38000
+              }
+            ]
+          },
+          {
+            "productCode": "LIC-001",
+            "productName": "Licencia Software Anual",
+            "productFamily": {
+              "productFamilyCode": "licencias",
+              "productFamilyName": "Licencias"
+            },
+            "quantity": 1,
+            "price": 5000000,
+            "netUnitPrice": 5000000,
+            "netTotal": 5000000,
+            "total": 5950000,
+            "discountAmount": 0,
+            "discountRate": 0,
+            "taxes": [
+              {
+                "taxName": "IVA",
+                "rate": 19,
+                "unitAmount": 950000
+              }
+            ]
+          }
+        ],
+        "subTotal": 7500000,
+        "netTotal": 7500000,
+        "taxAmount": 1425000,
+        "total": 8925000,
+        "quoteCurrency": "COP"
+      }
+    },
+    "company": {
+      "companyName": "Empresa Demo S.A.S",
+      "taxId": "900.123.456-7"
+    },
+    "contact": {
+      "firstName": "Juan",
+      "lastName": "Pérez",
+      "email": "juan.perez@empresa.com"
+    }
+  },
+  "preferences": {
+    "language": "es",
+    "dateFormat": "DD/MM/YYYY",
+    "currency": "COP"
+  }
+}

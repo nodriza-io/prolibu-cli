@@ -1,12 +1,45 @@
-# Prolibu Script Builder Documentation
+# Prolibu CLI Documentation
 
-This documentation covers the event-driven architecture, script execution models, and integration patterns used in the Prolibu platform.
+This documentation covers the Prolibu CLI tools including plugin development, event-driven architecture, script execution models, and integration patterns.
 
 ## 📚 Table of Contents
 
+- [Plugin Development](./plugins/README.md) - Build React plugins for the Prolibu platform
 - [Event System Overview](#event-system-overview)
 - [Event Types](#event-types)
 - [Examples & Use Cases](#examples--use-cases)
+
+---
+
+## Plugin Development
+
+The Prolibu CLI provides a complete workflow for building and deploying React plugins.
+
+### Quick Start
+
+```bash
+# Create a new plugin
+./prolibu plugin create --domain dev10.prolibu.com --prefix my-plugin
+
+# Start development
+./prolibu plugin dev --domain dev10.prolibu.com --prefix my-plugin --watch
+
+# Build and publish
+./prolibu plugin prod --domain dev10.prolibu.com --prefix my-plugin
+```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `plugin create` | Create a new plugin project |
+| `plugin dev` | Run development server with HMR |
+| `plugin prod` | Build and publish to production |
+| `plugin import` | Import plugin from git repository |
+
+See the full [Plugin Development Guide](./plugins/README.md) for details.
+
+---
 
 ## Event System Overview
 

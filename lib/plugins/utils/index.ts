@@ -1,0 +1,1 @@
+export { createRenderFn } from './createRenderFn';

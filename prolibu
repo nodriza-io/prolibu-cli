@@ -52,8 +52,8 @@ const command = args[1]; // create, dev, prod, import, test
     const vtHandler = require('./cli/commands/vt/index');
     await vtHandler(command, flags, args);
   } else if (objectType === 'plugin') {
-    console.log('🚧 Plugin support is coming soon!');
-    console.log('Stay tuned for updates at https://github.com/nodriza-io/prolibu-cli');
+    const pluginHandler = require('./cli/commands/plugin/index');
+    await pluginHandler(command, flags, args);
   } else {
     console.error(`❌ Unknown object type: ${objectType}`);
     console.log('Available types: script, site, vt, plugin');

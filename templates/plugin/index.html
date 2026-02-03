@@ -1,0 +1,1502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plugin Studio</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-primary: #0d0d0d;
+      --bg-secondary: #1a1a1a;
+      --bg-tertiary: #252525;
+      --bg-hover: #2d2d2d;
+      --border-color: #333;
+      --text-primary: #fff;
+      --text-secondary: #a0a0a0;
+      --text-muted: #666;
+      --accent: #0d99ff;
+      --accent-hover: #0b85e0;
+      --success: #1bc47d;
+      --canvas-bg: #1e1e1e;
+      --canvas-dots: #2a2a2a;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Layout */
+    .app {
+      display: grid;
+      grid-template-rows: 48px 1fr;
+      grid-template-columns: 240px 1fr 280px;
+      height: 100vh;
+    }
+
+    /* Top Bar */
+    .topbar {
+      grid-column: 1 / -1;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 24px;
+    }
+
+    .topbar__logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .topbar__logo svg {
+      width: 24px;
+      height: 24px;
+    }
+
+    .topbar__divider {
+      width: 1px;
+      height: 24px;
+      background: var(--border-color);
+    }
+
+    .topbar__title {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .topbar__title span {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .topbar__actions {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .topbar__btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .topbar__btn--secondary {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+    }
+
+    .topbar__btn--secondary:hover {
+      background: var(--bg-hover);
+    }
+
+    .topbar__btn--primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .topbar__btn--primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .topbar__status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--success);
+    }
+
+    .topbar__status::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: var(--success);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    /* Left Sidebar */
+    .sidebar {
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border-color);
+      overflow-y: auto;
+    }
+
+    .sidebar__section {
+      padding: 12px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .sidebar__label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .sidebar__item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .sidebar__item:hover {
+      background: var(--bg-hover);
+    }
+
+    .sidebar__item--active {
+      background: var(--bg-tertiary);
+    }
+
+    .sidebar__item-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .sidebar__item-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .sidebar__item-name {
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .sidebar__item-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Canvas Area */
+    .canvas {
+      background: var(--canvas-bg);
+      background-image: radial-gradient(var(--canvas-dots) 1px, transparent 1px);
+      background-size: 20px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: auto;
+      padding: 40px;
+    }
+
+    /* Canvas page - smaller for better UX */
+    .canvas__page {
+      width: 650px;
+      min-height: 850px;
+      background: #fff;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      position: relative;
+      flex-shrink: 0;
+      padding: 20px;
+      transform-origin: center center;
+      transition: transform 0.2s ease;
+    }
+
+    .canvas__page-label {
+      position: absolute;
+      top: -24px;
+      left: 0;
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Component wrapper with resize handles */
+    .component-wrapper {
+      position: absolute;
+      min-width: 100px;
+      min-height: 50px;
+      user-select: none;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .component-wrapper.selected {
+      outline: 2px solid var(--accent);
+      outline-offset: -1px;
+    }
+
+    .component-wrapper.dragging {
+      opacity: 0.95;
+    }
+
+    .component-wrapper__content {
+      flex: 1;
+      overflow: hidden;
+      background: #fff;
+      cursor: grab;
+    }
+
+    .component-wrapper.dragging .component-wrapper__content {
+      cursor: grabbing;
+    }
+
+    /* Plugin content: no interaction by default, hold Alt to interact */
+    .component-wrapper__content #plugin-root {
+      pointer-events: none;
+    }
+
+    .component-wrapper.interactive .component-wrapper__content {
+      cursor: default;
+    }
+
+    .component-wrapper.interactive .component-wrapper__content #plugin-root {
+      pointer-events: auto;
+    }
+
+    /* Resize handles - circular like Figma/design tools */
+    .component-wrapper__handle {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: #fff;
+      border: 2px solid var(--accent);
+      border-radius: 50%;
+      z-index: 30;
+      opacity: 0;
+      transition: opacity 0.15s;
+      touch-action: none;
+    }
+
+    .component-wrapper__handle:hover {
+      background: var(--accent);
+      transform: scale(1.2);
+    }
+
+    .component-wrapper.selected .component-wrapper__handle {
+      opacity: 1;
+    }
+
+    .component-wrapper__handle--nw { top: -6px; left: -6px; cursor: nwse-resize; }
+    .component-wrapper__handle--n { top: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
+    .component-wrapper__handle--ne { top: -6px; right: -6px; cursor: nesw-resize; }
+    .component-wrapper__handle--e { top: 50%; right: -6px; margin-top: -6px; cursor: ew-resize; }
+    .component-wrapper__handle--se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+    .component-wrapper__handle--s { bottom: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
+    .component-wrapper__handle--sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+    .component-wrapper__handle--w { top: 50%; left: -6px; margin-top: -6px; cursor: ew-resize; }
+
+    /* Size indicator */
+    .component-wrapper__size {
+      position: absolute;
+      bottom: -24px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 10px;
+      color: var(--accent);
+      background: var(--bg-secondary);
+      padding: 2px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+
+    .component-wrapper.selected .component-wrapper__size,
+    .component-wrapper.resizing .component-wrapper__size {
+      opacity: 1;
+    }
+
+    #plugin-root {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    /* Right Panel */
+    .panel {
+      background: var(--bg-secondary);
+      border-left: 1px solid var(--border-color);
+      overflow-y: auto;
+    }
+
+    .panel__header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .panel__section {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .panel__section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+
+    .panel__field {
+      margin-bottom: 12px;
+    }
+
+    .panel__field:last-child {
+      margin-bottom: 0;
+    }
+
+    .panel__field-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+
+    .panel__field-value {
+      font-size: 12px;
+      color: var(--text-primary);
+      background: var(--bg-tertiary);
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+    }
+
+    .panel__field-input {
+      width: 100%;
+      font-size: 12px;
+      color: var(--text-primary);
+      background: var(--bg-tertiary);
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      outline: none;
+      font-family: inherit;
+    }
+
+    .panel__field-input:focus {
+      border-color: var(--accent);
+    }
+
+    .panel__info-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      padding: 6px 0;
+    }
+
+    .panel__info-label {
+      color: var(--text-muted);
+    }
+
+    .panel__info-value {
+      color: var(--text-primary);
+    }
+
+    /* Zoom Controls */
+    .canvas__zoom {
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 4px;
+    }
+
+    .canvas__zoom-btn {
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .canvas__zoom-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
+    .canvas__zoom-value {
+      font-size: 12px;
+      color: var(--text-secondary);
+      padding: 0 8px;
+      min-width: 48px;
+      text-align: center;
+    }
+
+    /* File Viewer Modal */
+    .file-viewer {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .file-viewer.active {
+      display: flex;
+    }
+
+    .file-viewer__content {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      width: 90%;
+      max-width: 900px;
+      height: 80%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+
+    .file-viewer__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--bg-tertiary);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .file-viewer__title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .file-viewer__title-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .file-viewer__actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .file-viewer__btn {
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+
+    .file-viewer__btn--secondary {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+    }
+
+    .file-viewer__btn--secondary:hover {
+      background: var(--border-color);
+    }
+
+    .file-viewer__btn--primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .file-viewer__btn--primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .file-viewer__body {
+      flex: 1;
+      overflow: auto;
+      padding: 0;
+    }
+
+    .file-viewer__code {
+      margin: 0;
+      padding: 16px;
+      font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      white-space: pre;
+      overflow-x: auto;
+      min-height: 100%;
+    }
+
+    .file-viewer__code .line {
+      display: block;
+    }
+
+    .file-viewer__code .line-number {
+      display: inline-block;
+      width: 40px;
+      color: var(--text-muted);
+      text-align: right;
+      padding-right: 16px;
+      margin-right: 16px;
+      border-right: 1px solid var(--border-color);
+      user-select: none;
+    }
+
+    /* Syntax highlighting */
+    .hl-keyword { color: #c678dd; }
+    .hl-string { color: #98c379; }
+    .hl-number { color: #d19a66; }
+    .hl-comment { color: #5c6370; font-style: italic; }
+    .hl-function { color: #61afef; }
+    .hl-type { color: #e5c07b; }
+    .hl-property { color: #e06c75; }
+    .hl-tag { color: #e06c75; }
+    .hl-attr { color: #d19a66; }
+
+    /* Sections Editor */
+    .sections-editor {
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 6px;
+    }
+
+    .sections-editor__item {
+      background: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 8px;
+    }
+
+    .sections-editor__item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .sections-editor__item-key {
+      flex: 1;
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--accent);
+      background: transparent;
+      border: 1px solid transparent;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+
+    .sections-editor__item-key:hover,
+    .sections-editor__item-key:focus {
+      background: var(--bg-secondary);
+      border-color: var(--border-color);
+      outline: none;
+    }
+
+    .sections-editor__remove {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px 8px;
+      font-size: 14px;
+      border-radius: 4px;
+    }
+
+    .sections-editor__remove:hover {
+      color: #e06c75;
+      background: rgba(224, 108, 117, 0.1);
+    }
+
+    .sections-editor__field {
+      margin-bottom: 8px;
+    }
+
+    .sections-editor__field:last-child {
+      margin-bottom: 0;
+    }
+
+    .sections-editor__field-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .sections-editor__field-input {
+      width: 100%;
+      padding: 6px 8px;
+      font-size: 12px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      color: var(--text-primary);
+    }
+
+    .sections-editor__field-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .sections-editor__add {
+      width: 100%;
+      padding: 8px;
+      background: transparent;
+      border: 1px dashed var(--border-color);
+      border-radius: 6px;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.15s;
+    }
+
+    .sections-editor__add:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(13, 153, 255, 0.05);
+    }
+
+    .sections-editor__empty {
+      text-align: center;
+      padding: 16px;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="topbar__logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <path d="M9 9h6v6H9z"/>
+        </svg>
+        Plugin Studio
+      </div>
+      <div class="topbar__divider"></div>
+      <div class="topbar__title">
+        Editing <span id="plugin-name">Plugin</span>
+      </div>
+      <div class="topbar__actions">
+        <div class="topbar__status">
+          <span>Dev Server Running</span>
+        </div>
+        <button class="topbar__btn topbar__btn--secondary" onclick="location.reload()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 4v6h-6M1 20v-6h6"/>
+            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+          </svg>
+          Reload
+        </button>
+        <button class="topbar__btn topbar__btn--primary" id="publish-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/>
+            <polyline points="16 6 12 2 8 6"/>
+            <line x1="12" y1="2" x2="12" y2="15"/>
+          </svg>
+          <span id="publish-text">Publish</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar__section">
+        <div class="sidebar__label">Components</div>
+        <div id="components-list"></div>
+      </div>
+    </aside>
+
+    <!-- Canvas -->
+    <main class="canvas" id="canvas">
+      <!-- Letter page background -->
+      <div class="canvas__page" id="canvas-page">
+        <div class="canvas__page-label">
+          <span>Letter (8.5" × 11")</span>
+        </div>
+        <!-- Component wrapper with handles -->
+        <div class="component-wrapper selected" id="component-wrapper">
+          <div class="component-wrapper__content" id="drag-area">
+            <div id="plugin-root"></div>
+          </div>
+          <!-- Resize handles (8 points like design tools) -->
+          <div class="component-wrapper__handle component-wrapper__handle--nw" data-resize="nw"></div>
+          <div class="component-wrapper__handle component-wrapper__handle--n" data-resize="n"></div>
+          <div class="component-wrapper__handle component-wrapper__handle--ne" data-resize="ne"></div>
+          <div class="component-wrapper__handle component-wrapper__handle--e" data-resize="e"></div>
+          <div class="component-wrapper__handle component-wrapper__handle--se" data-resize="se"></div>
+          <div class="component-wrapper__handle component-wrapper__handle--s" data-resize="s"></div>
+          <div class="component-wrapper__handle component-wrapper__handle--sw" data-resize="sw"></div>
+          <div class="component-wrapper__handle component-wrapper__handle--w" data-resize="w"></div>
+          <div class="component-wrapper__size" id="component-size">400 × 300</div>
+        </div>
+      </div>
+      <div class="canvas__zoom">
+        <button class="canvas__zoom-btn" id="zoom-out">−</button>
+        <span class="canvas__zoom-value" id="zoom-value">100%</span>
+        <button class="canvas__zoom-btn" id="zoom-in">+</button>
+        <button class="canvas__zoom-btn" id="zoom-reset" title="Reset zoom">⟲</button>
+      </div>
+    </main>
+
+    <!-- Right Panel -->
+    <aside class="panel">
+      <div class="panel__header">Properties</div>
+      <div class="panel__section">
+        <div class="panel__section-title">Plugin Info</div>
+        <div class="panel__info-row">
+          <span class="panel__info-label">Status</span>
+          <span class="panel__info-value" style="color: var(--success);">Active</span>
+        </div>
+        <div class="panel__info-row">
+          <span class="panel__info-label">Container ID</span>
+          <span class="panel__info-value" id="container-id">-</span>
+        </div>
+      </div>
+      <div class="panel__section">
+        <div class="panel__section-title">Form Schema</div>
+        <div id="form-fields"></div>
+      </div>
+      <div class="panel__section">
+        <div class="panel__section-title">Context</div>
+        <div class="panel__field">
+          <div class="panel__field-label">Document</div>
+          <div class="panel__field-value" id="context-doc" style="font-family: monospace; font-size: 11px; max-height: 100px; overflow: auto; cursor: pointer;" title="Click to view full context">{}</div>
+        </div>
+        <div class="panel__field">
+          <div class="panel__field-label">Language</div>
+          <div class="panel__field-value" id="context-lang">en</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- File Viewer Modal -->
+  <div class="file-viewer" id="file-viewer">
+    <div class="file-viewer__content">
+      <div class="file-viewer__header">
+        <div class="file-viewer__title">
+          <div class="file-viewer__title-icon" id="viewer-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+              <path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/>
+              <polyline points="13 2 13 9 20 9"/>
+            </svg>
+          </div>
+          <span id="viewer-filename">file.tsx</span>
+        </div>
+        <div class="file-viewer__actions">
+          <button class="file-viewer__btn file-viewer__btn--secondary" id="viewer-vscode">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
+              <polyline points="15 3 21 3 21 9"/>
+              <line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+            Open in VS Code
+          </button>
+          <button class="file-viewer__btn file-viewer__btn--secondary" id="viewer-close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+            Close
+          </button>
+        </div>
+      </div>
+      <div class="file-viewer__body">
+        <pre class="file-viewer__code" id="viewer-code"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Drag & Resize Script (non-module, runs after interact.js) -->
+  <script>
+    (function() {
+      'use strict';
+
+      const wrapper = document.getElementById('component-wrapper');
+      const sizeLabel = document.getElementById('component-size');
+      const page = document.getElementById('canvas-page');
+      const dragArea = document.getElementById('drag-area');
+
+      // State
+      let posX = 20, posY = 20;
+      let width = 400, height = 300;
+
+      // Initialize
+      function init() {
+        wrapper.style.left = posX + 'px';
+        wrapper.style.top = posY + 'px';
+        wrapper.style.width = width + 'px';
+        wrapper.style.height = height + 'px';
+        updateSize();
+      }
+
+      function updateSize() {
+        sizeLabel.textContent = Math.round(wrapper.offsetWidth) + ' × ' + Math.round(wrapper.offsetHeight);
+      }
+
+      // ========== DRAG (vanilla JS - from content area) ==========
+      let isDragging = false;
+      let dragStartX, dragStartY, startPosX, startPosY;
+
+      // Hold Alt to interact with plugin content
+      document.addEventListener('keydown', function(e) {
+        if (e.altKey) wrapper.classList.add('interactive');
+      });
+      document.addEventListener('keyup', function(e) {
+        if (!e.altKey) wrapper.classList.remove('interactive');
+      });
+
+      dragArea.addEventListener('mousedown', function(e) {
+        // Don't start drag if clicking on resize handles
+        if (e.target.closest('.component-wrapper__handle')) return;
+        // Don't start drag if in interactive mode (Alt held)
+        if (wrapper.classList.contains('interactive')) return;
+
+        isDragging = true;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        startPosX = wrapper.offsetLeft;
+        startPosY = wrapper.offsetTop;
+        wrapper.classList.add('dragging');
+        e.preventDefault();
+      });
+
+      document.addEventListener('mousemove', function(e) {
+        if (!isDragging) return;
+
+        const dx = e.clientX - dragStartX;
+        const dy = e.clientY - dragStartY;
+
+        let newX = startPosX + dx;
+        let newY = startPosY + dy;
+
+        // Constrain to page
+        const maxX = page.offsetWidth - wrapper.offsetWidth - 20;
+        const maxY = page.offsetHeight - wrapper.offsetHeight - 20;
+        newX = Math.max(0, Math.min(newX, maxX));
+        newY = Math.max(0, Math.min(newY, maxY));
+
+        wrapper.style.left = newX + 'px';
+        wrapper.style.top = newY + 'px';
+      });
+
+      document.addEventListener('mouseup', function() {
+        if (isDragging) {
+          isDragging = false;
+          wrapper.classList.remove('dragging');
+        }
+      });
+
+      // ========== RESIZE (vanilla JS) ==========
+      let isResizing = false;
+      let resizeHandle = null;
+      let resizeStartX, resizeStartY, startWidth, startHeight, startLeft, startTop;
+
+      document.querySelectorAll('.component-wrapper__handle').forEach(function(handle) {
+        handle.addEventListener('mousedown', function(e) {
+          isResizing = true;
+          resizeHandle = e.target.dataset.resize;
+          resizeStartX = e.clientX;
+          resizeStartY = e.clientY;
+          startWidth = wrapper.offsetWidth;
+          startHeight = wrapper.offsetHeight;
+          startLeft = wrapper.offsetLeft;
+          startTop = wrapper.offsetTop;
+          wrapper.classList.add('resizing');
+          e.preventDefault();
+          e.stopPropagation();
+        });
+      });
+
+      document.addEventListener('mousemove', function(e) {
+        if (!isResizing || !resizeHandle) return;
+
+        const dx = e.clientX - resizeStartX;
+        const dy = e.clientY - resizeStartY;
+        const minW = 150, minH = 100;
+
+        let newW = startWidth, newH = startHeight;
+        let newL = startLeft, newT = startTop;
+
+        // East (right)
+        if (resizeHandle.includes('e')) {
+          newW = Math.max(minW, startWidth + dx);
+        }
+        // West (left)
+        if (resizeHandle.includes('w')) {
+          const potentialW = startWidth - dx;
+          if (potentialW >= minW) {
+            newW = potentialW;
+            newL = startLeft + dx;
+          }
+        }
+        // South (bottom)
+        if (resizeHandle.includes('s')) {
+          newH = Math.max(minH, startHeight + dy);
+        }
+        // North (top)
+        if (resizeHandle.includes('n')) {
+          const potentialH = startHeight - dy;
+          if (potentialH >= minH) {
+            newH = potentialH;
+            newT = startTop + dy;
+          }
+        }
+
+        wrapper.style.width = newW + 'px';
+        wrapper.style.height = newH + 'px';
+        wrapper.style.left = newL + 'px';
+        wrapper.style.top = newT + 'px';
+        updateSize();
+      });
+
+      document.addEventListener('mouseup', function() {
+        if (isResizing) {
+          isResizing = false;
+          resizeHandle = null;
+          wrapper.classList.remove('resizing');
+        }
+      });
+
+      // ========== SELECT/DESELECT ==========
+      page.addEventListener('mousedown', function(e) {
+        if (e.target.closest('.component-wrapper')) {
+          wrapper.classList.add('selected');
+        } else {
+          wrapper.classList.remove('selected');
+        }
+      });
+
+      // ========== DOUBLE-CLICK RESET ==========
+      wrapper.addEventListener('dblclick', function(e) {
+        if (e.target.closest('#plugin-root')) return;
+        wrapper.style.width = '400px';
+        wrapper.style.height = '300px';
+        wrapper.style.left = '20px';
+        wrapper.style.top = '20px';
+        updateSize();
+      });
+
+      // ========== ZOOM ==========
+      let zoom = 100;
+      const zoomLevels = [50, 75, 100, 125, 150];
+      const zoomValue = document.getElementById('zoom-value');
+
+      document.getElementById('zoom-in').addEventListener('click', function() {
+        const idx = zoomLevels.findIndex(z => z > zoom);
+        if (idx !== -1) {
+          zoom = zoomLevels[idx];
+          page.style.transform = 'scale(' + (zoom/100) + ')';
+          zoomValue.textContent = zoom + '%';
+        }
+      });
+
+      document.getElementById('zoom-out').addEventListener('click', function() {
+        const idx = zoomLevels.slice().reverse().findIndex(z => z < zoom);
+        if (idx !== -1) {
+          zoom = zoomLevels[zoomLevels.length - 1 - idx];
+          page.style.transform = 'scale(' + (zoom/100) + ')';
+          zoomValue.textContent = zoom + '%';
+        }
+      });
+
+      document.getElementById('zoom-reset').addEventListener('click', function() {
+        zoom = 100;
+        page.style.transform = 'scale(1)';
+        zoomValue.textContent = '100%';
+      });
+
+      init();
+    })();
+  </script>
+
+  <script type="module">
+    import React from 'react';
+    import ReactDOM from 'react-dom/client';
+    import PluginConfig from './src/index.tsx';
+
+    // ========== File Viewer ==========
+    const fileViewer = document.getElementById('file-viewer');
+    const viewerCode = document.getElementById('viewer-code');
+    const viewerFilename = document.getElementById('viewer-filename');
+    const viewerIcon = document.getElementById('viewer-icon');
+    const viewerClose = document.getElementById('viewer-close');
+    const viewerVscode = document.getElementById('viewer-vscode');
+    let currentFilePath = '';
+
+    // Simple syntax highlighting
+    function highlightCode(code, ext) {
+      // Escape HTML
+      code = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      if (ext === 'tsx' || ext === 'ts' || ext === 'js' || ext === 'jsx') {
+        // Keywords
+        code = code.replace(/\b(import|export|from|const|let|var|function|return|if|else|for|while|class|extends|interface|type|async|await|default|new|this|true|false|null|undefined)\b/g, '<span class="hl-keyword">$1</span>');
+        // Strings
+        code = code.replace(/(["'`])(?:(?!\1)[^\\]|\\.)*?\1/g, '<span class="hl-string">$&</span>');
+        // Numbers
+        code = code.replace(/\b(\d+\.?\d*)\b/g, '<span class="hl-number">$1</span>');
+        // Comments
+        code = code.replace(/(\/\/.*$)/gm, '<span class="hl-comment">$1</span>');
+        code = code.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="hl-comment">$1</span>');
+        // JSX tags
+        code = code.replace(/(&lt;\/?)([\w]+)/g, '$1<span class="hl-tag">$2</span>');
+      } else if (ext === 'json') {
+        // Strings
+        code = code.replace(/(["'])(?:(?!\1)[^\\]|\\.)*?\1/g, '<span class="hl-string">$&</span>');
+        // Numbers
+        code = code.replace(/\b(\d+\.?\d*)\b/g, '<span class="hl-number">$1</span>');
+        // Booleans and null
+        code = code.replace(/\b(true|false|null)\b/g, '<span class="hl-keyword">$1</span>');
+      } else if (ext === 'md') {
+        // Headers
+        code = code.replace(/^(#{1,6}.*)$/gm, '<span class="hl-keyword">$1</span>');
+        // Bold
+        code = code.replace(/\*\*([^*]+)\*\*/g, '<span class="hl-function">**$1**</span>');
+        // Code blocks
+        code = code.replace(/`([^`]+)`/g, '<span class="hl-string">`$1`</span>');
+      }
+
+      // Add line numbers
+      const lines = code.split('\n');
+      return lines.map((line, i) =>
+        `<span class="line"><span class="line-number">${i + 1}</span>${line}</span>`
+      ).join('\n');
+    }
+
+    async function openFileViewer(file) {
+      currentFilePath = file.path;
+      viewerFilename.textContent = file.name;
+      viewerIcon.style.background = file.color;
+      viewerCode.innerHTML = '<span style="color: var(--text-muted);">Loading...</span>';
+      fileViewer.classList.add('active');
+
+      try {
+        const response = await fetch(file.path);
+        const content = await response.text();
+        const ext = file.name.split('.').pop();
+        viewerCode.innerHTML = highlightCode(content, ext);
+      } catch (err) {
+        viewerCode.innerHTML = `<span style="color: #e06c75;">Error loading file: ${err.message}</span>`;
+      }
+    }
+
+    function closeFileViewer() {
+      fileViewer.classList.remove('active');
+    }
+
+    viewerClose.addEventListener('click', closeFileViewer);
+    fileViewer.addEventListener('click', (e) => {
+      if (e.target === fileViewer) closeFileViewer();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeFileViewer();
+    });
+
+    viewerVscode.addEventListener('click', () => {
+      const fullPath = window.location.pathname.replace('/index.html', '').replace(/^\//, '') + '/' + currentFilePath;
+      window.open(`vscode://file/${fullPath}`, '_blank');
+    });
+
+    // ========== Publish Functionality ==========
+    const publishBtn = document.getElementById('publish-btn');
+    const publishText = document.getElementById('publish-text');
+    let isPublishing = false;
+
+    publishBtn.addEventListener('click', async () => {
+      if (isPublishing) return;
+
+      isPublishing = true;
+      publishText.textContent = 'Publishing...';
+      publishBtn.style.opacity = '0.7';
+      publishBtn.style.cursor = 'wait';
+
+      try {
+        // Call the Vite dev server's special endpoint for publishing
+        const response = await fetch('/__prolibu_publish__', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (response.ok) {
+          publishText.textContent = 'Published!';
+          publishBtn.style.background = 'var(--success)';
+          setTimeout(() => {
+            publishText.textContent = 'Publish';
+            publishBtn.style.background = '';
+          }, 2000);
+        } else {
+          throw new Error('Publish failed');
+        }
+      } catch (err) {
+        // Fallback: open terminal command hint
+        publishText.textContent = 'Run: prolibu plugin prod';
+        setTimeout(() => {
+          publishText.textContent = 'Publish';
+        }, 3000);
+      } finally {
+        isPublishing = false;
+        publishBtn.style.opacity = '';
+        publishBtn.style.cursor = '';
+      }
+    });
+
+    // ========== Plugin Rendering ==========
+    const plugins = PluginConfig.components || [];
+    let currentPluginIndex = plugins.findIndex(c => c.active);
+    if (currentPluginIndex === -1) currentPluginIndex = 0;
+
+    const componentsList = document.getElementById('components-list');
+    const container = document.getElementById('plugin-root');
+    const formFields = document.getElementById('form-fields');
+    let root = ReactDOM.createRoot(container);
+    let formModel = {};
+    let ctx = {};
+    let mockContext = {}; // Loaded from context.json
+
+    // Load mock context from context.json
+    async function loadMockContext() {
+      try {
+        const response = await fetch('./context.json');
+        if (response.ok) {
+          mockContext = await response.json();
+          console.log('[Studio] Loaded context.json:', mockContext);
+
+          // Update UI with loaded context
+          const docPreview = mockContext.doc ? JSON.stringify(mockContext.doc, null, 2).substring(0, 200) + '...' : '{}';
+          document.getElementById('context-doc').textContent = docPreview;
+          document.getElementById('context-lang').textContent = mockContext.preferences?.language || 'en';
+        }
+      } catch (e) {
+        console.log('[Studio] No context.json found, using empty context');
+      }
+    }
+
+    // Click handler to open context.json file viewer
+    document.getElementById('context-doc').addEventListener('click', () => {
+      openFileViewer({ name: 'context.json', desc: 'Mock context data', path: 'context.json', color: '#ec4899' });
+    });
+
+    // ========== Sections Editor ==========
+    function renderSectionsEditor(container, value, onChange) {
+      let sections = typeof value === 'object' && value !== null ? { ...value } : {};
+
+      function render() {
+        const entries = Object.entries(sections);
+        container.innerHTML = `
+          <div class="sections-editor">
+            ${entries.length === 0 ? '<div class="sections-editor__empty">No hay secciones. Agrega una para configurar familias de productos.</div>' : ''}
+            <div class="sections-editor__items">
+              ${entries.map(([key, config]) => `
+                <div class="sections-editor__item" data-key="${key}">
+                  <div class="sections-editor__item-header">
+                    <input class="sections-editor__item-key"
+                           value="${key}"
+                           placeholder="Nombre de familia"
+                           data-field="key">
+                    <button class="sections-editor__remove" data-action="remove" title="Eliminar sección">✕</button>
+                  </div>
+                  <div class="sections-editor__field">
+                    <div class="sections-editor__field-label">Título personalizado</div>
+                    <input class="sections-editor__field-input"
+                           value="${config.title || ''}"
+                           placeholder="Ej: Servicios de Almacenamiento"
+                           data-field="title">
+                  </div>
+                  <div class="sections-editor__field">
+                    <div class="sections-editor__field-label">Notas</div>
+                    <input class="sections-editor__field-input"
+                           value="${config.notes || ''}"
+                           placeholder="Notas para esta sección"
+                           data-field="notes">
+                  </div>
+                  <div class="sections-editor__field">
+                    <div class="sections-editor__field-label">Orden</div>
+                    <input class="sections-editor__field-input"
+                           type="number"
+                           value="${config.order || 0}"
+                           data-field="order"
+                           style="width: 80px;">
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+            <button class="sections-editor__add" data-action="add">+ Agregar sección</button>
+          </div>
+        `;
+
+        // Input event handler
+        container.querySelectorAll('input').forEach(input => {
+          input.addEventListener('change', (e) => {
+            const item = e.target.closest('.sections-editor__item');
+            if (!item) return;
+
+            const currentKey = item.dataset.key;
+            const field = e.target.dataset.field;
+            const newValue = e.target.value;
+
+            if (field === 'key' && newValue !== currentKey) {
+              // Rename key
+              const newSections = {};
+              Object.entries(sections).forEach(([k, v]) => {
+                newSections[k === currentKey ? newValue : k] = v;
+              });
+              sections = newSections;
+              item.dataset.key = newValue;
+            } else if (field !== 'key') {
+              // Update field
+              sections[currentKey] = sections[currentKey] || {};
+              sections[currentKey][field] = field === 'order' ? parseInt(newValue) || 0 : newValue;
+            }
+
+            onChange({ ...sections });
+          });
+        });
+
+        // Click event handler for buttons
+        container.querySelectorAll('button').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const action = e.target.dataset.action;
+
+            if (action === 'remove') {
+              const item = e.target.closest('.sections-editor__item');
+              const key = item.dataset.key;
+              delete sections[key];
+              onChange({ ...sections });
+              render();
+            }
+
+            if (action === 'add') {
+              const newKey = `Sección ${Object.keys(sections).length + 1}`;
+              sections[newKey] = { title: '', notes: '', order: Object.keys(sections).length };
+              onChange({ ...sections });
+              render();
+            }
+          });
+        });
+      }
+
+      render();
+    }
+
+    // Function to render a plugin
+    function renderPluginByIndex(index) {
+      const plugin = plugins[index];
+      if (!plugin) return;
+
+      currentPluginIndex = index;
+
+      // Update sidebar active state
+      document.querySelectorAll('#components-list .sidebar__item').forEach((item, i) => {
+        item.classList.toggle('sidebar__item--active', i === index);
+      });
+
+      // Update UI info
+      document.getElementById('plugin-name').textContent = plugin.label;
+      document.getElementById('container-id').textContent = plugin.containerId;
+
+      // Clear and rebuild form fields
+      formFields.innerHTML = '';
+      formModel = {};
+
+      if (plugin.formSchema) {
+        Object.entries(plugin.formSchema).forEach(([key, config]) => {
+          formModel[key] = config.default;
+
+          const field = document.createElement('div');
+          field.className = 'panel__field';
+
+          // Check for custom editors based on type or uiCom
+          const isObjectType = config.type === 'object' || config.originalAttrs?.uiCom === 'sectionsEditor';
+
+          if (isObjectType) {
+            // Sections/Object editor
+            field.innerHTML = `<div class="panel__field-label">${key}</div>`;
+            const editorContainer = document.createElement('div');
+            field.appendChild(editorContainer);
+
+            renderSectionsEditor(editorContainer, config.default, (newValue) => {
+              formModel[key] = newValue;
+              if (ctx) {
+                ctx.formSchemaModel.model[key] = newValue;
+                ctx.comCompConfig.model[key] = newValue;
+                // Re-render plugin
+                const currentPlugin = plugins[currentPluginIndex];
+                const Comp = currentPlugin.render(container, {}, 'dev');
+                root.render(React.createElement(Comp, { ctx }));
+              }
+            });
+          } else if (config.type === 'boolean') {
+            // Boolean checkbox
+            const checked = config.default ? 'checked' : '';
+            field.innerHTML = `
+              <div class="panel__field-label">${key}</div>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" ${checked} data-key="${key}" data-type="boolean" style="width: 16px; height: 16px;"/>
+                <span style="font-size: 12px; color: var(--text-secondary);">${config.description || ''}</span>
+              </label>
+            `;
+          } else {
+            // Default text input
+            field.innerHTML = `
+              <div class="panel__field-label">${key}</div>
+              <input class="panel__field-input" type="text" value="${config.default || ''}" data-key="${key}"/>
+            `;
+          }
+
+          formFields.appendChild(field);
+        });
+      }
+
+      // Get the component directly (dev mode)
+      const Component = plugin.render(container, {}, 'dev');
+
+      // Create context - merge mockContext with form values
+      ctx = {
+        ...mockContext,
+        doc: mockContext.doc || {},
+        preferences: mockContext.preferences || {},
+        formSchemaModel: {
+          model: formModel,
+          language: mockContext.preferences?.language || 'en'
+        },
+        // Also expose as comCompConfig for compatibility
+        comCompConfig: {
+          model: formModel,
+          language: mockContext.preferences?.language || 'en'
+        },
+        configNodeId: plugin.containerId,
+        pluginLibrary: 'dev'
+      };
+
+      // Unmount previous and create new root
+      root.unmount();
+      root = ReactDOM.createRoot(container);
+      root.render(React.createElement(Component, { ctx }));
+    }
+
+    // Render components list with click handlers
+    plugins.forEach((p, i) => {
+      const item = document.createElement('div');
+      item.className = `sidebar__item ${i === currentPluginIndex ? 'sidebar__item--active' : ''}`;
+      item.style.cursor = 'pointer';
+      item.innerHTML = `
+        <div class="sidebar__item-icon">
+          ${p.icon ? `<img src="${p.icon}" width="16" height="16"/>` : p.label.charAt(0)}
+        </div>
+        <div class="sidebar__item-info">
+          <div class="sidebar__item-name">${p.label}</div>
+          <div class="sidebar__item-desc">${p.description || 'No description'}</div>
+        </div>
+      `;
+      item.addEventListener('click', () => renderPluginByIndex(i));
+      componentsList.appendChild(item);
+    });
+
+    // Load context and then render
+    loadMockContext().then(() => {
+      renderPluginByIndex(currentPluginIndex);
+    });
+
+    // Listen for form changes
+    formFields.addEventListener('input', (e) => {
+      const key = e.target.dataset.key;
+      if (!key) return;
+
+      let value;
+      if (e.target.type === 'checkbox' || e.target.dataset.type === 'boolean') {
+        value = e.target.checked;
+      } else {
+        value = e.target.value;
+      }
+
+      ctx.formSchemaModel.model[key] = value;
+      ctx.comCompConfig.model[key] = value;
+      const plugin = plugins[currentPluginIndex];
+      const Component = plugin.render(container, {}, 'dev');
+      root.render(React.createElement(Component, { ctx }));
+    });
+
+    // Also listen for change events (for checkboxes)
+    formFields.addEventListener('change', (e) => {
+      if (e.target.type === 'checkbox' && e.target.dataset.key) {
+        const key = e.target.dataset.key;
+        const value = e.target.checked;
+        ctx.formSchemaModel.model[key] = value;
+        ctx.comCompConfig.model[key] = value;
+        const plugin = plugins[currentPluginIndex];
+        const Component = plugin.render(container, {}, 'dev');
+        root.render(React.createElement(Component, { ctx }));
+      }
+    });
+  </script>
+</body>
+</html>
