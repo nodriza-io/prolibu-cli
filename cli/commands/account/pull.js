@@ -66,6 +66,24 @@ module.exports = async function pullAccount(flags) {
   // Pull latest changes
   try {
     console.log(chalk.cyan(`\n📥 Pulling latest changes for '${domain}'...`));
+
+    // Detect current branch
+    const branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: accountDir, stdio: 'pipe' }).toString().trim();
+
+    // Check if upstream tracking is configured
+    let hasUpstream = false;
+    try {
+      execSync(`git rev-parse --abbrev-ref ${branch}@{upstream}`, { cwd: accountDir, stdio: 'pipe' });
+      hasUpstream = true;
+    } catch {
+      hasUpstream = false;
+    }
+
+    if (!hasUpstream) {
+      console.log(chalk.yellow(`⚠️  No upstream tracking for branch '${branch}'. Setting up origin/${branch}...`));
+      execSync(`git branch --set-upstream-to=origin/${branch} ${branch}`, { cwd: accountDir, stdio: 'inherit' });
+    }
+
     execSync('git pull', { cwd: accountDir, stdio: 'inherit' });
     console.log(chalk.green(`\n✅ Account '${domain}' updated successfully.`));
   } catch (err) {
