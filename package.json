@@ -56,6 +56,7 @@
     "test:script": "jest test/script.test.js",
     "test:site": "jest test/site.test.js",
     "test:plugin": "jest test/plugin.test.js",
+    "test:account": "jest test/account.test.js",
     "test:all": "jest test/"
   }
 }

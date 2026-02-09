@@ -16,7 +16,8 @@ function parseFlags(argv) {
       'file',
       'siteType',
       'port',
-      'ext'
+      'ext',
+      'message'
     ],
     boolean: [
       'watch',
@@ -32,6 +33,7 @@ function parseFlags(argv) {
       apikey: 'a',
       file: 'f',
       watch: 'w',
+      message: 'm',
       'no-git': 'G'
     },
     default: {}

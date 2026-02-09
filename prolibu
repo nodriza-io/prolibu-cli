@@ -16,6 +16,7 @@ const command = args[1]; // create, dev, prod, import, test
     console.log('Usage: ./prolibu <object> <command> [options]');
     console.log('');
     console.log('Objects:');
+    console.log('  account  Manage accounts (import/pull from git repositories)');
     console.log('  script   Manage Prolibu scripts (lifecycle hooks, integrations)');
     console.log('  site     Manage static sites and SPAs');
     console.log('  vt       Manage virtual tours (bulk upload)');
@@ -30,6 +31,9 @@ const command = args[1]; // create, dev, prod, import, test
     console.log('  bulk     Upload virtual tours in bulk (vt only)');
     console.log('');
     console.log('Examples:');
+    console.log('  ./prolibu account import --domain account-faranda --repo git@github.com:org/account-faranda.git');
+    console.log('  ./prolibu account pull --domain account-faranda');
+    console.log('  ./prolibu account list');
     console.log('  ./prolibu script create --domain dev10.prolibu.com --prefix my-hook');
     console.log('  ./prolibu script dev --domain dev10.prolibu.com --prefix my-hook --watch');
     console.log('  ./prolibu site create --domain dev10.prolibu.com --prefix my-site --siteType Static');
@@ -42,7 +46,10 @@ const command = args[1]; // create, dev, prod, import, test
   }
 
   // Route to object-specific handlers
-  if (objectType === 'script') {
+  if (objectType === 'account') {
+    const accountHandler = require('./cli/commands/account/index');
+    await accountHandler(command, flags, args);
+  } else if (objectType === 'script') {
     const scriptHandler = require('./cli/commands/script/index');
     await scriptHandler(command, flags, args);
   } else if (objectType === 'site') {
@@ -56,7 +63,7 @@ const command = args[1]; // create, dev, prod, import, test
     await pluginHandler(command, flags, args);
   } else {
     console.error(`❌ Unknown object type: ${objectType}`);
-    console.log('Available types: script, site, vt, plugin');
+    console.log('Available types: account, script, site, vt, plugin');
     console.log('Run ./prolibu for help');
     process.exit(1);
   }
