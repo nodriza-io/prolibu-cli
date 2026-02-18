@@ -1,6 +1,60 @@
 const archiver = require('archiver');
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
+
+/**
+ * Extract formSchema from a compiled plugin bundle
+ * Executes the UMD bundle in a sandboxed context and retrieves the formSchema
+ * @param {string} bundlePath - Path to the compiled plugin bundle (.js)
+ * @returns {Object|null} The formSchema object or null if extraction fails
+ */
+function extractOptionsSchema(bundlePath) {
+  try {
+    if (!fs.existsSync(bundlePath)) {
+      return null;
+    }
+
+    const code = fs.readFileSync(bundlePath, 'utf8');
+
+    // Sandboxed context with mocked globals
+    const context = {
+      React: {
+        createElement: () => ({}),
+        useState: (v) => [v, () => { }],
+        useEffect: () => { },
+        useCallback: (fn) => fn,
+        useMemo: (fn) => fn(),
+        useRef: () => ({ current: null }),
+      },
+      ReactDOM: { createRoot: () => ({ render: () => { } }) },
+      module: { exports: {} },
+      exports: {},
+      require: () => ({}),
+      window: {},
+      document: {
+        createElement: () => ({ appendChild: () => { }, style: {} }),
+        head: { appendChild: () => { } },
+      },
+      console,
+    };
+    context.window = context;
+
+    vm.createContext(context);
+    vm.runInContext(code, context, { timeout: 5000 });
+
+    const pluginExport = context.module.exports.default || context.module.exports;
+
+    if (!pluginExport?.components?.[0]?.formSchema) {
+      return null;
+    }
+
+    return pluginExport.components[0].formSchema;
+  } catch (err) {
+    console.warn(`[SCHEMA] Failed to extract: ${err.message}`);
+    return null;
+  }
+}
 
 /**
  * Zip a plugin's dist folder (bundle + assets)
@@ -91,4 +145,5 @@ function collectAssetsRecursive(dir, prefix) {
 module.exports = {
   zipPlugin,
   collectAssets,
+  extractOptionsSchema,
 };
