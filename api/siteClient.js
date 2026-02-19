@@ -377,14 +377,19 @@ async function runDevSite(sitePrefix, env, domain, apiKey, watch = false, port =
     }
     
     // Use live-server for auto-reload in watch mode
-    const serverProcess = spawn('npx', [
+    const liveServerArgs = [
       'live-server',
       publicFolder,
       '--port=' + port.toString(),
       '--no-browser',
       '--quiet',
       '--wait=200'
-    ], {
+    ];
+    // SPA mode: serve index.html for any route that doesn't match a file
+    if (siteType === 'SPA') {
+      liveServerArgs.push('--entry-file=index.html');
+    }
+    const serverProcess = spawn('npx', liveServerArgs, {
       stdio: 'ignore',
       detached: false
     });
@@ -427,6 +432,9 @@ window.__PROLIBU_CONFIG__ = {
     const extArray = extensions.split(',').map(e => e.trim());
     const watchPatterns = extArray.map(ext => `*.${ext}`);
     console.log(`    ${chalk.dim('📁 Watching')} ${chalk.cyan(watchPatterns.join(', '))} ${chalk.dim('in')} ${chalk.cyan('public/')}`);
+    if (siteType === 'SPA') {
+      console.log(`    ${chalk.dim('🔀 SPA mode:')} ${chalk.cyan('All routes fallback to index.html')}`);
+    }
     console.log(`    ${chalk.dim('💡 Browser will auto-reload on changes (no upload needed)')}`);
     console.log('');
     console.log(`    ${chalk.dim('Press')} ${chalk.bold.cyan('p')} ${chalk.dim('to publish to')} ${chalk.bold(envLabel)} ${chalk.dim('or')} ${chalk.bold.red('x')} ${chalk.dim('to exit')}`);
