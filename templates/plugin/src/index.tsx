@@ -1,8 +1,5 @@
 import { ExamplePlugin } from "./plugins/Example/ExamplePlugin";
 
-// Re-export FormRenderer for use in plugins
-export { FormRenderer } from "./utils/FormRenderer";
-
 // Helper function to create a render function for plugins
 const createRenderFn = (Component: React.ComponentType<any>) => {
   return (node: HTMLElement, opts: any = {}, mode = "prod") => {
