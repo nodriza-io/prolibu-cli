@@ -74,6 +74,11 @@ export default defineConfig({
   define: {
     'process.env.NODE_ENV': JSON.stringify('production')
   },
+  resolve: {
+    alias: {
+      '@prolibu/shared': path.resolve(__dirname, '../../../shared')
+    }
+  },
   build: {
     lib: {
       entry: 'src/index.tsx',

@@ -177,6 +177,9 @@ Imports an existing plugin from a git repository.
 ## Project Structure
 
 ```
+shared/
+└── FormRenderer.tsx           # ⚡ Fuente única de verdad — editar aquí
+
 accounts/
 └── <domain>/
     ├── profile.json           # API key storage
@@ -184,14 +187,15 @@ accounts/
         ├── config.json        # Plugin metadata (syncs to API)
         ├── settings.json      # Local dev settings
         ├── package.json       # NPM dependencies
-        ├── vite.config.js     # Vite build configuration
-        ├── tsconfig.json      # TypeScript config
+        ├── vite.config.js     # Vite build (alias @prolibu/shared → ../../../shared)
+        ├── tsconfig.json      # TypeScript config (paths @prolibu/shared)
         ├── index.html         # Plugin Studio (dev UI)
         ├── README.md          # Documentation (syncs to API)
         ├── src/
         │   ├── index.tsx      # Plugin entry point
         │   ├── utils/
-        │   │   └── assets.ts  # Asset URL utilities (required)
+        │   │   ├── assets.ts          # Asset URL utilities (required)
+        │   │   └── FormRenderer.tsx   # ⚠️ Auto-generated stub — no editar
         │   ├── plugins/       # Plugin components
         │   │   └── Example/
         │   │       ├── ExamplePlugin.tsx
@@ -470,7 +474,7 @@ export const MyPlugin = ({ ctx }: PluginProps) => {
 Si necesitas renderizar formularios dentro de tu plugin:
 
 ```tsx
-import { FormRenderer } from "./utils/FormRenderer";
+import { FormRenderer } from "./utils/FormRenderer"; // re-export desde shared/
 
 export const MyPlugin = ({ ctx }) => {
   const [values, setValues] = useState({});
@@ -491,7 +495,10 @@ export const MyPlugin = ({ ctx }) => {
 
 ### Componentes Personalizados (Avanzado)
 
-El FormRenderer ya incluye todos los componentes de `@formily/antd-v5`. Si necesitas agregar componentes custom, edita `src/utils/FormRenderer.tsx`:
+> **⚠️ Regla SOLID:** `src/utils/FormRenderer.tsx` es un *stub* auto-generado — no lo edites.
+> La fuente única de verdad es **`shared/FormRenderer.tsx`** en la raíz del proyecto.
+
+Para agregar un widget custom al FormRenderer, edita `shared/FormRenderer.tsx`:
 
 ```tsx
 import { ColorPicker } from "antd"; // Ejemplo: usar ColorPicker de Antd 5
