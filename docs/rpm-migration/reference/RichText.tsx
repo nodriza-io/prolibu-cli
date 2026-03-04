@@ -13,8 +13,8 @@
 //
 // ============================================================================
 
-import { connect, mapProps, mapReadPretty } from '@formily/react'
-import { Button, Divider, Space, theme } from 'antd'
+import { connect, mapProps, mapReadPretty } from "@formily/react";
+import { Button, Divider, Space, theme } from "antd";
 import {
   BoldOutlined,
   ItalicOutlined,
@@ -23,36 +23,36 @@ import {
   OrderedListOutlined,
   UndoOutlined,
   RedoOutlined,
-} from '@ant-design/icons'
-import { useEditor, EditorContent } from '@tiptap/react'
-import StarterKit from '@tiptap/starter-kit'
-import Underline from '@tiptap/extension-underline'
-import React, { useEffect, useRef } from 'react'
+} from "@ant-design/icons";
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Underline from "@tiptap/extension-underline";
+import React, { useEffect, useRef } from "react";
 
-const { useToken } = theme
+const { useToken } = theme;
 
 // ── Types ──────────────────────────────────────────────────────────
 
 export interface RichTextProps {
-  value?: string
-  onChange?: (html: string) => void
-  disabled?: boolean
-  readOnly?: boolean
-  minHeight?: number
-  placeholder?: string
-  style?: React.CSSProperties
+  value?: string;
+  onChange?: (html: string) => void;
+  disabled?: boolean;
+  readOnly?: boolean;
+  minHeight?: number;
+  placeholder?: string;
+  style?: React.CSSProperties;
 }
 
 // ── Toolbar Button ─────────────────────────────────────────────────
 
 const ToolbarButton: React.FC<{
-  onClick: () => void
-  isActive?: boolean
-  icon: React.ReactNode
-  title: string
-  disabled?: boolean
-  activeColor?: string
-  mutedColor?: string
+  onClick: () => void;
+  isActive?: boolean;
+  icon: React.ReactNode;
+  title: string;
+  disabled?: boolean;
+  activeColor?: string;
+  mutedColor?: string;
 }> = ({
   onClick,
   isActive,
@@ -63,7 +63,7 @@ const ToolbarButton: React.FC<{
   mutedColor,
 }) => (
   <Button
-    type={isActive ? 'primary' : 'text'}
+    type={isActive ? "primary" : "text"}
     size="small"
     icon={icon}
     onClick={onClick}
@@ -75,7 +75,7 @@ const ToolbarButton: React.FC<{
       ...(isActive ? {} : { color: mutedColor }),
     }}
   />
-)
+);
 
 // ── Inner Editor Component ─────────────────────────────────────────
 
@@ -88,44 +88,44 @@ const RichTextInner: React.FC<RichTextProps> = ({
   placeholder,
   style,
 }) => {
-  const { token } = useToken()
-  const isEditable = !disabled && !readOnly
-  const isInternalChange = useRef(false)
+  const { token } = useToken();
+  const isEditable = !disabled && !readOnly;
+  const isInternalChange = useRef(false);
 
   const editor = useEditor({
     extensions: [StarterKit, Underline],
-    content: value || '',
+    content: value || "",
     editable: isEditable,
     onUpdate: ({ editor }) => {
-      isInternalChange.current = true
-      onChange?.(editor.getHTML())
+      isInternalChange.current = true;
+      onChange?.(editor.getHTML());
     },
     editorProps: {
       attributes: {
-        style: 'outline: none; min-height: inherit;',
+        style: "outline: none; min-height: inherit;",
       },
     },
-  })
+  });
 
   useEffect(() => {
-    if (!editor) return
+    if (!editor) return;
     if (isInternalChange.current) {
-      isInternalChange.current = false
-      return
+      isInternalChange.current = false;
+      return;
     }
-    const currentHTML = editor.getHTML()
+    const currentHTML = editor.getHTML();
     if (value !== currentHTML) {
-      editor.commands.setContent(value || '', false)
+      editor.commands.setContent(value || "", false);
     }
-  }, [value, editor])
+  }, [value, editor]);
 
   useEffect(() => {
     if (editor) {
-      editor.setEditable(isEditable)
+      editor.setEditable(isEditable);
     }
-  }, [isEditable, editor])
+  }, [isEditable, editor]);
 
-  if (!editor) return null
+  if (!editor) return null;
 
   return (
     <div
@@ -133,28 +133,28 @@ const RichTextInner: React.FC<RichTextProps> = ({
         border: `1px solid ${token.colorBorder}`,
         borderRadius: token.borderRadius,
         background: token.colorBgContainer,
-        overflow: 'hidden',
+        overflow: "hidden",
         ...style,
       }}
     >
       {isEditable && (
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            padding: '4px 8px',
+            display: "flex",
+            alignItems: "center",
+            padding: "4px 8px",
             borderBottom: `1px solid ${
               token.colorBorderSecondary || token.colorBorder
             }`,
             background: token.colorBgElevated,
-            flexWrap: 'wrap',
+            flexWrap: "wrap",
             gap: 2,
           }}
         >
           <Space.Compact size="small">
             <ToolbarButton
               onClick={() => editor.chain().focus().toggleBold().run()}
-              isActive={editor.isActive('bold')}
+              isActive={editor.isActive("bold")}
               icon={<BoldOutlined />}
               title="Bold"
               activeColor={token.colorPrimary}
@@ -162,7 +162,7 @@ const RichTextInner: React.FC<RichTextProps> = ({
             />
             <ToolbarButton
               onClick={() => editor.chain().focus().toggleItalic().run()}
-              isActive={editor.isActive('italic')}
+              isActive={editor.isActive("italic")}
               icon={<ItalicOutlined />}
               title="Italic"
               activeColor={token.colorPrimary}
@@ -170,7 +170,7 @@ const RichTextInner: React.FC<RichTextProps> = ({
             />
             <ToolbarButton
               onClick={() => editor.chain().focus().toggleUnderline().run()}
-              isActive={editor.isActive('underline')}
+              isActive={editor.isActive("underline")}
               icon={<UnderlineOutlined />}
               title="Underline"
               activeColor={token.colorPrimary}
@@ -178,12 +178,12 @@ const RichTextInner: React.FC<RichTextProps> = ({
             />
           </Space.Compact>
 
-          <Divider type="vertical" style={{ margin: '0 4px' }} />
+          <Divider type="vertical" style={{ margin: "0 4px" }} />
 
           <Space.Compact size="small">
             <ToolbarButton
               onClick={() => editor.chain().focus().toggleBulletList().run()}
-              isActive={editor.isActive('bulletList')}
+              isActive={editor.isActive("bulletList")}
               icon={<UnorderedListOutlined />}
               title="Bullet List"
               activeColor={token.colorPrimary}
@@ -191,7 +191,7 @@ const RichTextInner: React.FC<RichTextProps> = ({
             />
             <ToolbarButton
               onClick={() => editor.chain().focus().toggleOrderedList().run()}
-              isActive={editor.isActive('orderedList')}
+              isActive={editor.isActive("orderedList")}
               icon={<OrderedListOutlined />}
               title="Ordered List"
               activeColor={token.colorPrimary}
@@ -199,7 +199,7 @@ const RichTextInner: React.FC<RichTextProps> = ({
             />
           </Space.Compact>
 
-          <Divider type="vertical" style={{ margin: '0 4px' }} />
+          <Divider type="vertical" style={{ margin: "0 4px" }} />
 
           <Space.Compact size="small">
             <ToolbarButton
@@ -221,8 +221,8 @@ const RichTextInner: React.FC<RichTextProps> = ({
       <div
         style={{
           minHeight,
-          padding: '8px 12px',
-          cursor: isEditable ? 'text' : 'default',
+          padding: "8px 12px",
+          cursor: isEditable ? "text" : "default",
           color: token.colorText,
         }}
         onClick={() => isEditable && editor.commands.focus()}
@@ -234,7 +234,7 @@ const RichTextInner: React.FC<RichTextProps> = ({
           .ProseMirror p.is-editor-empty:first-child::before {
             content: attr(data-placeholder);
             float: left;
-            color: ${token.colorTextQuaternary || '#aaa'};
+            color: ${token.colorTextQuaternary || "#aaa"};
             pointer-events: none;
             height: 0;
           }
@@ -242,36 +242,36 @@ const RichTextInner: React.FC<RichTextProps> = ({
         <EditorContent editor={editor} />
       </div>
     </div>
-  )
-}
+  );
+};
 
 // ── ReadPretty Preview ─────────────────────────────────────────────
 
 const RichTextPreview: React.FC<{ value?: string }> = ({ value }) => {
-  if (!value) return <span>-</span>
+  if (!value) return <span>-</span>;
   return (
     <div
       dangerouslySetInnerHTML={{ __html: value }}
       style={{ lineHeight: 1.6 }}
     />
-  )
-}
+  );
+};
 
 // ── Formily Integration ────────────────────────────────────────────
 
 export const RichText = connect(
   RichTextInner,
   mapProps((props: any) => {
-    const { onChange, value, ...rest } = props
+    const { onChange, value, ...rest } = props;
     return {
       ...rest,
       value,
       onChange: (html: string) => {
-        onChange?.(html)
+        onChange?.(html);
       },
-    }
+    };
   }),
-  mapReadPretty(RichTextPreview)
-)
+  mapReadPretty(RichTextPreview),
+);
 
-export default RichText
+export default RichText;

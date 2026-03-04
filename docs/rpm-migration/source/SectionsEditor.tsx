@@ -113,9 +113,7 @@ const objectToArray = (
   );
 };
 
-const arrayToObject = (
-  arr: SectionItem[],
-): Record<string, SectionConfig> => {
+const arrayToObject = (arr: SectionItem[]): Record<string, SectionConfig> => {
   const result: Record<string, SectionConfig> = {};
   arr.forEach((section) => {
     if (section.key) {
@@ -286,7 +284,12 @@ const SectionsEditorInner: React.FC<SectionsEditorInnerProps> = ({
               ...s,
               customRows: [
                 ...s.customRows,
-                { id: uid(), description: "", value: "", position: "end" as const },
+                {
+                  id: uid(),
+                  description: "",
+                  value: "",
+                  position: "end" as const,
+                },
               ],
             }
           : s,
@@ -294,21 +297,18 @@ const SectionsEditorInner: React.FC<SectionsEditorInnerProps> = ({
     );
   }, []);
 
-  const removeCustomRow = useCallback(
-    (sectionId: string, rowId: string) => {
-      setLocalSections((prev) =>
-        prev.map((s) =>
-          s.id === sectionId
-            ? {
-                ...s,
-                customRows: s.customRows.filter((r) => r.id !== rowId),
-              }
-            : s,
-        ),
-      );
-    },
-    [],
-  );
+  const removeCustomRow = useCallback((sectionId: string, rowId: string) => {
+    setLocalSections((prev) =>
+      prev.map((s) =>
+        s.id === sectionId
+          ? {
+              ...s,
+              customRows: s.customRows.filter((r) => r.id !== rowId),
+            }
+          : s,
+      ),
+    );
+  }, []);
 
   const updateCustomRow = useCallback(
     (sectionId: string, rowId: string, updates: Partial<CustomRow>) => {
@@ -330,7 +330,10 @@ const SectionsEditorInner: React.FC<SectionsEditorInnerProps> = ({
 
   return (
     <>
-      <div style={editorStyles.trigger} onClick={disabled ? undefined : handleOpen}>
+      <div
+        style={editorStyles.trigger}
+        onClick={disabled ? undefined : handleOpen}
+      >
         <Text style={editorStyles.triggerText}>
           {sectionCount > 0
             ? `${sectionCount} sección(es) configurada(s)`
@@ -366,7 +369,11 @@ const SectionsEditorInner: React.FC<SectionsEditorInnerProps> = ({
             <Button icon={<CloseOutlined />} onClick={handleClose}>
               Cancelar
             </Button>
-            <Button type="primary" icon={<CheckOutlined />} onClick={handleSave}>
+            <Button
+              type="primary"
+              icon={<CheckOutlined />}
+              onClick={handleSave}
+            >
               Guardar
             </Button>
           </Space>
@@ -415,7 +422,10 @@ const SectionsEditorInner: React.FC<SectionsEditorInnerProps> = ({
               </div>
 
               <div style={editorStyles.sectionNotes}>
-                <Text type="secondary" style={{ fontSize: 12, marginBottom: 4, display: "block" }}>
+                <Text
+                  type="secondary"
+                  style={{ fontSize: 12, marginBottom: 4, display: "block" }}
+                >
                   Notas
                 </Text>
                 <RichText

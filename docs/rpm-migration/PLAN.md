@@ -190,8 +190,8 @@ const FooterTableEditorPreview: React.FC<{ value?: string }> = ({ value }) => {
 Crear `src/rpm/index.ts`:
 
 ```typescript
-export * from './sections-editor'
-export * from './footer-table-editor'
+export * from "./sections-editor";
+export * from "./footer-table-editor";
 ```
 
 ---
@@ -206,6 +206,7 @@ Agregar **una sola línea** al final del barrel existente:
 ```
 
 > Después de esto, los consumidores importan directamente:
+>
 > ```typescript
 > import { SectionsEditor, FooterTableEditor } from "formily-antd-complete";
 > ```
@@ -267,6 +268,7 @@ desde el paquete npm:
 ```
 
 Y se puede eliminar:
+
 - `shared/components/SectionsEditor.tsx`
 - `shared/components/FooterTableEditor.tsx`
 
@@ -274,18 +276,18 @@ Y se puede eliminar:
 
 ## Checklist resumen
 
-| # | Tarea | Archivo(s) |
-|---|-------|------------|
-| 1 | Crear `src/rpm/sections-editor/index.tsx` | Adaptar `source/SectionsEditor.tsx` (5 marcas 🔧) |
-| 2 | Crear `src/rpm/footer-table-editor/index.tsx` | Adaptar `source/FooterTableEditor.tsx` (4 marcas 🔧) |
-| 3 | Crear `src/rpm/index.ts` | Barrel: 2 re-exports |
-| 4 | Editar `src/index.ts` | Agregar `export * from './rpm'` |
-| 5 | Editar `package.json` | version: `1.0.3` → `1.0.4` |
-| 6 | Build | `npm run build` |
-| 7 | Validar | `ls lib/rpm/` + grep exports |
-| 8 | Publicar | `npm publish` |
-| 9 | Actualizar prolibu-cli | `npm install formily-antd-complete@1.0.4` |
-| 10 | Limpiar shared/components/ | Eliminar SectionsEditor.tsx + FooterTableEditor.tsx |
+| #   | Tarea                                         | Archivo(s)                                           |
+| --- | --------------------------------------------- | ---------------------------------------------------- |
+| 1   | Crear `src/rpm/sections-editor/index.tsx`     | Adaptar `source/SectionsEditor.tsx` (5 marcas 🔧)    |
+| 2   | Crear `src/rpm/footer-table-editor/index.tsx` | Adaptar `source/FooterTableEditor.tsx` (4 marcas 🔧) |
+| 3   | Crear `src/rpm/index.ts`                      | Barrel: 2 re-exports                                 |
+| 4   | Editar `src/index.ts`                         | Agregar `export * from './rpm'`                      |
+| 5   | Editar `package.json`                         | version: `1.0.3` → `1.0.4`                           |
+| 6   | Build                                         | `npm run build`                                      |
+| 7   | Validar                                       | `ls lib/rpm/` + grep exports                         |
+| 8   | Publicar                                      | `npm publish`                                        |
+| 9   | Actualizar prolibu-cli                        | `npm install formily-antd-complete@1.0.4`            |
+| 10  | Limpiar shared/components/                    | Eliminar SectionsEditor.tsx + FooterTableEditor.tsx  |
 
 ---
 
@@ -294,11 +296,11 @@ Y se puede eliminar:
 Los plugins de Prolibu usan el campo `format` en JSON Schema para indicar
 qué widget renderizar. La correspondencia es:
 
-| `format` en JSON Schema | `x-component` Formily | Export del paquete |
-|--------------------------|------------------------|--------------------|
-| `sections-editor` | `SectionsEditor` | `SectionsEditor` |
-| `footer-table-editor` | `FooterTableEditor` | `FooterTableEditor` |
-| `rich-text` | `RichText` | `RichText` |
+| `format` en JSON Schema | `x-component` Formily | Export del paquete  |
+| ----------------------- | --------------------- | ------------------- |
+| `sections-editor`       | `SectionsEditor`      | `SectionsEditor`    |
+| `footer-table-editor`   | `FooterTableEditor`   | `FooterTableEditor` |
+| `rich-text`             | `RichText`            | `RichText`          |
 
 ---
 
@@ -324,6 +326,6 @@ qué widget renderizar. La correspondencia es:
 ```json
 [
   { "label": "FORMA DE PAGO", "value": "Crédito a 30 días" },
-  { "label": "VALIDEZ",       "value": "30 días" }
+  { "label": "VALIDEZ", "value": "30 días" }
 ]
 ```

@@ -495,7 +495,7 @@ export const MyPlugin = ({ ctx }) => {
 
 ### Componentes Personalizados (Avanzado)
 
-> **⚠️ Regla SOLID:** `src/utils/FormRenderer.tsx` es un *stub* auto-generado — no lo edites.
+> **⚠️ Regla SOLID:** `src/utils/FormRenderer.tsx` es un _stub_ auto-generado — no lo edites.
 > La fuente única de verdad es **`shared/FormRenderer.tsx`** en la raíz del proyecto.
 
 Para agregar un widget custom al FormRenderer, edita `shared/FormRenderer.tsx`:

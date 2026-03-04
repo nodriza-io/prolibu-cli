@@ -133,14 +133,11 @@ const FooterTableEditorInner: React.FC<FooterTableEditorInnerProps> = ({
     setOpen(false);
   }, [localRows, onChange]);
 
-  const updateRow = useCallback(
-    (id: string, updates: Partial<FooterRow>) => {
-      setLocalRows((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, ...updates } : r)),
-      );
-    },
-    [],
-  );
+  const updateRow = useCallback((id: string, updates: Partial<FooterRow>) => {
+    setLocalRows((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, ...updates } : r)),
+    );
+  }, []);
 
   const addRow = useCallback(() => {
     setLocalRows((prev) => [...prev, { id: uid(), label: "", value: "" }]);
@@ -207,18 +204,14 @@ const FooterTableEditorInner: React.FC<FooterTableEditorInnerProps> = ({
               <div style={s.rowFields}>
                 <Input
                   value={row.label}
-                  onChange={(e) =>
-                    updateRow(row.id, { label: e.target.value })
-                  }
+                  onChange={(e) => updateRow(row.id, { label: e.target.value })}
                   placeholder="Ej: FORMA DE PAGO"
                   style={{ flex: 1, minWidth: 120 }}
                   addonBefore="Etiqueta"
                 />
                 <Input
                   value={row.value}
-                  onChange={(e) =>
-                    updateRow(row.id, { value: e.target.value })
-                  }
+                  onChange={(e) => updateRow(row.id, { value: e.target.value })}
                   placeholder="Ej: Crédito a 30 días"
                   style={{ flex: 2, minWidth: 150 }}
                   addonBefore="Valor"
