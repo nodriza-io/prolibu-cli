@@ -1,0 +1,240 @@
+# AGENT_CONTEXT — migrations/
+
+This document gives an AI agent (or new developer) working **only in this folder** enough context to contribute without needing to open the rest of the CLI.
+
+---
+
+## 1. What this folder is
+
+`migrations/` is the self-contained engine for migrating data from external CRMs into Prolibu.  
+It is connected to the CLI via a one-line proxy at `cli/commands/migrate/index.js`.
+
+---
+
+## 2. CLI routing model
+
+The `prolibu` binary (root of the project) routes commands like this:
+
+```
+prolibu <objectType> <command> [options]
+  │        │
+  │        └── args[1]  e.g. 'salesforce', 'hubspot'
+  └── args[0]  e.g. 'migrate'
+```
+
+For migrate specifically:
+```
+prolibu migrate salesforce configure --domain dev10.prolibu.com
+  objectType=migrate   command=salesforce   args[2]=configure
+```
+
+Flow: `prolibu` binary → `cli/commands/migrate/index.js` → `migrations/index.js` → `migrations/salesforce/index.js` → `migrations/salesforce/configure.js`
+
+---
+
+## 3. Handler pattern (must follow exactly)
+
+Every handler file exports a single async function:
+
+```js
+module.exports = async function myHandler(command, flags, args) { ... }
+```
+
+Sub-command files export a single async function receiving `(flags, args)`:
+
+```js
+module.exports = async function runSomething(flags, args) { ... }
+```
+
+Lazy require pattern for sub-commands (same as the rest of the CLI):
+
+```js
+if (command === 'configure') {
+  const configure = require('./configure');
+  await configure(flags, args);
+}
+```
+
+---
+
+## 4. ESM-only packages — IMPORTANT
+
+`inquirer` (v9+) and `chalk` are ESM-only. **Never `require()` them.**  
+Always use dynamic import:
+
+```js
+const inquirer = await import('inquirer');
+const res = await inquirer.default.prompt({ ... });
+```
+
+---
+
+## 5. Available flags
+
+Parsed by `cli/core/flags.js` using `minimist`. Access as `flags.<name>`.
+
+| Flag | Alias | Type | Purpose |
+|---|---|---|---|
+| `domain` | `-d` | string | Prolibu domain (e.g. `dev10.prolibu.com`) |
+| `apikey` | `-a` | string | Prolibu API key |
+| `entity` | — | string | Entity to migrate: `contacts`, `products`, `accounts`, `all` |
+| `instance-url` | — | string | Salesforce instance URL |
+| `client-key` | — | string | Salesforce OAuth2 Consumer Key |
+| `client-secret` | — | string | Salesforce OAuth2 Consumer Secret |
+| `dry-run` | — | boolean | Simulate without writing to Prolibu |
+
+---
+
+## 6. How to resolve domain + apiKey (required first step in every subcommand)
+
+```js
+const path = require('path');
+const fs = require('fs');
+
+let domain = flags.domain;
+if (!domain) {
+  const inquirer = await import('inquirer');
+  const res = await inquirer.default.prompt({
+    type: 'input', name: 'domain', message: 'Enter Prolibu domain:',
+    validate: input => input ? true : 'Required.'
+  });
+  domain = res.domain;
+}
+
+const profilePath = path.join(process.cwd(), 'accounts', domain, 'profile.json');
+let apiKey = flags.apikey;
+if (!apiKey && fs.existsSync(profilePath)) {
+  try { apiKey = JSON.parse(fs.readFileSync(profilePath, 'utf8')).apiKey; } catch {}
+}
+if (!apiKey) {
+  const inquirer = await import('inquirer');
+  const res = await inquirer.default.prompt({
+    type: 'input', name: 'apiKey', message: `Prolibu API key for "${domain}":`,
+    validate: input => input ? true : 'Required.'
+  });
+  apiKey = res.apiKey;
+  fs.mkdirSync(path.dirname(profilePath), { recursive: true });
+  fs.writeFileSync(profilePath, JSON.stringify({ apiKey }, null, 2));
+}
+```
+
+---
+
+## 7. Prolibu API client
+
+```js
+const ProlibuApi = require('../../lib/vendors/prolibu/ProlibuApi');
+const api = new ProlibuApi({ domain, apiKey });
+
+// CRUD
+await api.create('Contact', data);
+await api.find('Contact', { email: 'foo@bar.com' });
+await api.findOne('Contact', id);
+await api.update('Contact', id, data);
+await api.delete('Contact', id);
+await api.findOneOrCreate('Contact', externalId, { field: 'externalId' }, data);
+```
+
+Use `ProlibuWriter` (in `shared/`) for batch writes — it handles findOneOrCreate and dry-run automatically.
+
+---
+
+## 8. Salesforce API client
+
+```js
+const SalesforceAdapter = require('./SalesforceAdapter');
+const adapter = new SalesforceAdapter({ instanceUrl, clientKey, clientSecret });
+await adapter.authenticate();
+
+// Fetch one page
+const records = await adapter.fetch('Contact', { select: 'Id, Name, Email', limit: 200 });
+
+// Fetch all pages automatically
+const allRecords = await adapter.fetchAll('Contact', { select: 'Id, Name, Email' });
+```
+
+Credentials come from `credentialStore.getCredentials(domain, 'salesforce')` which reads  
+`accounts/<domain>/migrations/salesforce/credentials.json`.
+
+---
+
+## 9. File layout per domain
+
+```
+accounts/<domain>/
+  profile.json                                ← Prolibu apiKey (managed by CLI core)
+  migrations/
+    salesforce/
+      credentials.json                        ← Salesforce credentials (.gitignored)
+      config.json                             ← entities enabled/disabled, filters, batchSize
+      last-run.json                           ← log of last migration run (.gitignored)
+      transformers/
+        contacts.js                           ← optional override of base transformer
+        products.js
+        accounts.js
+```
+
+`credentials.json` and `last-run.json` are excluded from git via the domain `.gitignore`.
+
+---
+
+## 10. Transformer override pattern
+
+Base transformers live in `migrations/salesforce/transformers/<entity>.js`.  
+Per-domain overrides live in `accounts/<domain>/migrations/salesforce/transformers/<entity>.js`.
+
+The engine (`engine.js`) merges them automatically. An override can be:
+
+**Full replacement** (replaces base entirely):
+```js
+module.exports = function transformContact(sfRecord) {
+  return { externalId: sfRecord.Id, nombre: sfRecord.LastName, /* ... */ };
+};
+```
+
+**Decorator** (extends base, only overrides what's needed):
+```js
+module.exports = {
+  extend: true,
+  map: (sfRecord, base) => ({
+    ...base(sfRecord),          // run base transformer first
+    extraField: sfRecord.Custom_Field__c,
+  }),
+};
+```
+
+---
+
+## 11. config.json structure
+
+```json
+{
+  "entities": {
+    "contacts": { "enabled": true, "filter": "WHERE IsActive = true" },
+    "products": { "enabled": true },
+    "accounts": { "enabled": false }
+  },
+  "batchSize": 200
+}
+```
+
+`filter` is appended to the SOQL WHERE clause.  
+`batchSize` controls how many records are fetched per page from Salesforce.
+
+---
+
+## 12. Adding a new CRM (e.g. HubSpot)
+
+1. Create `migrations/hubspot/` with the same structure as `migrations/salesforce/`
+2. Add `else if (crm === 'hubspot')` in `migrations/index.js`
+3. No changes needed anywhere else in the CLI
+
+---
+
+## 13. Shared utilities
+
+| File | Purpose |
+|---|---|
+| `shared/credentialStore.js` | Read/write credentials and config under `accounts/<domain>/migrations/<crm>/` |
+| `shared/migrationLogger.js` | Create, update, save, and print migration run logs |
+| `shared/ProlibuWriter.js` | Batch upsert records to Prolibu with dry-run support |

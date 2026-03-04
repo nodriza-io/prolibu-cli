@@ -17,12 +17,19 @@ function parseFlags(argv) {
       'siteType',
       'port',
       'ext',
-      'message'
+      'message',
+      // migrate flags
+      'entity',
+      'instance-url',
+      'client-key',
+      'client-secret',
     ],
     boolean: [
       'watch',
       'run',
-      'no-git'
+      'no-git',
+      // migrate flags
+      'dry-run',
     ],
     alias: {
       domain: 'd',
@@ -34,7 +41,7 @@ function parseFlags(argv) {
       file: 'f',
       watch: 'w',
       message: 'm',
-      'no-git': 'G'
+      'no-git': 'G',
     },
     default: {}
   });

@@ -5,6 +5,10 @@ const { execSync } = require('child_process');
 const DEFAULT_GITIGNORE = `# Secrets
 profile.json
 
+# Migration credentials and logs (never commit)
+migrations/*/credentials.json
+migrations/*/last-run.json
+
 # Build artifacts
 dist.zip
 node_modules/
