@@ -45,7 +45,7 @@ function parseFlags(argv) {
     },
     default: {}
   });
-  
+
   // Normalize: if --prefix is provided, use it; otherwise fall back to --scriptPrefix or --sitePrefix
   if (parsed.prefix) {
     parsed.scriptPrefix = parsed.prefix;
@@ -55,10 +55,10 @@ function parseFlags(argv) {
   } else if (parsed.sitePrefix) {
     parsed.prefix = parsed.sitePrefix;
   }
-  
+
   // Normalize --no-git to noGit
   parsed.noGit = parsed['no-git'] || false;
-  
+
   return parsed;
 }
 

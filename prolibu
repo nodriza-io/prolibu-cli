@@ -20,7 +20,7 @@ const command = args[1]; // create, dev, prod, import, test
     console.log('  script   Manage Prolibu scripts (lifecycle hooks, integrations)');
     console.log('  site     Manage static sites and SPAs');
     console.log('  vt       Manage virtual tours (bulk upload)');
-    console.log('  plugin   Manage UI plugins (coming soon)');  console.log('  migrate  Migrate data from external CRM to Prolibu');    console.log('');
+    console.log('  plugin   Manage UI plugins (coming soon)'); console.log('  migrate  Migrate data from external CRM to Prolibu'); console.log('');
     console.log('Commands:');
     console.log('  create   Create a new object (interactive or one-liner)');
     console.log('  dev      Run object in development mode');

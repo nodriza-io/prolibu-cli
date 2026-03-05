@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Migration Review</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  background: #f1f5f9;
+  color: #1e293b;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Header ───────────────────────────────────────────────── */
+#header {
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #1e293b;
+}
+#header h1 { font-size: 14px; font-weight: 600; }
+#header .meta { font-size: 11px; color: #64748b; margin-top: 1px; }
+.hdr-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.pill { font-size: 11px; background: #1e293b; color: #94a3b8; padding: 3px 10px; border-radius: 20px; }
+#btn-done {
+  background: #dc2626; color: white; border: none;
+  padding: 5px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;
+}
+#btn-done:hover { background: #b91c1c; }
+
+/* ── Tabs ─────────────────────────────────────────────────── */
+#tabs {
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  padding: 0 16px;
+  flex-shrink: 0;
+}
+.tab-btn {
+  padding: 9px 18px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #64748b;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color .15s;
+}
+.tab-btn.active { color: #3b82f6; border-bottom-color: #3b82f6; font-weight: 500; }
+.tab-btn:hover:not(.active) { color: #334155; }
+
+/* ── App ──────────────────────────────────────────────────── */
+#app { flex: 1; overflow: hidden; display: flex; position: relative; }
+.tab-panel { display: none; flex: 1; overflow: hidden; }
+.tab-panel.active { display: flex; }
+
+/* ── Schema Map ───────────────────────────────────────────── */
+#schema-list {
+  width: 290px;
+  border-right: 1px solid #e2e8f0;
+  background: white;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.list-search { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }
+.list-search input {
+  width: 100%; padding: 6px 10px;
+  border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px;
+  outline: none;
+}
+.list-search input:focus { border-color: #3b82f6; }
+.list-filters { padding: 5px 10px; border-bottom: 1px solid #e2e8f0; display: flex; gap: 4px; flex-wrap: wrap; }
+.fbtn {
+  padding: 2px 9px; border-radius: 10px;
+  border: 1px solid #e2e8f0; background: white; cursor: pointer; font-size: 11px; color: #64748b;
+}
+.fbtn.active { background: #3b82f6; color: white; border-color: #3b82f6; }
+.fbtn:hover:not(.active) { background: #f8fafc; }
+#obj-list { flex: 1; overflow-y: auto; }
+.grp-label {
+  padding: 5px 10px;
+  font-size: 10px; font-weight: 700; color: #94a3b8;
+  text-transform: uppercase; letter-spacing: .06em;
+  background: #f8fafc; border-bottom: 1px solid #f1f5f9; user-select: none;
+}
+.obj-row {
+  padding: 7px 10px;
+  cursor: pointer;
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid #f8fafc;
+}
+.obj-row:hover { background: #f8fafc; }
+.obj-row.sel { background: #eff6ff; border-left: 3px solid #3b82f6; }
+.obj-name { font-weight: 500; font-size: 12px; line-height: 1.3; }
+.obj-sub { font-size: 10px; color: #94a3b8; margin-top: 1px; }
+.badge {
+  font-size: 10px; padding: 1px 6px; border-radius: 8px; white-space: nowrap; flex-shrink: 0;
+}
+.b-mapped   { background: #dcfce7; color: #15803d; }
+.b-custom   { background: #fef9c3; color: #92400e; }
+.b-unmapped { background: #f1f5f9; color: #64748b; }
+
+/* ── Schema Detail ────────────────────────────────────────── */
+#schema-detail {
+  flex: 1; overflow-y: auto; padding: 20px; background: #f8fafc;
+}
+.placeholder { text-align: center; color: #94a3b8; padding: 80px 20px; }
+.placeholder .icon { font-size: 40px; margin-bottom: 14px; }
+.placeholder h3 { font-size: 15px; font-weight: 600; color: #475569; margin-bottom: 6px; }
+
+.det-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+.det-title { font-size: 18px; font-weight: 700; }
+.det-sub { font-size: 12px; color: #64748b; margin-top: 3px; }
+.stats { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.stat {
+  background: white; border: 1px solid #e2e8f0; border-radius: 8px;
+  padding: 8px 14px; text-align: center; min-width: 70px;
+}
+.stat .n { font-size: 18px; font-weight: 700; }
+.stat .l { font-size: 10px; color: #64748b; margin-top: 1px; }
+
+.mapping-banner {
+  background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px;
+  padding: 10px 14px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px;
+}
+.mapping-banner .ent { font-size: 15px; font-weight: 700; color: #1d4ed8; }
+.mapping-banner .note { font-size: 11px; color: #64748b; margin-left: auto; }
+.warn-banner {
+  background: #fefce8; border: 1px solid #fde047; border-radius: 8px;
+  padding: 10px 14px; margin-bottom: 16px; font-size: 12px; color: #713f12;
+}
+.info-banner {
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+  padding: 10px 14px; margin-bottom: 16px; font-size: 12px; color: #475569;
+}
+
+.sec-title {
+  font-size: 11px; font-weight: 700; color: #64748b;
+  text-transform: uppercase; letter-spacing: .06em;
+  margin-bottom: 8px;
+}
+table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; border: 1px solid #e2e8f0; overflow: hidden; }
+th {
+  padding: 7px 10px; text-align: left;
+  font-size: 10px; font-weight: 700; color: #64748b;
+  background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+td { padding: 6px 10px; font-size: 11px; border-bottom: 1px solid #f1f5f9; }
+tr:last-child td { border-bottom: none; }
+code { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 11px; }
+.type-tag {
+  font-family: monospace; font-size: 10px;
+  background: #f1f5f9; padding: 1px 5px; border-radius: 3px; color: #475569;
+}
+.custom-dot { color: #d97706; font-weight: 800; }
+.s-ok   { color: #16a34a; font-size: 11px; }
+.s-warn { color: #d97706; font-size: 11px; }
+.s-none { color: #cbd5e1; font-size: 11px; }
+.add-cfg-btn {
+  background: #3b82f6; color: white; border: none;
+  padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;
+}
+.add-cfg-btn:hover { background: #2563eb; }
+
+/* ── Config Builder ───────────────────────────────────────── */
+#config-panel {
+  flex: 1; overflow-y: auto;
+  padding: 16px 20px;
+  display: flex; gap: 20px;
+}
+#cfg-left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+#cfg-right { width: 360px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
+.cfg-card {
+  background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px;
+}
+.cfg-card-hdr { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.cfg-card-hdr h3 { font-size: 14px; font-weight: 600; flex: 1; }
+.toggle { position: relative; display: inline-block; width: 34px; height: 18px; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+.slider {
+  position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+  background: #cbd5e1; border-radius: 18px; transition: .2s;
+}
+.slider::before {
+  content: ''; position: absolute;
+  height: 14px; width: 14px; left: 2px; bottom: 2px;
+  background: white; border-radius: 50%; transition: .2s;
+}
+.toggle input:checked + .slider { background: #3b82f6; }
+.toggle input:checked + .slider::before { transform: translateX(16px); }
+.fld { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
+.fld label { font-size: 11px; font-weight: 600; color: #64748b; }
+.fld input, .fld textarea, .fld select {
+  width: 100%; padding: 6px 8px;
+  border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; font-family: inherit;
+  outline: none; background: white;
+}
+.fld input:focus, .fld textarea:focus { border-color: #3b82f6; }
+.fld textarea { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 11px; resize: vertical; }
+.soql-preview {
+  font-family: monospace; font-size: 10px;
+  background: #f8fafc; border: 1px solid #e2e8f0; padding: 6px 8px; border-radius: 6px;
+  color: #475569; white-space: pre-wrap; word-break: break-all; line-height: 1.4;
+}
+.right-label { font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .06em; }
+#json-preview, #setup-preview {
+  font-family: 'SFMono-Regular', Consolas, monospace; font-size: 11px;
+  background: #0f172a; color: #e2e8f0; padding: 14px; border-radius: 8px;
+  white-space: pre; overflow: auto; max-height: 340px; line-height: 1.5;
+}
+.btn-row { display: flex; gap: 8px; }
+.btn-p { background: #3b82f6; color: white; border: none; padding: 7px 16px; border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 500; }
+.btn-p:hover { background: #2563eb; }
+.btn-g { background: #16a34a; color: white; border: none; padding: 7px 16px; border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 500; }
+.btn-g:hover { background: #15803d; }
+.btn-s { background: white; color: #374151; border: 1px solid #e2e8f0; padding: 7px 16px; border-radius: 7px; cursor: pointer; font-size: 12px; }
+.btn-s:hover { background: #f8fafc; }
+.batch-row { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: white; border: 1px solid #e2e8f0; border-radius: 10px; }
+.batch-row label { font-size: 12px; color: #475569; flex: 1; }
+.batch-row input { width: 80px; padding: 4px 8px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; }
+
+/* ── Prolibu Schema ───────────────────────────────────────── */
+#prolibu-panel {
+  flex: 1; overflow-y: auto; padding: 16px 20px; background: #f8fafc;
+}
+#prolibu-panel .intro { font-size: 12px; color: #64748b; margin-bottom: 14px; }
+.ent-card { background: white; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 8px; overflow: hidden; }
+.ent-hdr {
+  padding: 10px 14px; cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.ent-hdr:hover { background: #f8fafc; }
+.ent-hdr strong { font-size: 13px; }
+.ent-hdr .cnt { font-size: 11px; color: #94a3b8; margin-left: 8px; }
+.ent-hdr .arrow { font-size: 11px; color: #94a3b8; transition: transform .15s; }
+.ent-hdr.open .arrow { transform: rotate(90deg); }
+.ent-body { display: none; padding: 0 14px 12px; border-top: 1px solid #f1f5f9; }
+.ent-body.open { display: block; }
+.desc-text { font-size: 11px; color: #64748b; padding: 8px 0 8px; }
+
+/* ── Toast ────────────────────────────────────────────────── */
+#toast {
+  position: fixed; bottom: 20px; right: 20px;
+  background: #1e293b; color: white;
+  padding: 9px 16px; border-radius: 8px; font-size: 12px;
+  z-index: 9999; opacity: 0; transition: opacity .25s; pointer-events: none;
+  max-width: 400px;
+}
+#toast.show { opacity: 1; }
+#toast.err { background: #dc2626; }
+
+/* ── Loading ──────────────────────────────────────────────── */
+#loading {
+  position: fixed; inset: 0;
+  background: rgba(248,250,252,.9);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 999; gap: 14px;
+}
+.spinner {
+  width: 32px; height: 32px; border: 3px solid #e2e8f0;
+  border-top-color: #3b82f6; border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <div style="font-size:13px;color:#64748b;">Cargando datos de migración…</div>
+</div>
+
+<div id="header">
+  <div>
+    <h1 id="hdr-title">🔄 Prolibu Migration Review</h1>
+    <div class="meta" id="hdr-meta"></div>
+  </div>
+  <div class="hdr-right">
+    <span class="pill" id="hdr-counts"></span>
+    <button id="btn-done" onclick="doneFn()">✕ Cerrar servidor</button>
+  </div>
+</div>
+
+<div id="tabs">
+  <button class="tab-btn active" onclick="switchTab('schema',this)">📊 Schema Map</button>
+  <button class="tab-btn" onclick="switchTab('config',this)">⚙️ Config Builder</button>
+  <button class="tab-btn" onclick="switchTab('prolibu',this)">🟦 Prolibu Schema</button>
+</div>
+
+<div id="app">
+
+  <!-- ── Tab 1: Schema Map ──────────────────────────────── -->
+  <div id="tab-schema" class="tab-panel active">
+    <div id="schema-list">
+      <div class="list-search">
+        <input id="search-input" placeholder="🔍 Buscar objeto…" oninput="renderObjList()" />
+      </div>
+      <div class="list-filters">
+        <button class="fbtn active" onclick="setFilter('all',this)">Todos</button>
+        <button class="fbtn" onclick="setFilter('mapped',this)">✅ Mapeados</button>
+        <button class="fbtn" onclick="setFilter('custom',this)">🔶 Custom</button>
+        <button class="fbtn" onclick="setFilter('data',this)">Con datos</button>
+      </div>
+      <div id="obj-list"></div>
+    </div>
+    <div id="schema-detail">
+      <div class="placeholder">
+        <div class="icon">🗂️</div>
+        <h3>Selecciona un objeto Salesforce</h3>
+        <div>La comparación de campos SF ↔ Prolibu aparecerá aquí.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Tab 2: Config Builder ─────────────────────────── -->
+  <div id="tab-config" class="tab-panel">
+    <div id="config-panel">
+      <div id="cfg-left">
+        <!-- cards rendered by JS -->
+      </div>
+      <div id="cfg-right">
+        <div class="right-label">config.json</div>
+        <pre id="json-preview">{}</pre>
+        <div class="btn-row">
+          <button class="btn-p" onclick="saveConfig()">💾 Guardar config.json</button>
+        </div>
+        <div class="right-label" style="margin-top:8px;">prolibu_setup.json</div>
+        <pre id="setup-preview">{}</pre>
+        <div class="btn-row">
+          <button class="btn-g" onclick="saveSetup()">💾 Guardar prolibu_setup.json</button>
+        </div>
+        <div style="font-size:11px;color:#94a3b8;line-height:1.5;padding:4px 2px;">
+          <strong>config.json</strong> — define qué entidades migrar y qué campos incluir.<br>
+          <strong>prolibu_setup.json</strong> — lista objetos y campos que debes crear en Prolibu antes de migrar.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Tab 3: Prolibu Schema ─────────────────────────── -->
+  <div id="tab-prolibu" class="tab-panel">
+    <div id="prolibu-panel">
+      <div class="placeholder">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  State
+// ═══════════════════════════════════════════════════════════
+let S = null;           // full /api/state payload
+let activeFilter = 'all';
+let selectedObj = null;
+let cfg = {};           // live config being built
+let setup = {};         // live prolibu_setup being built
+
+// ═══════════════════════════════════════════════════════════
+//  Bootstrap
+// ═══════════════════════════════════════════════════════════
+async function init() {
+  try {
+    const r = await fetch('/api/state');
+    S = await r.json();
+  } catch (e) {
+    document.getElementById('loading').innerHTML =
+      `<div style="color:#dc2626;font-size:14px;">❌ No se pudo cargar el estado: ${e.message}</div>`;
+    return;
+  }
+
+  // Header
+  document.title = `Review — ${S.domain}`;
+  document.getElementById('hdr-title').textContent = `🔄 Migration Review — ${S.domain}`;
+  const disc = S.discovery;
+  const total = Object.keys(disc.objects).length;
+  const custom = Object.values(disc.objects).filter(o => o.type === 'custom').length;
+  document.getElementById('hdr-meta').textContent =
+    `Descubierto el ${new Date(disc.discoveredAt).toLocaleString()} · ${total} SObjects (${custom} custom)`;
+  document.getElementById('hdr-counts').textContent =
+    disc.withCount ? 'Con conteos' : 'Sin conteos (re-run --count)';
+
+  // Init cfg from existing config
+  cfg = JSON.parse(JSON.stringify(
+    Object.assign({ entities: {}, customObjects: {}, batchSize: 200 }, S.config || {})
+  ));
+  if (!cfg.entities) cfg.entities = {};
+  if (!cfg.customObjects) cfg.customObjects = {};
+
+  renderObjList();
+  renderConfigTab();
+  renderProlibuTab();
+
+  document.getElementById('loading').style.display = 'none';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Helpers
+// ═══════════════════════════════════════════════════════════
+const sfMap = () => S.sfToProlibu || {};
+
+function prolibuSchemas() {
+  return S.prolibuSpec?.components?.schemas || {};
+}
+
+function prolibuEntitySchema(entityName) {
+  if (!entityName) return null;
+  const sc = prolibuSchemas();
+  const low = entityName.toLowerCase();
+  return sc[entityName]
+    || sc[entityName.charAt(0).toUpperCase() + entityName.slice(1)]
+    || Object.entries(sc).find(([k]) => k.toLowerCase() === low)?.[1]
+    || null;
+}
+
+/** Try to find a Prolibu field that matches an SF field name */
+function matchField(sfName, prolibuProps) {
+  if (!prolibuProps) return null;
+  const clean = sfName.toLowerCase().replace(/__c$/, '').replace(/_/g, '');
+  return Object.keys(prolibuProps).find(k => {
+    const kc = k.toLowerCase().replace(/_/g, '');
+    return kc === clean || kc.includes(clean) || clean.includes(kc);
+  }) || null;
+}
+
+/** Map SF field type to a Prolibu-friendly type string */
+function mapType(sfType) {
+  const m = {
+    string: 'text', textarea: 'textarea', double: 'number', integer: 'integer',
+    currency: 'currency', boolean: 'boolean', date: 'date', datetime: 'datetime',
+    id: 'id', reference: 'relation', picklist: 'select', multipicklist: 'multiselect',
+    email: 'email', phone: 'phone', url: 'url',
+  };
+  return m[sfType] || 'text';
+}
+
+function showToast(msg, isErr = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isErr ? ' err' : '');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Tab switching
+// ═══════════════════════════════════════════════════════════
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'config') updatePreviews();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Schema Map — Object list
+// ═══════════════════════════════════════════════════════════
+function setFilter(f, btn) {
+  activeFilter = f;
+  document.querySelectorAll('.fbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderObjList();
+}
+
+function renderObjList() {
+  const q = (document.getElementById('search-input').value || '').toLowerCase();
+  const disc = S.discovery;
+  const map = sfMap();
+  const withCount = disc.withCount;
+
+  let entries = Object.entries(disc.objects).filter(([, o]) => !o.error);
+  if (q) entries = entries.filter(([n, o]) =>
+    n.toLowerCase().includes(q) || (o.label || '').toLowerCase().includes(q));
+  if (activeFilter === 'mapped')  entries = entries.filter(([n]) => map[n]);
+  if (activeFilter === 'custom')  entries = entries.filter(([n]) => n.endsWith('__c'));
+  if (activeFilter === 'data')    entries = entries.filter(([, o]) => (o.records ?? 1) > 0);
+
+  const isC = n => n.endsWith('__c');
+  const mapped   = entries.filter(([n]) => !isC(n) && map[n])
+                          .sort(([, a], [, b]) => (b.records || 0) - (a.records || 0));
+  const custom   = entries.filter(([n]) => isC(n))
+                          .sort(([, a], [, b]) => (b.records || 0) - (a.records || 0));
+  const unmapped = entries.filter(([n]) => !isC(n) && !map[n])
+                          .sort(([a], [b]) => a.localeCompare(b));
+
+  let html = '';
+  const group = (label, items) => {
+    if (!items.length) return;
+    html += `<div class="grp-label">${label} (${items.length})</div>`;
+    for (const [name, obj] of items) {
+      const m   = map[name];
+      const cls = m ? 'b-mapped' : isC(name) ? 'b-custom' : 'b-unmapped';
+      const lbl = m ? `→ ${m.prolibu}` : isC(name) ? 'custom' : 'sin mapeo';
+      const sub = withCount
+        ? `${(obj.records || 0).toLocaleString()} registros`
+        : `${obj.fields || 0} campos`;
+      const sel = selectedObj === name ? ' sel' : '';
+      html += `<div class="obj-row${sel}" onclick="selectObj('${name}')">
+        <div>
+          <div class="obj-name">${name}</div>
+          <div class="obj-sub">${sub}</div>
+        </div>
+        <span class="badge ${cls}">${lbl}</span>
+      </div>`;
+    }
+  };
+
+  group('✅ Mapeados a Prolibu', mapped);
+  group('🔶 Custom Objects', custom);
+  group('⚪ Sin mapeo por defecto', unmapped);
+
+  if (!html) html = '<div style="padding:20px;color:#94a3b8;text-align:center;">Sin resultados</div>';
+  document.getElementById('obj-list').innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Schema Map — Object detail
+// ═══════════════════════════════════════════════════════════
+function selectObj(name) {
+  selectedObj = name;
+  renderObjList();
+  renderObjDetail(name);
+}
+
+function renderObjDetail(name) {
+  const obj = S.discovery.objects[name];
+  const map = sfMap();
+  const m   = map[name];
+  const withCount = S.discovery.withCount;
+  const fields = obj.fieldDetails || [];
+  const isC = name.endsWith('__c');
+
+  let prolibuProps = null;
+  if (m) {
+    const sc = prolibuEntitySchema(m.prolibu);
+    prolibuProps = sc?.properties || null;
+  }
+
+  let h = `<div class="det-header">
+    <div>
+      <div class="det-title">${name}</div>
+      <div class="det-sub">${obj.label || ''} · ${isC ? 'Custom Object' : 'Standard Object'} · ${fields.length} campos</div>
+    </div>
+    <button class="add-cfg-btn" onclick="addToConfig('${name}')">+ Agregar al Config</button>
+  </div>`;
+
+  // Stats row
+  const customFields = fields.filter(f => f.custom).length;
+  h += `<div class="stats">
+    <div class="stat"><div class="n">${fields.length}</div><div class="l">Campos totales</div></div>
+    <div class="stat"><div class="n">${customFields}</div><div class="l">Custom fields</div></div>
+    ${withCount ? `<div class="stat"><div class="n">${(obj.records || 0).toLocaleString()}</div><div class="l">Registros</div></div>` : ''}
+    ${prolibuProps ? `<div class="stat"><div class="n">${Object.keys(prolibuProps).length}</div><div class="l">Campos Prolibu</div></div>` : ''}
+  </div>`;
+
+  // Mapping banner
+  if (m) {
+    h += `<div class="mapping-banner">
+      <span style="font-size:20px">🔄</span>
+      <div>
+        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;">Mapeado a entidad Prolibu</div>
+        <div class="ent">${m.prolibu}</div>
+      </div>
+      ${prolibuProps ? '' : '<span style="font-size:11px;color:#d97706;">⚠️ Schema Prolibu no disponible</span>'}
+      <div class="note">${m.notes || ''}</div>
+    </div>`;
+  } else if (isC) {
+    h += `<div class="warn-banner">
+      🔶 <strong>Custom Object</strong> — Sin mapeo predefinido.
+      Usa el <strong>Config Builder</strong> para asignarlo a una entidad Prolibu o crear una nueva.
+    </div>`;
+  } else {
+    h += `<div class="info-banner">
+      ⚪ <strong>Sin mapeo por defecto</strong> — Este objeto estándar no tiene equivalente predefinido en Prolibu.
+    </div>`;
+  }
+
+  // Fields table
+  const showComparison = !!prolibuProps;
+  h += `<div class="sec-title">${showComparison ? 'Comparación de campos SF ↔ Prolibu' : 'Campos Salesforce'}</div>
+  <table>
+    <thead><tr>
+      <th>SF field</th><th>Tipo SF</th><th>Custom</th>
+      ${showComparison ? '<th>Field Prolibu</th><th>Estado</th>' : ''}
+    </tr></thead>
+    <tbody>`;
+
+  const sorted = [...fields].sort((a, b) => {
+    if (a.custom !== b.custom) return a.custom ? 1 : -1;
+    return a.name.localeCompare(b.name);
+  });
+
+  for (const f of sorted) {
+    let pf = '', status = '';
+    if (showComparison) {
+      const match = matchField(f.name, prolibuProps);
+      if (match) {
+        const def = prolibuProps[match];
+        pf = `<code>${match}</code> <span class="type-tag">${def?.type || '?'}</span>`;
+        status = '<span class="s-ok">✅ Match</span>';
+      } else if (f.custom) {
+        pf = '<span style="color:#94a3b8">—</span>';
+        status = '<span class="s-warn">⚠️ Crear custom field</span>';
+      } else {
+        pf = '<span style="color:#cbd5e1">—</span>';
+        status = '<span class="s-none">· Omitido</span>';
+      }
+    }
+    const labelRow = (f.label && f.label !== f.name)
+      ? `<br><span style="color:#94a3b8;font-size:10px;">${f.label}</span>` : '';
+    h += `<tr>
+      <td><code>${f.name}</code>${labelRow}</td>
+      <td><span class="type-tag">${f.type}</span></td>
+      <td>${f.custom ? '<span class="custom-dot">●</span>' : ''}</td>
+      ${showComparison ? `<td>${pf}</td><td>${status}</td>` : ''}
+    </tr>`;
+  }
+
+  h += '</tbody></table>';
+
+  // Relationships
+  if ((obj.relationships || []).length) {
+    h += `<div class="sec-title" style="margin-top:16px;">Relaciones (${obj.relationships.length})</div>
+    <table>
+      <thead><tr><th>Campo</th><th>Referencia a</th><th>Tipo</th></tr></thead>
+      <tbody>`;
+    for (const rel of obj.relationships) {
+      h += `<tr>
+        <td><code>${rel.name}</code></td>
+        <td>${rel.referenceTo}</td>
+        <td><span class="type-tag">${rel.type}</span></td>
+      </tr>`;
+    }
+    h += '</tbody></table>';
+  }
+
+  document.getElementById('schema-detail').innerHTML = h;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Config Builder
+// ═══════════════════════════════════════════════════════════
+function addToConfig(sfObjectName) {
+  const map = sfMap();
+  const m   = map[sfObjectName];
+  const isC = sfObjectName.endsWith('__c');
+  const obj = S.discovery.objects[sfObjectName];
+  const flds = (obj.fieldDetails || []).map(f => f.name);
+
+  if (m) {
+    const key = m.prolibu;
+    if (!cfg.entities[key]) {
+      const top = flds.filter(f => !f.endsWith('__c')).slice(0, 14);
+      cfg.entities[key] = { enabled: true, sobject: sfObjectName, select: top.join(', ') };
+    } else {
+      cfg.entities[key].enabled = true;
+    }
+  } else if (isC) {
+    if (!cfg.customObjects[sfObjectName]) {
+      const top = flds
+        .filter(f => !['IsDeleted', 'SystemModstamp', 'LastModifiedById', 'CreatedById'].includes(f))
+        .slice(0, 12);
+      const key = sfObjectName.toLowerCase().replace('__c', '');
+      cfg.customObjects[sfObjectName] = { enabled: true, prolibuEntity: key, select: top.join(', ') };
+    } else {
+      cfg.customObjects[sfObjectName].enabled = true;
+    }
+  }
+
+  // Switch to Config Builder tab
+  const btn = document.querySelectorAll('.tab-btn')[1];
+  switchTab('config', btn);
+  renderConfigTab();
+  showToast(`${sfObjectName} agregado al Config Builder`);
+}
+
+function renderConfigTab() {
+  const map = sfMap();
+  const objs = S.discovery.objects;
+  const withCount = S.discovery.withCount;
+  let h = '';
+
+  // ── Standard entities ──
+  h += `<div class="bat-section">`;
+  const mapped = Object.keys(map).filter(n => objs[n] && !objs[n].error);
+  for (const sfName of mapped) {
+    const m   = map[sfName];
+    const key = m.prolibu;
+    const ec  = cfg.entities[key] || {};
+    const enabled = ec.enabled === true;
+    const select  = ec.select  || '';
+    const filter  = ec.filter  || '';
+    const rec     = withCount ? ` · ${(objs[sfName]?.records || 0).toLocaleString()} reg` : '';
+
+    h += `<div class="cfg-card" id="ecard-${key}">
+      <div class="cfg-card-hdr">
+        <label class="toggle">
+          <input type="checkbox" ${enabled ? 'checked' : ''}
+            onchange="toggleEnt('${key}','${sfName}',this.checked)">
+          <span class="slider"></span>
+        </label>
+        <h3>${key} <span style="font-weight:400;color:#94a3b8;font-size:11px;">← ${sfName}${rec}</span></h3>
+      </div>
+      <div class="fld">
+        <label>Campos para SELECT (separados por coma)</label>
+        <textarea rows="3" id="sel-${key}"
+          onchange="updEnt('${key}','${sfName}','select',this.value)"
+          placeholder="Id, Name, Email, …">${select}</textarea>
+      </div>
+      <div class="fld">
+        <label>Filtro SOQL adicional (clausula WHERE, sin 'WHERE')</label>
+        <input type="text" id="flt-${key}" value="${filter}"
+          onchange="updEnt('${key}','${sfName}','filter',this.value)"
+          placeholder="IsActive = true" />
+      </div>
+      <div class="fld">
+        <label>Vista previa SOQL</label>
+        <div class="soql-preview" id="soql-${key}">SELECT ${select || '*'} FROM ${sfName}${filter ? ' WHERE ' + filter : ''}</div>
+      </div>
+    </div>`;
+  }
+
+  // ── Custom objects ──
+  const allCustom = Object.entries(objs).filter(([n, o]) => n.endsWith('__c') && !o.error);
+  if (allCustom.length) {
+    h += `<div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;margin-top:4px;">
+      🔶 Objetos Custom de Salesforce
+    </div>`;
+    for (const [sfName, obj] of allCustom) {
+      const cc  = cfg.customObjects[sfName] || {};
+      const enabled = cc.enabled === true;
+      const select  = cc.select       || '';
+      const pEnt    = cc.prolibuEntity || sfName.toLowerCase().replace('__c', '');
+      const rec     = withCount ? ` · ${(obj.records || 0).toLocaleString()} reg` : '';
+
+      h += `<div class="cfg-card">
+        <div class="cfg-card-hdr">
+          <label class="toggle">
+            <input type="checkbox" ${enabled ? 'checked' : ''}
+              onchange="toggleCustom('${sfName}',this.checked)">
+            <span class="slider"></span>
+          </label>
+          <h3>🔶 ${sfName}<span style="font-weight:400;color:#94a3b8;font-size:11px;">${rec}</span></h3>
+        </div>
+        <div class="fld">
+          <label>Entidad en Prolibu (existente o nueva)</label>
+          <input type="text" value="${pEnt}"
+            onchange="updCustom('${sfName}','prolibuEntity',this.value)"
+            placeholder="nombre_en_prolibu" />
+        </div>
+        <div class="fld">
+          <label>Campos para SELECT</label>
+          <textarea rows="2"
+            onchange="updCustom('${sfName}','select',this.value)"
+            placeholder="Id, Name, …">${select}</textarea>
+        </div>
+      </div>`;
+    }
+  }
+
+  h += `</div>`;
+  document.getElementById('cfg-left').innerHTML = h;
+
+  // batchSize row injected once at the bottom
+  const batchRow = document.createElement('div');
+  batchRow.className = 'batch-row';
+  batchRow.innerHTML = `<label>Tamaño de lote (batchSize)</label>
+    <input type="number" min="1" max="2000" value="${cfg.batchSize || 200}"
+      onchange="cfg.batchSize=Number(this.value);updatePreviews();" />`;
+  document.getElementById('cfg-left').appendChild(batchRow);
+
+  updatePreviews();
+}
+
+function toggleEnt(key, sfName, enabled) {
+  if (!cfg.entities[key]) {
+    const obj = S.discovery.objects[sfName] || {};
+    const flds = (obj.fieldDetails || []).filter(f => !f.custom).map(f => f.name).slice(0, 14);
+    cfg.entities[key] = { enabled, sobject: sfName, select: flds.join(', ') };
+  } else {
+    cfg.entities[key].enabled = enabled;
+  }
+  updatePreviews();
+}
+
+function toggleCustom(sfName, enabled) {
+  if (!cfg.customObjects[sfName]) {
+    cfg.customObjects[sfName] = {
+      enabled,
+      prolibuEntity: sfName.toLowerCase().replace('__c', ''),
+      select: '',
+    };
+  } else {
+    cfg.customObjects[sfName].enabled = enabled;
+  }
+  updatePreviews();
+}
+
+function updEnt(key, sfName, field, value) {
+  if (!cfg.entities[key]) cfg.entities[key] = { sobject: sfName };
+  cfg.entities[key][field] = value;
+  const soqlEl = document.getElementById(`soql-${key}`);
+  if (soqlEl) {
+    const s = cfg.entities[key].select || '*';
+    const w = cfg.entities[key].filter;
+    soqlEl.textContent = `SELECT ${s} FROM ${sfName}${w ? ' WHERE ' + w : ''}`;
+  }
+  updatePreviews();
+}
+
+function updCustom(sfName, field, value) {
+  if (!cfg.customObjects[sfName]) cfg.customObjects[sfName] = {};
+  cfg.customObjects[sfName][field] = value;
+  updatePreviews();
+}
+
+function updatePreviews() {
+  buildSetup();
+  document.getElementById('json-preview').textContent  = JSON.stringify(cfg,   null, 2);
+  document.getElementById('setup-preview').textContent = JSON.stringify(setup, null, 2);
+}
+
+function buildSetup() {
+  setup = { customObjects: [], customFields: [] };
+  const map  = sfMap();
+  const objs = S.discovery.objects;
+
+  // Custom objects that need to be created in Prolibu
+  for (const [sfName, cc] of Object.entries(cfg.customObjects || {})) {
+    if (!cc.enabled) continue;
+    setup.customObjects.push({
+      prolibuEntity: cc.prolibuEntity,
+      label:         cc.prolibuEntity,
+      sourceSObject: sfName,
+      action:        'create',
+    });
+  }
+
+  // Custom fields inside standard mapped entities that don't exist in Prolibu yet
+  for (const [key, ec] of Object.entries(cfg.entities || {})) {
+    if (!ec.enabled || !ec.sobject) continue;
+    const sfName = ec.sobject;
+    const obj    = objs[sfName];
+    if (!obj) continue;
+    const m = map[sfName];
+    if (!m) continue;
+    const schema = prolibuEntitySchema(m.prolibu);
+    const props  = schema?.properties || null;
+
+    const selected = (ec.select || '').split(',').map(s => s.trim()).filter(Boolean);
+    for (const fn of selected) {
+      const fd = (obj.fieldDetails || []).find(f => f.name === fn);
+      if (!fd || !fd.custom) continue;
+      if (props && matchField(fn, props)) continue; // already exists
+      setup.customFields.push({
+        prolibuEntity: m.prolibu,
+        apiName:       fn.toLowerCase(),
+        label:         fd.label || fn,
+        type:          mapType(fd.type),
+        sourceSField:  fn,
+      });
+    }
+  }
+}
+
+async function saveConfig() {
+  try {
+    const r = await fetch('/api/save-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cfg),
+    });
+    const d = await r.json();
+    if (d.ok) showToast(`✅ config.json guardado → ${d.path}`);
+    else showToast(`❌ ${d.error}`, true);
+  } catch (e) { showToast(`❌ ${e.message}`, true); }
+}
+
+async function saveSetup() {
+  buildSetup();
+  try {
+    const r = await fetch('/api/save-setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(setup),
+    });
+    const d = await r.json();
+    if (d.ok) showToast(`✅ prolibu_setup.json guardado → ${d.path}`);
+    else showToast(`❌ ${d.error}`, true);
+  } catch (e) { showToast(`❌ ${e.message}`, true); }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Prolibu Schema tab
+// ═══════════════════════════════════════════════════════════
+function renderProlibuTab() {
+  const panel   = document.getElementById('prolibu-panel');
+  const schemas = prolibuSchemas();
+  const keys    = Object.keys(schemas).sort();
+
+  if (!keys.length) {
+    panel.innerHTML = `<div class="placeholder">
+      <div class="icon">🟦</div>
+      <h3>Schema de Prolibu no disponible</h3>
+      <div>Verifica que el API key sea válido y que <code>/v2/openapi/specification</code> esté accesible.</div>
+    </div>`;
+    return;
+  }
+
+  let h = `<div class="intro">${keys.length} entidades en Prolibu — haz clic para expandir</div>`;
+  for (const name of keys) {
+    const sc    = schemas[name];
+    const props = sc?.properties || {};
+    const req   = sc?.required   || [];
+    const pKeys = Object.keys(props);
+
+    h += `<div class="ent-card">
+      <div class="ent-hdr" id="ehdr-${name}" onclick="toggleEnt2('${name}')">
+        <div><strong>${name}</strong><span class="cnt">${pKeys.length} campos</span></div>
+        <span class="arrow" id="earr-${name}">▶</span>
+      </div>
+      <div class="ent-body" id="ebody-${name}">
+        ${sc?.description ? `<div class="desc-text">${sc.description}</div>` : ''}
+        <table style="margin-top:8px;">
+          <thead><tr><th>Campo</th><th>Tipo</th><th>Req</th><th>Descripción</th></tr></thead>
+          <tbody>
+            ${pKeys.map(pn => {
+              const pf  = props[pn];
+              const typ = pf.type || (pf.$ref ? pf.$ref.split('/').pop() : '—') || '—';
+              const r   = req.includes(pn) ? '<span style="color:#dc2626;">●</span>' : '';
+              const dsc = pf.description || pf.example || '';
+              return `<tr>
+                <td><code>${pn}</code></td>
+                <td><span class="type-tag">${typ}</span></td>
+                <td>${r}</td>
+                <td style="color:#64748b;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${dsc}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+  panel.innerHTML = h;
+}
+
+function toggleEnt2(name) {
+  const body  = document.getElementById(`ebody-${name}`);
+  const hdr   = document.getElementById(`ehdr-${name}`);
+  const arrow = document.getElementById(`earr-${name}`);
+  body.classList.toggle('open');
+  hdr.classList.toggle('open');
+  arrow.textContent = body.classList.contains('open') ? '▼' : '▶';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  Done
+// ═══════════════════════════════════════════════════════════
+async function doneFn() {
+  if (!confirm('¿Cerrar el servidor de review y volver al terminal?')) return;
+  try { await fetch('/api/done', { method: 'POST' }); } catch {}
+  document.body.innerHTML = `<div style="
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    height:100vh;gap:16px;font-family:system-ui;color:#64748b;background:#f8fafc;">
+    <div style="font-size:36px;">✅</div>
+    <div style="font-size:15px;font-weight:600;color:#1e293b;">Servidor cerrado</div>
+    <div style="font-size:13px;">Puedes cerrar esta pestaña.</div>
+  </div>`;
+}
+
+// ── Start ──
+init();
+</script>
+</body>
+</html>

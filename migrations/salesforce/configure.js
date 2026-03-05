@@ -25,16 +25,18 @@ module.exports = async function configureSalesforce(flags) {
     });
     domain = res.domain;
   }
+  if (!domain.includes('.')) domain = `${domain}.prolibu.com`;
 
   // 2. Resolve Prolibu apiKey
   const profilePath = path.join(process.cwd(), 'accounts', domain, 'profile.json');
   let apiKey = flags.apikey;
+  let profileNeedsSave = false;
 
   if (!apiKey && fs.existsSync(profilePath)) {
     try {
       const profile = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
       apiKey = profile.apiKey;
-    } catch {}
+    } catch { }
   }
   if (!apiKey) {
     const res = await inquirer.default.prompt({
@@ -44,6 +46,10 @@ module.exports = async function configureSalesforce(flags) {
       validate: input => input ? true : 'API key is required.',
     });
     apiKey = res.apiKey;
+    profileNeedsSave = true;
+  }
+  // Persist profile if not already saved (covers --apikey flag path too)
+  if (!fs.existsSync(profilePath) || profileNeedsSave) {
     fs.mkdirSync(path.dirname(profilePath), { recursive: true });
     fs.writeFileSync(profilePath, JSON.stringify({ apiKey }, null, 2));
   }
@@ -88,7 +94,12 @@ module.exports = async function configureSalesforce(flags) {
   const transformersDir = credentialStore.ensureTransformersDir(domain, 'salesforce');
   console.log(`📁 Transformers override folder ready: ${transformersDir}`);
 
+  // 6. Ensure pipelines directory exists
+  const pipelinesDir = credentialStore.ensurePipelinesDir(domain, 'salesforce');
+  console.log(`📁 Pipelines folder ready: ${pipelinesDir}`);
+
   console.log('');
   console.log(`🚀 Ready to migrate. Run:`);
+  console.log(`   prolibu migrate salesforce run --domain ${domain} --phase discover`);
   console.log(`   prolibu migrate salesforce run --domain ${domain} --entity all --dry-run`);
 };

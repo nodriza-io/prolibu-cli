@@ -28,6 +28,22 @@ function getTransformersPath(domain, crm) {
 }
 
 /**
+ * Get path to domain pipelines folder
+ * accounts/<domain>/migrations/<crm>/pipelines/
+ */
+function getPipelinesPath(domain, crm) {
+  return path.join(ACCOUNTS_DIR, domain, 'migrations', crm, 'pipelines');
+}
+
+/**
+ * Get path to discovery artifact
+ * accounts/<domain>/migrations/<crm>/discovery.json
+ */
+function getDiscoveryPath(domain, crm) {
+  return path.join(ACCOUNTS_DIR, domain, 'migrations', crm, 'discovery.json');
+}
+
+/**
  * Read CRM credentials for a domain
  * @returns {object|null}
  */
@@ -105,10 +121,63 @@ function loadTransformerOverride(domain, crm, entity) {
   return require(filePath);
 }
 
+/**
+ * Ensure the pipelines directory exists
+ */
+function ensurePipelinesDir(domain, crm) {
+  const dir = getPipelinesPath(domain, crm);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/**
+ * Check if a pipeline override exists for a domain/entity
+ */
+function hasPipelineOverride(domain, crm, entity) {
+  const filePath = path.join(getPipelinesPath(domain, crm), `${entity}.js`);
+  return fs.existsSync(filePath);
+}
+
+/**
+ * Load pipeline for a domain/entity (returns null if none).
+ * Cache-busted so edits take effect without restarting.
+ */
+function loadPipeline(domain, crm, entity) {
+  const filePath = path.join(getPipelinesPath(domain, crm), `${entity}.js`);
+  if (!fs.existsSync(filePath)) return null;
+  delete require.cache[require.resolve(filePath)];
+  return require(filePath);
+}
+
+/**
+ * Save discovery.json for a domain
+ */
+function saveDiscovery(domain, crm, data) {
+  const filePath = getDiscoveryPath(domain, crm);
+  const dir = path.dirname(filePath);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+}
+
+/**
+ * Load discovery.json for a domain (returns null if not found)
+ */
+function loadDiscovery(domain, crm) {
+  const filePath = getDiscoveryPath(domain, crm);
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 module.exports = {
   getCredentialsPath,
   getConfigPath,
   getTransformersPath,
+  getPipelinesPath,
+  getDiscoveryPath,
   getCredentials,
   saveCredentials,
   getConfig,
@@ -116,4 +185,9 @@ module.exports = {
   ensureTransformersDir,
   hasTransformerOverride,
   loadTransformerOverride,
+  ensurePipelinesDir,
+  hasPipelineOverride,
+  loadPipeline,
+  saveDiscovery,
+  loadDiscovery,
 };

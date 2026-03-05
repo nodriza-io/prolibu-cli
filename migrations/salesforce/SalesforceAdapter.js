@@ -1,4 +1,4 @@
-const SalesforceApi = require('../../../lib/vendors/salesforce/SalesforceApi');
+const SalesforceApi = require('../../lib/vendors/salesforce/SalesforceApi');
 
 /**
  * Thin wrapper around SalesforceApi scoped to CLI usage (local mode, credentials from file).
@@ -63,6 +63,37 @@ class SalesforceAdapter {
     }
 
     return allRecords;
+  }
+
+  /**
+   * List all available SObjects in the org (global describe).
+   * Calls GET /services/data/v<ver>/sobjects
+   *
+   * @returns {Promise<object[]>} Array of sobject descriptor stubs
+   */
+  async describeGlobal() {
+    if (!this.api.authenticated) await this.api.authenticate();
+    const response = await this.api.axios.get(
+      `/services/data/v${this.api.apiVersion}/sobjects`,
+      { headers: { Authorization: `Bearer ${this.api.accessToken}` } }
+    );
+    return response.data?.sobjects || [];
+  }
+
+  /**
+   * Describe a single SObject in full (fields, relationships, etc).
+   * Calls GET /services/data/v<ver>/sobjects/<name>/describe
+   *
+   * @param {string} sobjectName - e.g. 'Contact', 'ClienteVIP__c'
+   * @returns {Promise<object>} Full describe result
+   */
+  async describeSObject(sobjectName) {
+    if (!this.api.authenticated) await this.api.authenticate();
+    const response = await this.api.axios.get(
+      `/services/data/v${this.api.apiVersion}/sobjects/${sobjectName}/describe`,
+      { headers: { Authorization: `Bearer ${this.api.accessToken}` } }
+    );
+    return response.data;
   }
 }
 

@@ -16,6 +16,7 @@ module.exports = async function statusSalesforce(flags) {
     });
     domain = res.domain;
   }
+  if (!domain.includes('.')) domain = `${domain}.prolibu.com`;
 
   // 2. Credentials check
   const credentials = credentialStore.getCredentials(domain, 'salesforce');

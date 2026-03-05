@@ -37,12 +37,12 @@ function initGitRepo(domainPath, remoteUrl = null) {
   try {
     // Initialize git
     execSync('git init', { cwd: domainPath, stdio: 'pipe' });
-    
+
     // Add remote if provided
     if (remoteUrl) {
       execSync(`git remote add origin ${remoteUrl}`, { cwd: domainPath, stdio: 'pipe' });
     }
-    
+
     return true;
   } catch (err) {
     console.error(`❌ Failed to initialize git: ${err.message}`);
@@ -56,12 +56,12 @@ function initGitRepo(domainPath, remoteUrl = null) {
  */
 function createGitignore(domainPath) {
   const gitignorePath = path.join(domainPath, '.gitignore');
-  
+
   // Don't overwrite if exists
   if (fs.existsSync(gitignorePath)) {
     return false;
   }
-  
+
   fs.writeFileSync(gitignorePath, DEFAULT_GITIGNORE);
   return true;
 }
@@ -79,15 +79,15 @@ async function ensureDomainGit(domainPath, domain, skipGit = false, providedRemo
   if (skipGit) {
     return false;
   }
-  
+
   // Already has git, nothing to do
   if (hasGitRepo(domainPath)) {
     return true;
   }
-  
+
   const inquirer = await import('inquirer');
   const chalk = (await import('chalk')).default;
-  
+
   // If remote URL was already provided, skip prompts and just init
   if (providedRemoteUrl) {
     const success = initGitRepo(domainPath, providedRemoteUrl);
@@ -100,44 +100,44 @@ async function ensureDomainGit(domainPath, domain, skipGit = false, providedRemo
     }
     return success;
   }
-  
+
   console.log('');
   console.log(chalk.yellow(`⚠️  No git repository found for domain '${domain}'`));
-  
+
   const { initGit } = await inquirer.default.prompt({
     type: 'confirm',
     name: 'initGit',
     message: 'Initialize git repository for this domain?',
     default: true
   });
-  
+
   if (!initGit) {
     return false;
   }
-  
+
   const { remoteUrl } = await inquirer.default.prompt({
     type: 'input',
     name: 'remoteUrl',
     message: 'Remote repository URL (leave empty to skip):',
     default: ''
   });
-  
+
   // Initialize git
   const success = initGitRepo(domainPath, remoteUrl || null);
-  
+
   if (success) {
     console.log(chalk.green(`✓ Git initialized in accounts/${domain}/`));
-    
+
     if (remoteUrl) {
       console.log(chalk.green(`✓ Remote 'origin' added`));
     }
-    
+
     // Create .gitignore
     if (createGitignore(domainPath)) {
       console.log(chalk.green(`✓ .gitignore created`));
     }
   }
-  
+
   return success;
 }
 

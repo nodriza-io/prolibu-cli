@@ -3,8 +3,6 @@ const fs = require('fs');
 const engine = require('./engine');
 const credentialStore = require('../shared/credentialStore');
 
-const ALL_ENTITIES = ['contacts', 'products', 'accounts'];
-
 module.exports = async function runSalesforceMigration(flags) {
   const inquirer = await import('inquirer');
 
@@ -19,16 +17,18 @@ module.exports = async function runSalesforceMigration(flags) {
     });
     domain = res.domain;
   }
+  if (!domain.includes('.')) domain = `${domain}.prolibu.com`;
 
   // 2. Resolve Prolibu apiKey
   const profilePath = path.join(process.cwd(), 'accounts', domain, 'profile.json');
   let apiKey = flags.apikey;
+  let profileNeedsSave = false;
 
   if (!apiKey && fs.existsSync(profilePath)) {
     try {
       const profile = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
       apiKey = profile.apiKey;
-    } catch {}
+    } catch { }
   }
   if (!apiKey) {
     const res = await inquirer.default.prompt({
@@ -38,6 +38,10 @@ module.exports = async function runSalesforceMigration(flags) {
       validate: input => input ? true : 'API key is required.',
     });
     apiKey = res.apiKey;
+    profileNeedsSave = true;
+  }
+  // Persist profile if not already saved (covers --apikey flag path too)
+  if (!fs.existsSync(profilePath) || profileNeedsSave) {
     fs.mkdirSync(path.dirname(profilePath), { recursive: true });
     fs.writeFileSync(profilePath, JSON.stringify({ apiKey }, null, 2));
   }
@@ -50,32 +54,56 @@ module.exports = async function runSalesforceMigration(flags) {
     process.exit(1);
   }
 
-  // 4. Resolve entities to migrate
-  let entity = flags.entity;
-  if (!entity) {
-    const res = await inquirer.default.prompt({
-      type: 'list',
-      name: 'entity',
-      message: 'Which entities do you want to migrate?',
-      choices: [
-        { name: 'All enabled entities', value: 'all' },
-        { name: 'Contacts', value: 'contacts' },
-        { name: 'Products', value: 'products' },
-        { name: 'Accounts', value: 'accounts' },
-      ],
-    });
-    entity = res.entity;
+  // 4. Resolve phases to run — do this before entity prompt so we can skip it
+  //    --phase discover|migrate|all  (default: all phases)
+  //    --from <n> --to <n>           (1-based phase index range)
+  let phases;
+  let from;
+  let to;
+
+  const phaseFlag = flags.phase;
+  if (phaseFlag && phaseFlag !== 'all') {
+    phases = [phaseFlag];
+  } else if (flags.from !== undefined || flags.to !== undefined) {
+    from = flags.from ? Number(flags.from) : undefined;
+    to = flags.to ? Number(flags.to) : undefined;
+  }
+  // else: run all phases in order (phases/from/to all undefined)
+
+  // Determine if the selected phases require entities (discover does not)
+  const needsEntities = !phases || phases.some((p) => p === 'migrate');
+
+  // 5. Resolve entities to migrate (skip if only running discover)
+  let entities = ['all'];
+  if (needsEntities) {
+    let entity = flags.entity;
+    if (!entity) {
+      const res = await inquirer.default.prompt({
+        type: 'list',
+        name: 'entity',
+        message: 'Which entities do you want to migrate?',
+        choices: [
+          { name: 'All enabled entities', value: 'all' },
+          { name: 'Contacts', value: 'contacts' },
+          { name: 'Products', value: 'products' },
+          { name: 'Accounts', value: 'accounts' },
+        ],
+      });
+      entity = res.entity;
+    }
+    entities = entity === 'all' ? ['all'] : [entity];
   }
 
-  const entities = entity === 'all' ? ALL_ENTITIES : [entity];
-
-  // 5. Dry-run flag
+  // 6. Dry-run flag
   const dryRun = flags['dry-run'] === true || flags.dryRun === true;
   if (dryRun) {
     console.log('⚠️  DRY RUN mode — no data will be written to Prolibu');
     console.log('');
   }
 
-  // 6. Run engine
-  await engine.run({ domain, apiKey, entities, dryRun });
+  // --count: fetch record counts during discover (opt-in, slower)
+  const withCount = flags.count === true;
+
+  // 7. Run engine
+  await engine.run({ domain, apiKey, entities, phases, from, to, dryRun, withCount });
 };
