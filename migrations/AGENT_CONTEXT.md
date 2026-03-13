@@ -264,11 +264,11 @@ The engine runs ordered phases. Each phase is an object with `{ name, descriptio
 
 Current phases (in order):
 
-| #   | Name       | Description                                                                                             |
-| --- | ---------- | ------------------------------------------------------------------------------------------------------- |
-| 1   | `discover` | Introspect Salesforce — list all SObjects, fields, record counts. Saves `discovery.json`.               |
-| 2   | `review`   | Start a local web UI (port 3721) for schema comparison, config builder and prolibu_setup.json export.   |
-| 3   | `migrate`  | Fetch records from Salesforce, run through pipeline, write to Prolibu.                                  |
+| #   | Name       | Description                                                                                           |
+| --- | ---------- | ----------------------------------------------------------------------------------------------------- |
+| 1   | `discover` | Introspect Salesforce — list all SObjects, fields, record counts. Saves `discovery.json`.             |
+| 2   | `review`   | Start a local web UI (port 3721) for schema comparison, config builder and prolibu_setup.json export. |
+| 3   | `migrate`  | Fetch records from Salesforce, run through pipeline, write to Prolibu.                                |
 
 Controlling which phases run:
 
@@ -292,7 +292,7 @@ prolibu migrate salesforce run --phase migrate --entity contacts --dry-run
 
 - Starts `http://localhost:3721` and auto-opens the browser.
 - Fetches `/v2/openapi/specification` from Prolibu to populate the schema comparison.
-- Keeps the Node process alive until the user clicks *"Cerrar servidor"* in the UI.
+- Keeps the Node process alive until the user clicks _"Cerrar servidor"_ in the UI.
 - Writes two output files when the user clicks **Save**:
   - `accounts/<domain>/migrations/salesforce/config.json` — which entities / fields to migrate.
   - `accounts/<domain>/migrations/salesforce/prolibu_setup.json` — custom objects and custom fields that must be created in Prolibu **before** running the migrate phase.
@@ -377,9 +377,125 @@ The runner lives in `shared/PipelineRunner.js` and exports `{ resolvePipeline, r
 
 ## 15. Shared utilities
 
-| File                        | Purpose                                                                                             |
-| --------------------------- | --------------------------------------------------------------------------------------------------- |
-| `shared/credentialStore.js` | Read/write credentials, config, discovery and pipelines under `accounts/<domain>/migrations/<crm>/` |
-| `shared/migrationLogger.js` | Create, update, save, and print migration run logs                                                  |
-| `shared/ProlibuWriter.js`   | Batch upsert records to Prolibu with dry-run support                                                |
-| `shared/PipelineRunner.js`  | Resolve and execute entity pipelines with before/after hooks                                        |
+| File                             | Purpose                                                                                             |
+| -------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `shared/credentialStore.js`      | Read/write credentials, config, discovery and pipelines under `accounts/<domain>/migrations/<crm>/` |
+| `shared/migrationLogger.js`      | Create, update, save, and print migration run logs                                                  |
+| `shared/ProlibuWriter.js`        | Batch upsert records to Prolibu with dry-run support                                                |
+| `shared/PipelineRunner.js`       | Resolve and execute entity pipelines with before/after hooks                                        |
+| `shared/SchemaSetup.js`          | Create custom fields on existing models and custom objects (COBs) in Prolibu                        |
+| `shared/ProlibuSchemaService.js` | On-demand Prolibu entity schema queries (from OpenAPI spec or live API)                             |
+
+---
+
+## 16. Prolibu Schema Service
+
+Query Prolibu entity schemas on demand. Works offline (from cached OpenAPI spec) or live (fetching from the API).
+
+```js
+const ProlibuSchemaService = require("../shared/ProlibuSchemaService");
+
+// From the full spec (e.g. already fetched at startup)
+const svc = new ProlibuSchemaService({ spec: prolibuSpec });
+
+// Or live from the API
+const svc = new ProlibuSchemaService({ domain: "dev10.prolibu.com", apiKey });
+
+// List all entities
+const entities = await svc.listEntities();
+// → ['call', 'campaign', 'company', 'contact', 'contract', 'deal', ...]
+
+// Get full schema for an entity
+const schema = await svc.getEntitySchema("company");
+// → { properties: { companyName: ..., website: ..., ... }, required: [...] }
+
+// Get flat field map (nested fields use dot notation)
+const fields = await svc.getEntityFields("company");
+// → { companyName: { type: 'string' }, 'address.street': { type: 'string' }, ... }
+
+// Refresh spec from API
+await svc.refreshSpec();
+```
+
+### Server API endpoints
+
+| Method | Path                          | Description                        |
+| ------ | ----------------------------- | ---------------------------------- |
+| GET    | `/api/prolibu/entities`       | List all Prolibu entity names      |
+| GET    | `/api/prolibu/schema/:entity` | Full schema for a specific entity  |
+| GET    | `/api/prolibu/fields/:entity` | Flat field map for an entity       |
+| POST   | `/api/prolibu/refresh-schema` | Re-fetch OpenAPI spec from Prolibu |
+| GET    | `/api/field-mapping`          | Known CRM→Prolibu field mapping    |
+
+---
+
+## 17. Known Field Mapping (SF → Prolibu)
+
+Each CRM adapter can export a `fieldMapping.js` alongside `metadata.js`.
+This file contains known field-level mappings between CRM fields and Prolibu fields.
+
+For Salesforce see `salesforce/fieldMapping.js`. It covers all 21 entity pairs from `entityMapping`:
+Account→company, Contact→contact, Lead→contact, Opportunity→deal, Quote→quote,
+Contract→contract, Case→ticket, Product2→product, Pricebook2→pricebook,
+PricebookEntry→pricebookentry, OpportunityLineItem→lineitem, Task→task,
+Event→meeting, Note→note, Call→call, Campaign→campaign, User→user, Invoice→invoice.
+
+Field values use dot notation for nested Prolibu fields (e.g. `address.street`).
+Fields mapped to `customFields.*` need a custom field created in Prolibu first.
+Fields mapped to `null` are explicitly skipped.
+
+The UI server loads the field mapping via `loadCRMMetadata()` and serves it at
+`/api/field-mapping` and in `/api/state` (as `state.fieldMapping`).
+
+The SchemaMap page uses these known mappings as defaults, falling back to heuristic
+matching for any SF field not in the known mapping.
+
+---
+
+## 18. Schema setup — Custom Fields & Custom Objects
+
+Use `SchemaSetup` to programmatically create custom fields on existing models or create entirely new custom objects (COBs).
+
+```js
+const SchemaSetup = require("../shared/SchemaSetup");
+const setup = new SchemaSetup({ domain, apiKey, dryRun: false });
+
+// ── Add custom fields to an existing model ─────────────────
+await setup.createCustomFields("Contact", {
+  color: { type: "string", description: "Favorite color" },
+  priority: { type: "number", min: 1, max: 5 },
+  assignee: { type: "objectid", ref: "User" },
+});
+
+// ── Add overrides (modify existing fields or add root-level fields) ──
+await setup.addOverrides("Deal", {
+  amount: { required: true, min: 1000 },
+  contractType: { type: "string", enum: ["Monthly", "Annual"] },
+});
+
+// ── Create a new Custom Object (COB) ───────────────────────
+await setup.createCustomObject({
+  modelName: "Pet",
+  active: true,
+  petName: { type: "string", required: true, displayName: true },
+  species: { type: "string", enum: ["Dog", "Cat", "Bird"] },
+  owner: { type: "objectid", ref: "User" },
+});
+
+// ── Apply a prolibu_setup.json file ────────────────────────
+const report = await setup.applySetupFromFile("path/to/prolibu_setup.json");
+SchemaSetup.printReport(report);
+```
+
+`ProlibuWriter` also exposes convenience methods:
+
+```js
+const writer = new ProlibuWriter({ domain, apiKey, dryRun });
+await writer.createCustomFields("Contact", { color: { type: "string" } });
+await writer.createCustomObject({
+  modelName: "Pet",
+  petName: { type: "string" },
+});
+await writer.applySetup(setupConfig);
+// For full access: writer.schemaSetup.addOverrides(...)
+```

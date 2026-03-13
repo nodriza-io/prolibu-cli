@@ -46,7 +46,15 @@ const SF_TO_PROLIBU = {
 };
 
 const REVIEW_PORT = 3721;
-const UI_FILE = path.join(__dirname, '../review-ui/index.html');
+const UI_DIR = path.join(__dirname, '../../review-ui/dist');
+const UI_LEGACY = path.join(__dirname, '../../review-ui/index.legacy.html');
+
+// MIME types for static file serving
+const MIME = {
+    '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
+    '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png',
+    '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2',
+};
 
 // ─── Prolibu API helpers ──────────────────────────────────────────
 
@@ -180,8 +188,41 @@ async function review({ domain, apiKey }) {
         paths: { config: configPath, setup: setupPath },
     };
 
-    // 6. Read the SPA HTML from disk
-    const uiHtml = fs.readFileSync(UI_FILE, 'utf8');
+    // 6. Check for React dist/ or legacy fallback
+    const hasReactBuild = fs.existsSync(path.join(UI_DIR, 'index.html'));
+    const REVIEW_UI_ROOT = path.join(__dirname, '../../review-ui');
+    let viteProcess = null;
+
+    // Helper: serve a static file from the React build
+    function serveStatic(res, filePath) {
+        const ext = path.extname(filePath);
+        const mime = MIME[ext] || 'application/octet-stream';
+        try {
+            const content = fs.readFileSync(filePath);
+            res.writeHead(200, { 'Content-Type': `${mime}; charset=utf-8` });
+            res.end(content);
+        } catch {
+            // SPA fallback — serve index.html for client-side routes
+            if (hasReactBuild) {
+                const idx = fs.readFileSync(path.join(UI_DIR, 'index.html'));
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.end(idx);
+            } else {
+                res.writeHead(404);
+                res.end('Not found');
+            }
+        }
+    }
+
+    // SSE clients for migration log streaming
+    const sseClients = new Set();
+
+    function broadcastSSE(data) {
+        const msg = `data: ${JSON.stringify(data)}\n\n`;
+        for (const client of sseClients) {
+            try { client.write(msg); } catch { sseClients.delete(client); }
+        }
+    }
 
     // 7. Start HTTP server — keep process alive until user closes it
     await new Promise((resolve) => {
@@ -222,10 +263,20 @@ async function review({ domain, apiKey }) {
 
             // ── Routes ─────────────────────────────────────────────
 
-            // Serve the SPA shell
-            if (method === 'GET' && pathname === '/') {
-                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-                return res.end(uiHtml);
+            // Serve the React SPA or legacy HTML
+            if (method === 'GET' && !pathname.startsWith('/api')) {
+                if (hasReactBuild) {
+                    // Try exact file, else SPA fallback
+                    const filePath = pathname === '/'
+                        ? path.join(UI_DIR, 'index.html')
+                        : path.join(UI_DIR, pathname);
+                    return serveStatic(res, filePath);
+                } else {
+                    // Fallback to legacy
+                    const legacy = fs.readFileSync(UI_LEGACY, 'utf8');
+                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                    return res.end(legacy);
+                }
             }
 
             // State consumed by the SPA on mount
@@ -272,9 +323,121 @@ async function review({ domain, apiKey }) {
                 } catch (e) { return fail(500, e.message); }
             }
 
+            // ── Pipeline introspection ─────────────────────────────
+            if (method === 'GET' && pathname === '/api/pipelines') {
+                try {
+                    const pipelinesDir = credentialStore.getPipelinePath
+                        ? path.dirname(credentialStore.getPipelinePath(domain, 'salesforce', '_'))
+                        : path.join(path.dirname(configPath), 'pipelines');
+                    const transformersDir = path.join(path.dirname(configPath), 'transformers');
+
+                    const result = {};
+
+                    // Scan pipeline files
+                    if (fs.existsSync(pipelinesDir)) {
+                        for (const f of fs.readdirSync(pipelinesDir)) {
+                            if (!f.endsWith('.js')) continue;
+                            const key = f.replace('.js', '');
+                            try {
+                                const mod = require(path.join(pipelinesDir, f));
+                                const steps = mod.steps || mod.default?.steps || [];
+                                result[key] = {
+                                    custom: true,
+                                    source: `pipelines/${f}`,
+                                    steps: steps.map(s => ({
+                                        name: s.name || s.type || 'step',
+                                        type: s.type || 'transform',
+                                        description: s.description || '',
+                                    })),
+                                };
+                            } catch {
+                                result[key] = { custom: true, source: `pipelines/${f}`, steps: [], error: 'parse error' };
+                            }
+                        }
+                    }
+
+                    // Scan transformer files (these inject as default pipelines)
+                    if (fs.existsSync(transformersDir)) {
+                        for (const f of fs.readdirSync(transformersDir)) {
+                            if (!f.endsWith('.js')) continue;
+                            const key = f.replace('.js', '');
+                            if (!result[key]) {
+                                result[key] = {
+                                    custom: false,
+                                    source: `transformers/${f}`,
+                                    steps: [{ name: 'transform', type: 'transform', description: 'Transformer base' }],
+                                };
+                            }
+                        }
+                    }
+
+                    return ok(result);
+                } catch (e) {
+                    return fail(500, e.message);
+                }
+            }
+
+            // ── Migration execution ────────────────────────────────
+            if (method === 'POST' && pathname === '/api/migrate') {
+                const body = await readBody();
+                const entities = body.entities || [];
+                const dryRun = body.dryRun !== false;
+
+                if (!entities.length) return fail(400, 'No entities specified');
+
+                // Acknowledge immediately, then run async
+                ok({ ok: true, message: 'Migration started', dryRun });
+
+                // Run migration in background, streaming events via SSE
+                setImmediate(async () => {
+                    try {
+                        const { run } = require('../engine');
+                        // Override console.log to capture and broadcast logs
+                        const origLog = console.log;
+                        console.log = (...args) => {
+                            const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+                            origLog(...args);
+                            broadcastSSE({ type: 'log', data: line });
+                        };
+
+                        await run({
+                            domain,
+                            apiKey,
+                            entities,
+                            dryRun,
+                            onEntityResult: (entityKey, result) => {
+                                broadcastSSE({ type: 'result', data: { entity: entityKey, ...result } });
+                            },
+                        });
+
+                        broadcastSSE({ type: 'done', data: 'Migration completed' });
+                        console.log = origLog;
+                    } catch (e) {
+                        broadcastSSE({ type: 'error', data: e.message });
+                        broadcastSSE({ type: 'done', data: 'Migration failed' });
+                    }
+                });
+                return;
+            }
+
+            // SSE endpoint for real-time migration logs
+            if (method === 'GET' && pathname === '/api/migrate/stream') {
+                res.writeHead(200, {
+                    'Content-Type': 'text/event-stream',
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'Access-Control-Allow-Origin': '*',
+                });
+                res.write('data: {"type":"connected"}\n\n');
+                sseClients.add(res);
+                req.on('close', () => sseClients.delete(res));
+                return;
+            }
+
             // Graceful shutdown — called by the UI "Cerrar servidor" button
             if (method === 'POST' && pathname === '/api/done') {
                 ok({ ok: true });
+                if (viteProcess) { viteProcess.kill(); viteProcess = null; }
                 server.close();
                 console.log('\n✅ Servidor de review cerrado.');
                 resolve();
@@ -287,13 +450,49 @@ async function review({ domain, apiKey }) {
         server.listen(REVIEW_PORT, '127.0.0.1', () => {
             const url = `http://localhost:${REVIEW_PORT}`;
             console.log(`🌐 Review UI disponible en:`);
-            console.log(`   ${url}\n`);
-            console.log('   Ctrl+C  o  haz clic en "Cerrar servidor" en el UI para salir.\n');
-            // Auto-open browser (macOS / Linux / Windows)
-            const open = process.platform === 'win32' ? 'start'
-                : process.platform === 'darwin'  ? 'open'
-                : 'xdg-open';
-            require('child_process').exec(`${open} "${url}"`);
+
+            if (!hasReactBuild) {
+                // Auto-start Vite dev server — single command experience
+                const { spawn } = require('child_process');
+                const viteUrl = 'http://localhost:5173';
+                console.log(`   ${viteUrl}  (Vite dev mode)\n`);
+                console.log(`   API backend en ${url}`);
+                console.log('   Ctrl+C para cerrar todo.\n');
+
+                viteProcess = spawn('npx', ['vite'], {
+                    cwd: REVIEW_UI_ROOT,
+                    stdio: ['ignore', 'pipe', 'pipe'],
+                    shell: true,
+                });
+
+                viteProcess.stdout.on('data', (data) => {
+                    const line = data.toString().trim();
+                    if (line) console.log(`  [vite] ${line}`);
+                });
+                viteProcess.stderr.on('data', (data) => {
+                    const line = data.toString().trim();
+                    if (line) console.log(`  [vite] ${line}`);
+                });
+                viteProcess.on('error', (err) => {
+                    console.error(`  ⚠️  No se pudo iniciar Vite: ${err.message}`);
+                    console.error(`     Ejecuta "cd review-ui && npm run dev" manualmente.\n`);
+                });
+
+                // Wait a moment for Vite to start, then open browser
+                setTimeout(() => {
+                    const open = process.platform === 'win32' ? 'start'
+                        : process.platform === 'darwin' ? 'open'
+                            : 'xdg-open';
+                    require('child_process').exec(`${open} "${viteUrl}"`);
+                }, 2000);
+            } else {
+                console.log(`   ${url}\n`);
+                console.log('   Ctrl+C  o  haz clic en "Cerrar servidor" en el UI para salir.\n');
+                const open = process.platform === 'win32' ? 'start'
+                    : process.platform === 'darwin' ? 'open'
+                        : 'xdg-open';
+                require('child_process').exec(`${open} "${url}"`);
+            }
         });
 
         server.on('error', (err) => {
@@ -303,6 +502,14 @@ async function review({ domain, apiKey }) {
                 process.exit(1);
             }
             throw err;
+        });
+
+        // Clean up Vite on Ctrl+C
+        process.on('SIGINT', () => {
+            if (viteProcess) { viteProcess.kill(); viteProcess = null; }
+            server.close();
+            console.log('\n✅ Servidor de review cerrado.');
+            resolve();
         });
     });
 }

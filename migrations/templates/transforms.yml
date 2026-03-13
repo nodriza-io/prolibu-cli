@@ -1,0 +1,66 @@
+# ──────────────────────────────────────────────────────────────
+# transforms.yml — Data transformation rules
+# ──────────────────────────────────────────────────────────────
+#
+# Defines transformations applied AFTER field mapping.
+# Each entity can have a list of transform rules that modify
+# values before writing to Prolibu.
+#
+# Transform types:
+#   concat      Concatenate multiple fields     { fields: [...], separator: " ", to: field }
+#   lowercase   Lowercase a field               { field: email }
+#   uppercase   Uppercase a field               { field: code }
+#   trim        Trim whitespace                 { field: name }
+#   replace     Regex replace                   { field: x, pattern: "...", replacement: "..." }
+#   map         Value mapping (lookup table)    { field: x, values: { old: new } }
+#   default     Set default when empty          { field: x, value: "..." }
+#   template    String template                 { template: "{{firstName}} {{lastName}}", to: fullName }
+#   boolean     Convert to boolean              { field: x, truthy: ["true","1","yes"] }
+#   date        Parse/format date               { field: x, inputFormat: "...", outputFormat: "..." }
+#   custom      Custom JS expression            { field: x, expression: "value.trim().toLowerCase()" }
+#
+# ──────────────────────────────────────────────────────────────
+
+entities:
+  accounts:
+    transforms: []
+
+  contacts:
+    transforms:
+      - type: trim
+        field: firstName
+      - type: trim
+        field: lastName
+      - type: lowercase
+        field: email
+      - type: concat
+        fields: [firstName, lastName]
+        separator: " "
+        to: fullName
+
+  products:
+    transforms:
+      - type: uppercase
+        field: code
+      - type: boolean
+        field: active
+        truthy: ["true", "1", "yes"]
+
+  opportunities:
+    transforms:
+      - type: trim
+        field: dealName
+      # Stage mapping: adapt Salesforce stage names → Prolibu stage keys
+      # Customize per domain as needed
+      - type: map
+        field: stage
+        values:
+          Prospecting: prospecting
+          Qualification: qualification
+          "Needs Analysis": analysis
+          "Value Proposition": proposal
+          "Perception Analysis": negotiation
+          "Proposal/Price Quote": proposal
+          "Negotiation/Review": negotiation
+          "Closed Won": won
+          "Closed Lost": lost

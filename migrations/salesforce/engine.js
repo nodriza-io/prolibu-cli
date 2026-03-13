@@ -3,15 +3,10 @@ const SalesforceAdapter = require('./SalesforceAdapter');
 const ProlibuWriter = require('../shared/ProlibuWriter');
 const credentialStore = require('../shared/credentialStore');
 const logger = require('../shared/migrationLogger');
+const yamlLoader = require('../shared/yamlLoader');
 const discoverPhase = require('./phases/discover');
 const reviewPhase = require('./phases/review');
 const migratePhase = require('./phases/migrate');
-
-/**
- * Ordered list of entities to migrate when running 'all'.
- * Reflects data dependencies: base objects first, dependent objects last.
- */
-const ENTITY_ORDER = ['accounts', 'products', 'contacts'];
 
 /**
  * Ordered phase definitions.
@@ -36,7 +31,9 @@ const PHASES = [
 ];
 
 /**
- * Entity definitions: maps entity key → Salesforce SObject + base transformer + Prolibu model
+ * Legacy hardcoded entity definitions — kept as fallback.
+ * The engine now prefers YAML-based config via yamlLoader.buildEngineConfig().
+ * These are only used if YAML files are missing.
  */
 const ENTITY_DEFINITIONS = {
   contacts: {
@@ -63,6 +60,60 @@ const ENTITY_DEFINITIONS = {
 };
 
 /**
+ * Default entity order — used as fallback when YAML is not available.
+ */
+const ENTITY_ORDER = ['accounts', 'products', 'contacts'];
+
+/**
+ * Resolve entity definitions and order, preferring YAML config.
+ * Falls back to hardcoded ENTITY_DEFINITIONS if YAML files are missing.
+ */
+function resolveConfig(domain) {
+  try {
+    const yamlConfig = yamlLoader.buildEngineConfig(domain, 'salesforce');
+    console.log('📄 Configuration loaded from YAML files');
+
+    // Merge YAML-based entity definitions with JS transformer fallback
+    const entityDefs = {};
+    for (const [key, def] of Object.entries(yamlConfig.entityDefinitions)) {
+      entityDefs[key] = {
+        ...def,
+        // Build transformer from YAML mappings; fallback to JS transformer if available
+        baseTransformer: () => {
+          const yamlTransformer = yamlLoader.buildTransformer(def);
+          // If there's also a domain-specific JS override, let it take precedence
+          const jsOverride = credentialStore.loadTransformerOverride(domain, 'salesforce', key);
+          if (jsOverride) {
+            if (jsOverride.extend) {
+              return (record) => jsOverride.map(record, yamlTransformer);
+            }
+            return jsOverride;
+          }
+          return yamlTransformer;
+        },
+      };
+    }
+
+    return {
+      entityDefinitions: entityDefs,
+      entityOrder: yamlConfig.entityOrder,
+      batchSize: yamlConfig.batchSize,
+    };
+  } catch (e) {
+    if (e.name === 'YamlConfigError') {
+      console.log(`⚠️  YAML config issue: ${e.message}`);
+      console.log('   Falling back to built-in entity definitions');
+    }
+    const domainConfig = credentialStore.getConfig(domain, 'salesforce') || {};
+    return {
+      entityDefinitions: ENTITY_DEFINITIONS,
+      entityOrder: ENTITY_ORDER,
+      batchSize: domainConfig.batchSize || 200,
+    };
+  }
+}
+
+/**
  * Run the migration engine.
  *
  * Orchestrates phases in order. Each phase receives a shared context object
@@ -86,8 +137,9 @@ async function run({ domain, apiKey, entities, phases: phaseFilter, from, to, dr
     throw new Error(`No Salesforce credentials found for domain "${domain}". Run: prolibu migrate salesforce configure --domain ${domain}`);
   }
 
-  const domainConfig = credentialStore.getConfig(domain, 'salesforce') || {};
-  const batchSize = domainConfig.batchSize || 200;
+  // Resolve config from YAML (with fallback to hardcoded definitions)
+  const resolved = resolveConfig(domain);
+  const { entityDefinitions, entityOrder, batchSize } = resolved;
 
   // Resolve which phases to run
   let phasesToRun = PHASES;
@@ -103,8 +155,8 @@ async function run({ domain, apiKey, entities, phases: phaseFilter, from, to, dr
     phasesToRun = PHASES.slice(fromIdx, toIdx + 1);
   }
 
-  // Resolve entities — expand 'all' using ENTITY_ORDER
-  const resolvedEntities = entities.includes('all') ? ENTITY_ORDER : entities;
+  // Resolve entities — expand 'all' using order from config
+  const resolvedEntities = entities.includes('all') ? entityOrder : entities;
 
   // Shared context passed to every phase
   let adapter;
@@ -135,7 +187,7 @@ async function run({ domain, apiKey, entities, phases: phaseFilter, from, to, dr
     adapter,
     writer,
     log,
-    entityDefinitions: ENTITY_DEFINITIONS,
+    entityDefinitions,
     batchSize,
     dryRun,
     withCount,

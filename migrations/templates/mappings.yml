@@ -1,0 +1,376 @@
+# ──────────────────────────────────────────────────────────────
+# mappings.yml — Field-level CRM → Prolibu mappings
+# ──────────────────────────────────────────────────────────────
+#
+# Each entity key must match a key in schema.yml.
+# Under `fields`, each entry maps a CRM field to a Prolibu field.
+#
+# Field mapping options:
+#   from        CRM field name (supports dot notation for relations: Account.Name)
+#   to          Prolibu field name (dot notation for nested: address.street)
+#               Use customFields.<name> for custom fields
+#   default     Default value when source is null/empty
+#   required    If true, skip the record when this field is empty
+#
+# Joined field mappings (joinedFields):
+#   When an entity has `join` in schema.yml, use `joinedFields.<alias>`
+#   to map fields from the joined CRM object into the target Prolibu model.
+#   The alias must match the `as` value defined in schema.yml.
+#
+#   For "latest" / "primary" strategies, each joined record is a single
+#   object — use `from` / `to` normally.
+#
+#   For "all" strategy, the joined records are an array — each mapping
+#   is applied to every item and the result is written as an array.
+#
+# These mappings are pre-populated defaults for Salesforce → Prolibu.
+# Customize per domain after scaffolding.
+# ──────────────────────────────────────────────────────────────
+
+entities:
+  # ── Account → company ──────────────────────────────────────
+  accounts:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: Name, to: companyName, required: true }
+      - { from: Website, to: website }
+      - { from: AccountNumber, to: companyCode }
+      - { from: Phone, to: primaryPhone }
+      - { from: Fax, to: "phones.fax" }
+      - { from: BillingStreet, to: "address.street" }
+      - { from: BillingCity, to: "address.city" }
+      - { from: BillingState, to: "address.state" }
+      - { from: BillingPostalCode, to: "address.zip" }
+      - { from: BillingCountry, to: "address.country" }
+      - { from: Industry, to: industry }
+      - { from: NumberOfEmployees, to: numberOfEmployees }
+      - { from: OwnerId, to: assignee }
+      - { from: Description, to: "customFields.description" }
+      - { from: Type, to: "customFields.accountType" }
+      - { from: AnnualRevenue, to: "customFields.annualRevenue" }
+      - { from: Rating, to: "customFields.rating" }
+    static:
+      source: salesforce
+
+  # ── Contact → contact ──────────────────────────────────────
+  contacts:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: FirstName, to: firstName, default: "" }
+      - { from: LastName, to: lastName, required: true }
+      - { from: Email, to: email, default: "" }
+      - { from: Title, to: jobTitle }
+      - { from: Phone, to: "phones.work" }
+      - { from: MobilePhone, to: mobile }
+      - { from: AccountId, to: company }
+      - { from: OwnerId, to: assignee }
+      - { from: MailingStreet, to: "address.street" }
+      - { from: MailingCity, to: "address.city" }
+      - { from: MailingState, to: "address.state" }
+      - { from: MailingPostalCode, to: "address.zip" }
+      - { from: MailingCountry, to: "address.country" }
+      - { from: LinkedIn, to: "socialNetworks.linkedin" }
+      - { from: Twitter, to: "socialNetworks.twitter" }
+      - { from: Department, to: "customFields.department" }
+      - { from: Description, to: "customFields.description" }
+      - { from: Birthdate, to: "customFields.birthdate" }
+      - { from: LeadSource, to: source }
+    static:
+      source: salesforce
+
+  # ── Lead → contact (tagged as lead) ────────────────────────
+  leads:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: FirstName, to: firstName, default: "" }
+      - { from: LastName, to: lastName, required: true }
+      - { from: Email, to: email, default: "" }
+      - { from: Title, to: jobTitle }
+      - { from: Phone, to: "phones.work" }
+      - { from: MobilePhone, to: mobile }
+      - { from: Company, to: companyName }
+      - { from: OwnerId, to: assignee }
+      - { from: Street, to: "address.street" }
+      - { from: City, to: "address.city" }
+      - { from: State, to: "address.state" }
+      - { from: PostalCode, to: "address.zip" }
+      - { from: Country, to: "address.country" }
+      - { from: LeadSource, to: source }
+      - { from: Status, to: stage }
+      - { from: Industry, to: "customFields.industry" }
+      - { from: Description, to: "customFields.description" }
+      - { from: Website, to: "customFields.website" }
+      - { from: AnnualRevenue, to: "customFields.annualRevenue" }
+      - { from: NumberOfEmployees, to: "customFields.numberOfEmployees" }
+    static:
+      source: salesforce
+      isLead: true
+
+  # ── Opportunity → deal ─────────────────────────────────────
+  opportunities:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: Name, to: dealName, required: true }
+      - { from: CloseDate, to: closeDate }
+      - { from: StageName, to: stage }
+      - { from: Amount, to: "customFields.amount" }
+      - { from: Probability, to: "customFields.probability" }
+      - { from: OwnerId, to: assignee }
+      - { from: AccountId, to: "customFields.accountId" }
+      - { from: ContactId, to: contact }
+      - { from: Description, to: observations }
+      - { from: Type, to: "customFields.opportunityType" }
+      - { from: LeadSource, to: "customFields.leadSource" }
+      - { from: NextStep, to: "customFields.nextStep" }
+      - { from: ForecastCategoryName, to: "customFields.forecastCategory" }
+      - { from: CampaignId, to: "customFields.campaignId" }
+
+    # ── Joined fields: Quote + LineItems merged into Deal's proposal ──
+    joinedFields:
+      # Fields from the latest Quote (strategy: latest in schema.yml)
+      quote:
+        - { from: Id, to: "proposal.quote.externalId" }
+        - { from: Name, to: "proposal.quote.name" }
+        - { from: QuoteNumber, to: "proposal.quote.code" }
+        - { from: Status, to: "proposal.quote.status" }
+        - { from: ExpirationDate, to: "proposal.quote.endDate" }
+        - { from: GrandTotal, to: "proposal.quote.total" }
+        - { from: Discount, to: "proposal.quote.discount" }
+        - { from: Tax, to: "proposal.quote.tax" }
+        - { from: ShippingHandling, to: "proposal.quote.shippingHandling" }
+        - { from: Description, to: "proposal.quote.description" }
+
+      # Fields from all QuoteLineItems (strategy: all → array of objects)
+      lineItems:
+        - { from: Id, to: externalId }
+        - { from: Quantity, to: quantity }
+        - { from: UnitPrice, to: price }
+        - { from: TotalPrice, to: total }
+        - { from: Discount, to: discountRate }
+        - { from: Description, to: description }
+        - { from: Product2Id, to: product }
+
+    static:
+      source: salesforce
+
+  # ── Quote → quote ──────────────────────────────────────────
+  quotes:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: Name, to: quoteName, required: true }
+      - { from: QuoteNumber, to: quoteCode }
+      - { from: Status, to: "customFields.status" }
+      - { from: ExpirationDate, to: endDate }
+      - { from: OpportunityId, to: "customFields.opportunityId" }
+      - { from: ContactId, to: "customFields.contactId" }
+      - { from: Description, to: "customFields.description" }
+      - { from: GrandTotal, to: "customFields.grandTotal" }
+      - { from: Discount, to: "customFields.discount" }
+      - { from: Tax, to: "customFields.tax" }
+      - { from: ShippingHandling, to: "customFields.shippingHandling" }
+    static:
+      source: salesforce
+
+  # ── Contract → contract ────────────────────────────────────
+  contracts:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: ContractNumber, to: contractCode }
+      - { from: ContractTerm, to: "customFields.contractTerm" }
+      - { from: StartDate, to: "customFields.startDate" }
+      - { from: EndDate, to: "customFields.endDate" }
+      - { from: Status, to: status }
+      - { from: AccountId, to: "customFields.accountId" }
+      - { from: OwnerId, to: "customFields.ownerId" }
+      - { from: Description, to: "customFields.description" }
+      - { from: SpecialTerms, to: "customFields.specialTerms" }
+    static:
+      source: salesforce
+
+  # ── Case → ticket ──────────────────────────────────────────
+  cases:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: CaseNumber, to: ticketNumber }
+      - { from: Subject, to: subject, required: true }
+      - { from: Description, to: description }
+      - { from: Status, to: stage }
+      - { from: Priority, to: priority }
+      - { from: Type, to: caseType }
+      - { from: Origin, to: channel }
+      - { from: ContactId, to: "requester.contact" }
+      - { from: AccountId, to: "customFields.accountId" }
+      - { from: OwnerId, to: assignee }
+      - { from: ClosedDate, to: "customFields.closedDate" }
+      - { from: Reason, to: "customFields.reason" }
+    static:
+      source: salesforce
+
+  # ── Product2 → product ─────────────────────────────────────
+  products:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: Name, to: productName, required: true }
+      - { from: ProductCode, to: productCode }
+      - { from: Description, to: description, default: "" }
+      - { from: Family, to: productFamily }
+      - { from: IsActive, to: active }
+      - { from: QuantityUnitOfMeasure, to: unitName }
+      - { from: DisplayUrl, to: "customFields.displayUrl" }
+      - { from: ExternalId, to: "customFields.externalId" }
+    static:
+      source: salesforce
+
+  # ── Pricebook2 → pricebook ─────────────────────────────────
+  pricebooks:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: Name, to: pricebookName, required: true }
+      - { from: Description, to: description }
+      - { from: IsActive, to: active }
+      - { from: IsStandard, to: isStandard }
+    static:
+      source: salesforce
+
+  # ── PricebookEntry → pricebookentry ────────────────────────
+  pricebookentries:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: UnitPrice, to: price }
+      - { from: IsActive, to: active }
+      - { from: Product2Id, to: product }
+      - { from: Pricebook2Id, to: pricebook }
+      - { from: UseStandardPrice, to: "customFields.useStandardPrice" }
+    static:
+      source: salesforce
+
+  # ── OpportunityLineItem → lineitem ─────────────────────────
+  lineitems:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: Quantity, to: quantity }
+      - { from: UnitPrice, to: price }
+      - { from: TotalPrice, to: "customFields.totalPrice" }
+      - { from: Discount, to: discountRate }
+      - { from: Description, to: description }
+      - { from: Product2Id, to: product }
+      - { from: PricebookEntryId, to: pricebookEntry }
+      - { from: ServiceDate, to: startDate }
+    static:
+      source: salesforce
+
+  # ── Task → task ────────────────────────────────────────────
+  tasks:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: Subject, to: title, required: true }
+      - { from: Description, to: description }
+      - { from: Status, to: stage }
+      - { from: Priority, to: priority }
+      - { from: ActivityDate, to: "dates.dueAt" }
+      - { from: OwnerId, to: assignee }
+      - { from: WhoId, to: "customFields.contactId" }
+      - { from: WhatId, to: "customFields.relatedToId" }
+      - { from: ReminderDateTime, to: "customFields.reminderDateTime" }
+      - { from: IsReminderSet, to: "customFields.isReminderSet" }
+    static:
+      source: salesforce
+
+  # ── Event → meeting ────────────────────────────────────────
+  events:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: Subject, to: title, required: true }
+      - { from: Description, to: description }
+      - { from: StartDateTime, to: "dates.startAt" }
+      - { from: EndDateTime, to: "dates.endAt" }
+      - { from: Location, to: "attendance.address" }
+      - { from: OwnerId, to: assignee }
+      - { from: WhoId, to: "customFields.contactId" }
+      - { from: WhatId, to: "customFields.relatedToId" }
+      - { from: IsAllDayEvent, to: "customFields.isAllDayEvent" }
+      - { from: ShowAs, to: "customFields.showAs" }
+    static:
+      source: salesforce
+
+  # ── Note → note ────────────────────────────────────────────
+  notes:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: Title, to: "customFields.title" }
+      - { from: Body, to: content }
+      - { from: ParentId, to: "origin.docId" }
+      - { from: IsPrivate, to: "customFields.isPrivate" }
+    static:
+      source: salesforce
+
+  # ── Call (SF Task with Type=Call) → call ────────────────────
+  calls:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: Subject, to: summary }
+      - { from: Description, to: summaryText }
+      - { from: CallType, to: direction }
+      - { from: OwnerId, to: assignee }
+      - { from: WhoId, to: contact }
+      - { from: WhatId, to: "origin.docId" }
+    static:
+      source: salesforce
+
+  # ── Campaign → campaign ────────────────────────────────────
+  campaigns:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: Name, to: campaignName, required: true }
+      - { from: Description, to: "customFields.description" }
+      - { from: Status, to: "customFields.status" }
+      - { from: Type, to: "customFields.type" }
+      - { from: StartDate, to: "customFields.startDate" }
+      - { from: EndDate, to: "customFields.endDate" }
+      - { from: BudgetedCost, to: "customFields.budgetedCost" }
+      - { from: ActualCost, to: "customFields.actualCost" }
+      - { from: ExpectedRevenue, to: "customFields.expectedRevenue" }
+      - { from: IsActive, to: "customFields.isActive" }
+    static:
+      source: salesforce
+
+  # ── User → user ────────────────────────────────────────────
+  users:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: FirstName, to: firstName }
+      - { from: LastName, to: lastName, required: true }
+      - { from: Email, to: email, required: true }
+      - { from: Username, to: "customFields.username" }
+      - { from: Title, to: jobTitle }
+      - { from: Phone, to: phone }
+      - { from: MobilePhone, to: mobile }
+      - { from: CompanyName, to: company }
+      - { from: Department, to: "customFields.department" }
+      - { from: IsActive, to: status }
+      - { from: ProfileId, to: "customFields.profileId" }
+      - { from: UserRoleId, to: "customFields.userRoleId" }
+      - { from: Street, to: "address.street" }
+      - { from: City, to: "address.city" }
+      - { from: State, to: "address.state" }
+      - { from: PostalCode, to: "address.zip" }
+      - { from: Country, to: "address.country" }
+    static:
+      source: salesforce
+
+  # ── Invoice → invoice ──────────────────────────────────────
+  invoices:
+    fields:
+      - { from: Id, to: externalId }
+      - { from: InvoiceNumber, to: invoiceNumber }
+      - { from: Description, to: title }
+      - { from: Status, to: stage }
+      - { from: InvoiceDate, to: issueDate }
+      - { from: DueDate, to: dueDate }
+      - { from: TotalAmount, to: "customFields.totalAmount" }
+      - { from: Balance, to: "customFields.balance" }
+      - { from: AccountId, to: "customFields.accountId" }
+      - { from: ContactId, to: contact }
+      - { from: OwnerId, to: assignee }
+    static:
+      source: salesforce

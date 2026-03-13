@@ -59,8 +59,8 @@ function finalizeLog(domain, crm, log) {
 /**
  * Record entity-level stats into the log
  */
-function recordEntityResult(log, entity, { migrated = 0, skipped = 0, errors = [] }) {
-  log.entities[entity] = { migrated, skipped, errors };
+function recordEntityResult(log, entity, { migrated = 0, created = 0, updated = 0, skipped = 0, errors = [] }) {
+  log.entities[entity] = { migrated, created, updated, skipped, errors };
   log.errors.push(...errors.map(e => ({ entity, error: e })));
 }
 
@@ -79,7 +79,9 @@ function printSummary(log) {
     console.log('   No entities processed.');
   } else {
     for (const [entity, stats] of entities) {
-      console.log(`   ${entity}: ✅ ${stats.migrated} migrated, ⏭️ ${stats.skipped} skipped, ❌ ${stats.errors.length} errors`);
+      const updatedMsg = stats.updated > 0 ? `, 🔄 ${stats.updated} updated` : '';
+      const createdMsg = stats.created > 0 ? `, ➕ ${stats.created} created` : '';
+      console.log(`   ${entity}: ✅ ${stats.migrated} migrated${createdMsg}${updatedMsg}, ⏭️ ${stats.skipped} skipped, ❌ ${stats.errors.length} errors`);
     }
   }
   if (log.errors.length > 0) {

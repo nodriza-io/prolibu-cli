@@ -172,6 +172,40 @@ function loadDiscovery(domain, crm) {
   }
 }
 
+// ─── YAML config helpers (delegate to yamlLoader) ─────────────
+
+/**
+ * Lazy-load yamlLoader to avoid circular dependency issues.
+ */
+function getYamlLoader() {
+  return require('./yamlLoader');
+}
+
+/**
+ * Get the YAML-based engine config for a domain/crm.
+ * Merges schema, mappings, pipelines, transforms into a single config.
+ * @returns {{ entityDefinitions, entityOrder, batchSize, ... }}
+ */
+function getYamlConfig(domain, crm) {
+  return getYamlLoader().buildEngineConfig(domain, crm);
+}
+
+/**
+ * Check YAML config file status for a domain/crm.
+ * @returns {{ file, exists, isTemplate, path }[]}
+ */
+function getYamlStatus(domain, crm) {
+  return getYamlLoader().checkYamlStatus(domain, crm);
+}
+
+/**
+ * Scaffold YAML template files into domain directory.
+ * @returns {string[]} files created
+ */
+function scaffoldYaml(domain, crm) {
+  return getYamlLoader().scaffoldYaml(domain, crm);
+}
+
 module.exports = {
   getCredentialsPath,
   getConfigPath,
@@ -190,4 +224,8 @@ module.exports = {
   loadPipeline,
   saveDiscovery,
   loadDiscovery,
+  // YAML config
+  getYamlConfig,
+  getYamlStatus,
+  scaffoldYaml,
 };
