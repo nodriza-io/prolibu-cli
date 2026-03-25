@@ -113,34 +113,33 @@ module.exports = async function importAccount(flags) {
 function listAccountScripts(accountDir, domain, chalk) {
   const fs = require('fs');
   const path = require('path');
-  
-  const entries = fs.readdirSync(accountDir, { withFileTypes: true })
-    .filter(e => e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules' && e.name !== 'dist');
 
-  if (entries.length === 0) {
-    console.log(chalk.yellow('\n⚠️  No scripts/plugins found in this account.'));
-    return;
+  const resourceTypes = [
+    { folder: 'scripts', icon: '⚡', label: 'Scripts' },
+    { folder: 'sites', icon: '🌐', label: 'Sites' },
+    { folder: 'plugins', icon: '🧩', label: 'Plugins' },
+    { folder: 'vt', icon: '🎥', label: 'Virtual Tours' },
+  ];
+
+  let found = false;
+  console.log(chalk.cyan(`\n📦 Detected items in '${domain}':`));
+
+  for (const rt of resourceTypes) {
+    const typeDir = path.join(accountDir, rt.folder);
+    if (!fs.existsSync(typeDir)) continue;
+
+    const items = fs.readdirSync(typeDir, { withFileTypes: true })
+      .filter(e => e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules' && e.name !== 'dist');
+
+    if (items.length === 0) continue;
+    found = true;
+    console.log(chalk.gray(`  ${rt.icon} ${rt.label}:`));
+    for (const item of items) {
+      console.log(chalk.gray(`     - ${chalk.white(item.name)}`));
+    }
   }
 
-  console.log(chalk.cyan(`\n📦 Detected items in '${domain}':`));
-  
-  for (const entry of entries) {
-    const entryPath = path.join(accountDir, entry.name);
-    const hasIndex = fs.existsSync(path.join(entryPath, 'index.js'));
-    const hasConfig = fs.existsSync(path.join(entryPath, 'config.json'));
-    const hasPublic = fs.existsSync(path.join(entryPath, 'public'));
-    
-    let type = '📄 unknown';
-    if (hasPublic) {
-      type = '🌐 site';
-    } else if (hasIndex && hasConfig) {
-      type = '⚡ script';
-    } else if (hasIndex) {
-      type = '📜 script';
-    } else if (hasConfig) {
-      type = '⚙️  config';
-    }
-    
-    console.log(`  ${type}  ${chalk.white(entry.name)}`);
+  if (!found) {
+    console.log(chalk.yellow('  ⚠️  No scripts/plugins/sites found in this account.'));
   }
 }

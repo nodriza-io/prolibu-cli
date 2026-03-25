@@ -71,7 +71,7 @@ module.exports = async function bulkVt(flags) {
     }
 
     // 4. Verify project directory
-    const vtDir = path.join(process.cwd(), 'accounts', domain, prefix);
+    const vtDir = path.join(process.cwd(), 'accounts', domain, 'vt', prefix);
     if (!fs.existsSync(vtDir)) {
         console.error(`❌ Virtual tour project not found: ${vtDir}`);
         console.log(`Run: ./prolibu vt create --domain ${domain} --prefix ${prefix}`);

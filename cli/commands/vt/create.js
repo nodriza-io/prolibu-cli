@@ -72,7 +72,7 @@ module.exports = async function createVt(flags) {
     }
 
     // Create virtual tour directory
-    const vtDir = path.join(process.cwd(), 'accounts', domain, prefix);
+    const vtDir = path.join(process.cwd(), 'accounts', domain, 'vt', prefix);
     if (fs.existsSync(vtDir) && fs.readdirSync(vtDir).length > 0) {
         const { confirmDelete } = await inquirer.default.prompt({
             type: 'confirm',

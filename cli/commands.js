@@ -17,7 +17,7 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
     process.exit(1);
   }
   
-  const configPath = require('path').join(process.cwd(), 'accounts', domain, scriptPrefix, 'config.json');
+  const configPath = require('path').join(process.cwd(), 'accounts', domain, 'scripts', scriptPrefix, 'config.json');
   let minifyProductionCode = false;
   let removeComments = false;
   let gitRepositoryUrl = '';

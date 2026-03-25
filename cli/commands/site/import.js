@@ -39,7 +39,7 @@ module.exports = async function importSite(flags) {
   }
 
   // Import logic (clone repo only)
-  const repoDir = path.join(process.cwd(), 'accounts', domain, sitePrefix);
+  const repoDir = path.join(process.cwd(), 'accounts', domain, 'sites', sitePrefix);
   
   if (fs.existsSync(repoDir) && fs.readdirSync(repoDir).length > 0) {
     const { confirmDelete } = await inquirer.default.prompt({

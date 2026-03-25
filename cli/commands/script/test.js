@@ -30,7 +30,7 @@ module.exports = async function testScript(flags, args) {
     scriptPrefix = response.scriptPrefix;
   }
 
-  const testFile = path.join(process.cwd(), 'accounts', domain, scriptPrefix, 'test', `${testFileName}.test.js`);
+  const testFile = path.join(process.cwd(), 'accounts', domain, 'scripts', scriptPrefix, 'test', `${testFileName}.test.js`);
   
   if (!fs.existsSync(testFile)) {
     console.error(`[ERROR] Test file not found: ${testFile}`);

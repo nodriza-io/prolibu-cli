@@ -85,7 +85,7 @@ module.exports = async function createSite(flags) {
   }
 
   // Create site directory
-  const repoDir = path.join(process.cwd(), 'accounts', domain, sitePrefix);
+  const repoDir = path.join(process.cwd(), 'accounts', domain, 'sites', sitePrefix);
   if (fs.existsSync(repoDir) && fs.readdirSync(repoDir).length > 0) {
     const { confirmDelete } = await inquirer.default.prompt({
       type: 'confirm',

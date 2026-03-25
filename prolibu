@@ -16,11 +16,14 @@ const command = args[1]; // create, dev, prod, import, test
     console.log('Usage: ./prolibu <object> <command> [options]');
     console.log('');
     console.log('Objects:');
-    console.log('  account  Manage accounts (import/pull from git repositories)');
-    console.log('  script   Manage Prolibu scripts (lifecycle hooks, integrations)');
-    console.log('  site     Manage static sites and SPAs');
-    console.log('  vt       Manage virtual tours (bulk upload)');
-    console.log('  plugin   Manage UI plugins (coming soon)');
+    console.log('  account      Manage accounts (import/pull from git repositories)');
+    console.log('  script       Manage Prolibu scripts (lifecycle hooks, integrations)');
+    console.log('  site         Manage static sites and SPAs');
+    console.log('  vt           Manage virtual tours (bulk upload)');
+    console.log('  plugin       Manage UI plugins (coming soon)');
+    console.log('  objects      Unified view of custom fields & custom objects');
+    console.log('  customfield  Manage custom fields (extend existing models)');
+    console.log('  cob          Manage custom objects (create new models)');
     console.log('');
     console.log('Commands:');
     console.log('  create   Create a new object (interactive or one-liner)');
@@ -61,9 +64,18 @@ const command = args[1]; // create, dev, prod, import, test
   } else if (objectType === 'plugin') {
     const pluginHandler = require('./cli/commands/plugin/index');
     await pluginHandler(command, flags, args);
+  } else if (objectType === 'customfield' || objectType === 'cf') {
+    const cfHandler = require('./cli/commands/customfield/index');
+    await cfHandler(command, flags, args);
+  } else if (objectType === 'cob') {
+    const cobHandler = require('./cli/commands/cob/index');
+    await cobHandler(command, flags, args);
+  } else if (objectType === 'objects') {
+    const objectsHandler = require('./cli/commands/objects/index');
+    await objectsHandler(command, flags, args);
   } else {
     console.error(`❌ Unknown object type: ${objectType}`);
-    console.log('Available types: account, script, site, vt, plugin');
+    console.log('Available types: account, script, site, vt, plugin, objects, customfield, cob');
     console.log('Run ./prolibu for help');
     process.exit(1);
   }

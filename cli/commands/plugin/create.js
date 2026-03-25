@@ -86,7 +86,7 @@ module.exports = async function createPlugin(flags) {
   }
 
   // Create plugin directory
-  const pluginDir = path.join(process.cwd(), 'accounts', domain, pluginPrefix);
+  const pluginDir = path.join(process.cwd(), 'accounts', domain, 'plugins', pluginPrefix);
   if (fs.existsSync(pluginDir) && fs.readdirSync(pluginDir).length > 0) {
     const { confirmDelete } = await inquirer.default.prompt({
       type: 'confirm',
@@ -180,8 +180,8 @@ module.exports = async function createPlugin(flags) {
   const chalk = (await import('chalk')).default;
   console.log(`\nPlugins '${pluginPrefix}-dev' and '${pluginPrefix}' created for domain '${domain}'.`);
   console.log('\nNext steps:');
-  console.log(`  ${chalk.green(`cd accounts/${domain}/${pluginPrefix}`)}`);
-  console.log(`  ${chalk.green(`../../prolibu plugin dev --domain ${domain} --prefix ${pluginPrefix} --watch`)}`);
+  console.log(`To start development, run:\n  ${chalk.green(`./prolibu plugin dev --domain ${domain} --prefix ${pluginPrefix} --watch`)}`);
+  console.log(`To install dependencies:\n  ${chalk.green(`cd accounts/${domain}/plugins/${pluginPrefix} && npm install`)}`);
 
   // Ensure git repository for domain
   const { ensureDomainGit } = require('../../core/gitUtil');

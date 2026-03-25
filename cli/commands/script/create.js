@@ -89,7 +89,7 @@ module.exports = async function createScript(flags) {
   }
 
   // Create script directory
-  const repoDir = path.join(process.cwd(), 'accounts', domain, scriptPrefix);
+  const repoDir = path.join(process.cwd(), 'accounts', domain, 'scripts', scriptPrefix);
   if (fs.existsSync(repoDir) && fs.readdirSync(repoDir).length > 0) {
     const { confirmDelete } = await inquirer.default.prompt({
       type: 'confirm',

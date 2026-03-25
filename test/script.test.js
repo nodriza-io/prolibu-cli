@@ -29,18 +29,19 @@ describe('Prolibu CLI - Scripts', () => {
       fs.unlinkSync(gitignorePath);
     }
     
-    // Remove all folders inside the domain that start with 'hook-test-'
-    if (fs.existsSync(domainPath)) {
-      fs.readdirSync(domainPath, { withFileTypes: true })
+    // Remove all folders inside the domain/scripts that start with 'hook-test-'
+    const scriptsPath = path.join(domainPath, 'scripts');
+    if (fs.existsSync(scriptsPath)) {
+      fs.readdirSync(scriptsPath, { withFileTypes: true })
         .filter(dirent => dirent.isDirectory() && dirent.name.startsWith('hook-test-'))
         .forEach(dirent => {
-          const folderPath = path.join(domainPath, dirent.name);
+          const folderPath = path.join(scriptsPath, dirent.name);
           fs.rmSync(folderPath, { recursive: true, force: true });
         });
     }
     const timestamp = Date.now();
     scriptCode = `hook-test-${timestamp}`;
-    scriptFolder = path.join(__dirname, '..', 'accounts', config.domain, scriptCode);
+    scriptFolder = path.join(__dirname, '..', 'accounts', config.domain, 'scripts', scriptCode);
     
     // Use --no-git to skip interactive prompt, then init git manually
     const cmd = `./script create \

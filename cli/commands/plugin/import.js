@@ -71,7 +71,7 @@ module.exports = async function importPlugin(flags) {
     pluginPrefix = response.pluginPrefix;
   }
 
-  const pluginDir = path.join(process.cwd(), 'accounts', domain, pluginPrefix);
+  const pluginDir = path.join(process.cwd(), 'accounts', domain, 'plugins', pluginPrefix);
 
   // Check if directory exists
   if (fs.existsSync(pluginDir) && fs.readdirSync(pluginDir).length > 0) {
@@ -136,8 +136,8 @@ module.exports = async function importPlugin(flags) {
   const chalk = (await import('chalk')).default;
   console.log(`\nPlugin '${pluginPrefix}' imported for domain '${domain}'.`);
   console.log('\nNext steps:');
-  console.log(`  ${chalk.green(`cd accounts/${domain}/${pluginPrefix}`)}`);
-  console.log(`  ${chalk.green(`../../prolibu plugin dev --domain ${domain} --prefix ${pluginPrefix} --watch`)}`);
+  console.log(`To start development, run:\n  ${chalk.green(`./prolibu plugin dev --domain ${domain} --prefix ${pluginPrefix} --watch`)}`);
+  console.log(`To install dependencies:\n  ${chalk.green(`cd accounts/${domain}/plugins/${pluginPrefix} && npm install`)}`);
 
   // Ensure git repository for domain
   const domainPath = path.join(process.cwd(), 'accounts', domain);
