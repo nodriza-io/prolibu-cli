@@ -60,7 +60,7 @@ module.exports = async function runPlugin(mode, flags) {
   if (fs.existsSync(settingsPath)) {
     try {
       settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-    } catch {}
+    } catch { }
   }
   port = settings.port || port;
 
@@ -187,13 +187,22 @@ module.exports = async function runPlugin(mode, flags) {
         try {
           const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
           version = packageJson.version || '1.0.0';
-        } catch {}
+        } catch { }
       }
 
       // Sync metadata fields
       await pluginClient.patchPlugin(domain, apiKey, pluginCode, pluginName, 'pluginName');
       await pluginClient.patchPlugin(domain, apiKey, pluginCode, version, 'version');
       await pluginClient.patchPlugin(domain, apiKey, pluginCode, true, 'active');
+
+      // Extract and sync formSchema as optionsSchema
+      const { extractOptionsSchema } = require('../../builders/pluginBuilder');
+      const optionsSchema = extractOptionsSchema(bundlePath);
+
+      if (optionsSchema) {
+        await pluginClient.patchPlugin(domain, apiKey, pluginCode, optionsSchema, 'optionsSchema');
+        console.log(chalk.gray(`[SCHEMA] Synced optionsSchema to API`));
+      }
 
       // Read and sync README
       if (fs.existsSync(readmePath)) {

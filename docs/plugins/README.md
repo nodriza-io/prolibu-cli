@@ -46,15 +46,16 @@ Creates a new plugin project with all necessary scaffolding.
 
 **Options:**
 
-| Option | Description | Required |
-|--------|-------------|----------|
-| `--domain <domain>` | Prolibu domain (e.g., `dev10.prolibu.com`) | Yes (interactive if not provided) |
-| `--prefix <name>` | Plugin name/prefix | Yes (interactive if not provided) |
-| `--description <text>` | Plugin description | No |
-| `--repo <url>` | Git repository URL to clone from | No |
-| `--apikey <key>` | Prolibu API key | Yes (interactive if not provided) |
+| Option                 | Description                                | Required                          |
+| ---------------------- | ------------------------------------------ | --------------------------------- |
+| `--domain <domain>`    | Prolibu domain (e.g., `dev10.prolibu.com`) | Yes (interactive if not provided) |
+| `--prefix <name>`      | Plugin name/prefix                         | Yes (interactive if not provided) |
+| `--description <text>` | Plugin description                         | No                                |
+| `--repo <url>`         | Git repository URL to clone from           | No                                |
+| `--apikey <key>`       | Prolibu API key                            | Yes (interactive if not provided) |
 
 **What it does:**
+
 1. Creates plugin directory in `accounts/<domain>/<prefix>/`
 2. Copies template files (React + Vite + TypeScript)
 3. Generates `config.json`, `settings.json`, and `README.md`
@@ -64,6 +65,7 @@ Creates a new plugin project with all necessary scaffolding.
 7. Initializes git repository for the domain
 
 **Example:**
+
 ```bash
 ./prolibu plugin create --domain dev10.prolibu.com --prefix sales-dashboard --description "Sales analytics dashboard"
 ```
@@ -80,20 +82,22 @@ Starts a development server with hot module replacement (HMR).
 
 **Options:**
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--domain <domain>` | Prolibu domain | Required |
-| `--prefix <name>` | Plugin name/prefix | Required |
-| `--watch, -w` | Watch for config/README changes | `false` |
-| `--port <port>` | Dev server port | `4500` |
+| Option              | Description                     | Default  |
+| ------------------- | ------------------------------- | -------- |
+| `--domain <domain>` | Prolibu domain                  | Required |
+| `--prefix <name>`   | Plugin name/prefix              | Required |
+| `--watch, -w`       | Watch for config/README changes | `false`  |
+| `--port <port>`     | Dev server port                 | `4500`   |
 
 **What it does:**
+
 1. Ensures plugin exists on the API (creates `<prefix>-dev` if needed)
 2. Starts Vite dev server with HMR
 3. Opens Plugin Studio interface
 4. If `--watch`: syncs `config.json` and `README.md` changes to API in real-time
 
 **Example:**
+
 ```bash
 ./prolibu plugin dev --domain dev10.prolibu.com --prefix sales-dashboard --watch --port 4500
 ```
@@ -112,12 +116,13 @@ Builds the plugin and publishes it to production.
 
 **Options:**
 
-| Option | Description |
-|--------|-------------|
-| `--domain <domain>` | Prolibu domain |
-| `--prefix <name>` | Plugin name/prefix |
+| Option              | Description        |
+| ------------------- | ------------------ |
+| `--domain <domain>` | Prolibu domain     |
+| `--prefix <name>`   | Plugin name/prefix |
 
 **What it does:**
+
 1. Runs Vite build (UMD format with CSS injected)
 2. Syncs metadata to API:
    - `variables` from `config.json`
@@ -129,6 +134,7 @@ Builds the plugin and publishes it to production.
 4. Uploads icon from `src/assets/` (first `.svg`, `.png`, `.jpg`, or `.gif` found)
 
 **Example:**
+
 ```bash
 ./prolibu plugin prod --domain dev10.prolibu.com --prefix sales-dashboard
 ```
@@ -145,14 +151,15 @@ Imports an existing plugin from a git repository.
 
 **Options:**
 
-| Option | Description |
-|--------|-------------|
-| `--domain <domain>` | Prolibu domain |
-| `--prefix <name>` | Plugin name/prefix (defaults to repo name) |
-| `--repo <url>` | Git repository URL |
-| `--apikey <key>` | Prolibu API key |
+| Option              | Description                                |
+| ------------------- | ------------------------------------------ |
+| `--domain <domain>` | Prolibu domain                             |
+| `--prefix <name>`   | Plugin name/prefix (defaults to repo name) |
+| `--repo <url>`      | Git repository URL                         |
+| `--apikey <key>`    | Prolibu API key                            |
 
 **What it does:**
+
 1. Clones the repository
 2. Removes `.git` folder (uses domain-level git instead)
 3. Updates `config.json` with repository URL
@@ -160,6 +167,7 @@ Imports an existing plugin from a git repository.
 5. Runs `npm install`
 
 **Example:**
+
 ```bash
 ./prolibu plugin import --domain dev10.prolibu.com --repo https://github.com/company/my-plugin.git
 ```
@@ -169,6 +177,9 @@ Imports an existing plugin from a git repository.
 ## Project Structure
 
 ```
+shared/
+└── FormRenderer.tsx           # ⚡ Fuente única de verdad — editar aquí
+
 accounts/
 └── <domain>/
     ├── profile.json           # API key storage
@@ -176,14 +187,15 @@ accounts/
         ├── config.json        # Plugin metadata (syncs to API)
         ├── settings.json      # Local dev settings
         ├── package.json       # NPM dependencies
-        ├── vite.config.js     # Vite build configuration
-        ├── tsconfig.json      # TypeScript config
+        ├── vite.config.js     # Vite build (alias @prolibu/shared → ../../../shared)
+        ├── tsconfig.json      # TypeScript config (paths @prolibu/shared)
         ├── index.html         # Plugin Studio (dev UI)
         ├── README.md          # Documentation (syncs to API)
         ├── src/
         │   ├── index.tsx      # Plugin entry point
         │   ├── utils/
-        │   │   └── assets.ts  # Asset URL utilities (required)
+        │   │   ├── assets.ts          # Asset URL utilities (required)
+        │   │   └── FormRenderer.tsx   # ⚠️ Auto-generated stub — no editar
         │   ├── plugins/       # Plugin components
         │   │   └── Example/
         │   │       ├── ExamplePlugin.tsx
@@ -202,10 +214,10 @@ accounts/
 
 The CLI creates two plugin entries on the API:
 
-| Mode | Plugin Code | Purpose |
-|------|-------------|---------|
-| Dev | `<prefix>-dev` | Development/testing |
-| Prod | `<prefix>` | Production deployment |
+| Mode | Plugin Code    | Purpose               |
+| ---- | -------------- | --------------------- |
+| Dev  | `<prefix>-dev` | Development/testing   |
+| Prod | `<prefix>`     | Production deployment |
 
 This allows parallel development without affecting production users.
 
@@ -264,26 +276,254 @@ export default defineConfig({
   plugins: [
     react(),
     cssInjectedByJsPlugin(),
-    prolibuPublishPlugin()  // Enables publish from Studio UI
+    prolibuPublishPlugin(), // Enables publish from Studio UI
   ],
   build: {
     lib: {
-      entry: 'src/index.tsx',
-      name: 'PluginName',     // PascalCase plugin name
-      formats: ['umd'],
-      fileName: () => 'PluginName.js'
+      entry: "src/index.tsx",
+      name: "PluginName", // PascalCase plugin name
+      formats: ["umd"],
+      fileName: () => "PluginName.js",
     },
     rollupOptions: {
-      external: ['react', 'react-dom'],
+      external: ["react", "react-dom"],
       output: {
         globals: {
-          react: 'React',
-          'react-dom': 'ReactDOM'
-        }
-      }
+          react: "React",
+          "react-dom": "ReactDOM",
+        },
+      },
+    },
+  },
+});
+```
+
+---
+
+## Form Schema (Formily + Ant Design)
+
+El sistema de formularios de plugins usa [Formily.js](https://formilyjs.org/) con [Ant Design](https://ant.design/) para renderizar campos de configuración dinámicamente basados en JSON Schema.
+
+### Formato del Schema
+
+El `formSchema` sigue el estándar [JSON Schema](https://json-schema.org/) con extensiones de Formily:
+
+```typescript
+formSchema: {
+  type: 'object',
+  properties: {
+    fieldName: {
+      type: 'string' | 'number' | 'boolean' | 'array',
+      title: 'Field Label',           // Label mostrado en UI
+      default: 'default value',        // Valor por defecto
+      description: 'Help text',        // Texto de ayuda
+      enum: ['opt1', 'opt2'],           // Opciones para select
+      format: 'date' | 'textarea',     // Formato especial
+      // Formily extensions (opcional)
+      'x-component': 'Input',          // Componente específico
+      'x-decorator': 'FormItem',       // Wrapper del campo
     }
   }
+}
+```
+
+### Tipos de Campo Soportados
+
+| type              | format      | Componente Antd       | Descripción              |
+| ----------------- | ----------- | --------------------- | ------------------------ |
+| `string`          | -           | Input                 | Campo de texto           |
+| `string`          | `color`     | Input (type=color)    | Selector de color        |
+| `string`          | `textarea`  | Input.TextArea        | Área de texto multilínea |
+| `string`          | `password`  | Password              | Campo de contraseña      |
+| `string`          | `date`      | DatePicker            | Selector de fecha        |
+| `string`          | `date-time` | DatePicker (showTime) | Fecha y hora             |
+| `string`          | `time`      | TimePicker            | Selector de hora         |
+| `string` + `enum` | -           | Select                | Dropdown con opciones    |
+| `number`          | -           | NumberPicker          | Campo numérico           |
+| `boolean`         | -           | Switch                | Interruptor on/off       |
+| `array`           | -           | Select (multiple)     | Selector múltiple        |
+
+### Componentes Disponibles (x-component)
+
+Todos los componentes de [@formily/antd-v5](https://antd5.formilyjs.org/):
+
+- **Input**, Input.TextArea
+- **Select**, Cascader, TreeSelect
+- **NumberPicker**
+- **DatePicker**, DatePicker.RangePicker
+- **TimePicker**, TimePicker.RangePicker
+- **Switch**, Checkbox, Checkbox.Group
+- **Radio**, Radio.Group
+- **Upload**, Upload.Dragger
+- **Password**
+- **FormGrid**, FormLayout, Space
+
+### Ejemplos
+
+#### Campo de texto básico
+
+```typescript
+message: {
+  type: 'string',
+  title: 'Mensaje',
+  default: 'Hola mundo',
+  description: 'Mensaje a mostrar'
+}
+```
+
+#### Selector de opciones (enum)
+
+```typescript
+theme: {
+  type: 'string',
+  title: 'Tema',
+  enum: ['light', 'dark', 'auto'],
+  enumNames: ['Claro', 'Oscuro', 'Automático'],  // Labels opcionales
+  default: 'light'
+}
+```
+
+#### Selector de color
+
+```typescript
+accentColor: {
+  type: 'string',
+  title: 'Color de Acento',
+  format: 'color',
+  default: '#0d99ff'
+}
+```
+
+#### Campo numérico
+
+```typescript
+fontSize: {
+  type: 'number',
+  title: 'Tamaño de Fuente',
+  default: 14,
+  description: 'Tamaño en píxeles'
+}
+```
+
+#### Checkbox booleano
+
+```typescript
+showBorder: {
+  type: 'boolean',
+  title: 'Mostrar Borde',
+  default: true
+}
+```
+
+#### Selector de fecha
+
+```typescript
+startDate: {
+  type: 'string',
+  title: 'Fecha de Inicio',
+  format: 'date',
+  default: ''
+}
+```
+
+#### Fecha y hora
+
+```typescript
+scheduledAt: {
+  type: 'string',
+  title: 'Programado para',
+  format: 'date-time',
+  default: ''
+}
+```
+
+#### Área de texto
+
+```typescript
+notes: {
+  type: 'string',
+  title: 'Notas',
+  format: 'textarea',
+  default: ''
+}
+```
+
+### Acceder a los Valores en el Plugin
+
+Los valores del formulario están disponibles en `ctx.formSchemaModel.model`:
+
+```tsx
+export const MyPlugin = ({ ctx }: PluginProps) => {
+  const { model } = ctx.formSchemaModel;
+
+  return (
+    <div
+      style={{
+        color: model.accentColor,
+        fontSize: model.fontSize,
+      }}
+    >
+      {model.message}
+    </div>
+  );
+};
+```
+
+### Usar FormRenderer en tu Plugin
+
+Si necesitas renderizar formularios dentro de tu plugin:
+
+```tsx
+import { FormRenderer } from "./utils/FormRenderer"; // re-export desde shared/
+
+export const MyPlugin = ({ ctx }) => {
+  const [values, setValues] = useState({});
+
+  const schema = {
+    type: "object",
+    properties: {
+      name: { type: "string", title: "Nombre", default: "" },
+      email: { type: "string", title: "Email", default: "" },
+    },
+  };
+
+  return (
+    <FormRenderer schema={schema} initialValues={values} onChange={setValues} />
+  );
+};
+```
+
+### Componentes Personalizados (Avanzado)
+
+> **⚠️ Regla SOLID:** `src/utils/FormRenderer.tsx` es un _stub_ auto-generado — no lo edites.
+> La fuente única de verdad es **`shared/FormRenderer.tsx`** en la raíz del proyecto.
+
+Para agregar un widget custom al FormRenderer, edita `shared/FormRenderer.tsx`:
+
+```tsx
+import { ColorPicker } from "antd"; // Ejemplo: usar ColorPicker de Antd 5
+
+// Wrapper para hacerlo compatible con Formily
+const AntdColorPicker = ({ value, onChange }) => (
+  <ColorPicker value={value} onChange={(_, hex) => onChange(hex)} />
+);
+
+const SchemaField = createSchemaField({
+  components: {
+    // ... componentes existentes
+    ColorPicker: AntdColorPicker, // Agregar componente
+  },
 });
+```
+
+Luego úsalo en el schema:
+
+```typescript
+customField: {
+  type: 'string',
+  title: 'Color',
+  'x-component': 'ColorPicker'
+}
 ```
 
 ---
@@ -292,25 +532,25 @@ export default defineConfig({
 
 ### Plugin API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/v2/plugin/{pluginCode}` | Get plugin by code |
-| POST | `/v2/plugin` | Create new plugin |
-| PATCH | `/v2/plugin/{id}` | Update plugin |
+| Method | Endpoint                  | Description        |
+| ------ | ------------------------- | ------------------ |
+| GET    | `/v2/plugin/{pluginCode}` | Get plugin by code |
+| POST   | `/v2/plugin`              | Create new plugin  |
+| PATCH  | `/v2/plugin/{id}`         | Update plugin      |
 
 ### Upload Format
 
 Plugins are uploaded via `multipart/form-data` with:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `pluginCode` | string | Unique plugin identifier |
-| `pluginName` | string | Display name (PascalCase) |
-| `active` | boolean | Enable/disable plugin |
-| `version` | string | Semantic version |
-| `description` | string | Plugin description |
-| `resources` | file | Bundle JS file |
-| `icon` | file | Plugin icon image |
+| Field         | Type    | Description               |
+| ------------- | ------- | ------------------------- |
+| `pluginCode`  | string  | Unique plugin identifier  |
+| `pluginName`  | string  | Display name (PascalCase) |
+| `active`      | boolean | Enable/disable plugin     |
+| `version`     | string  | Semantic version          |
+| `description` | string  | Plugin description        |
+| `resources`   | file    | Bundle JS file            |
+| `icon`        | file    | Plugin icon image         |
 
 ---
 
@@ -436,14 +676,14 @@ After the ZIP is uploaded and extracted, assets are stored at:
 
 ### Flow Summary
 
-| Step | Action | Result |
-|------|--------|--------|
-| 1 | `vite build` | `dist/{plugin}.js` (UMD bundle with embedded CSS) |
-| 2 | ZIP created | `dist.zip` with bundle + assets |
-| 3 | Upload to API | ZIP extracted to S3/Storage |
-| 4 | Metadata sync | Plugin document saved to MongoDB |
-| 5 | Frontend loads | Computes `bundleUrl` and injects `<script>` |
-| 6 | Plugin active | `window[pluginCode].components` available |
+| Step | Action         | Result                                            |
+| ---- | -------------- | ------------------------------------------------- |
+| 1    | `vite build`   | `dist/{plugin}.js` (UMD bundle with embedded CSS) |
+| 2    | ZIP created    | `dist.zip` with bundle + assets                   |
+| 3    | Upload to API  | ZIP extracted to S3/Storage                       |
+| 4    | Metadata sync  | Plugin document saved to MongoDB                  |
+| 5    | Frontend loads | Computes `bundleUrl` and injects `<script>`       |
+| 6    | Plugin active  | `window[pluginCode].components` available         |
 
 ---
 
@@ -453,13 +693,69 @@ Plugins can include static assets like images, fonts, and other files. Understan
 
 ### Types of Assets
 
-| Type | Location | Handling |
-|------|----------|----------|
-| **Icon** | `src/assets/icon.svg` | Uploaded separately to API, displayed in plugin catalog |
-| **Images** | `src/assets/images/` | Packaged in ZIP, served from CDN |
-| **Fonts** | `src/assets/fonts/` | Packaged in ZIP, served from CDN |
-| **CSS** | Component `.scss` files | Bundled and injected into JS (via `cssInjectedByJsPlugin`) |
-| **Other files** | `src/assets/**/*` | Packaged in ZIP, served from CDN |
+| Type            | Location                | Handling                                                   |
+| --------------- | ----------------------- | ---------------------------------------------------------- |
+| **Icon**        | `src/assets/icon.svg`   | Uploaded separately to API, displayed in plugin catalog    |
+| **Images**      | `src/assets/images/`    | Packaged in ZIP, served from CDN                           |
+| **Fonts**       | `src/assets/fonts/`     | Packaged in ZIP, served from CDN                           |
+| **CSS**         | Component `.scss` files | Bundled and injected into JS (via `cssInjectedByJsPlugin`) |
+| **Other files** | `src/assets/**/*`       | Packaged in ZIP, served from CDN                           |
+
+### Estilos - Regla Obligatoria
+
+> **⚠️ REGLA OBLIGATORIA: Usar estilos inline de React**
+>
+> Los plugins **DEBEN** usar **estilos inline de React** (objetos JavaScript) en lugar de archivos CSS/SCSS externos.
+>
+> **Motivo:** Los archivos SCSS se inyectan en `document.head` mediante una etiqueta `<style>`, lo cual puede fallar en producción si:
+>
+> - El plugin se renderiza en un Shadow DOM o contexto aislado
+> - Las políticas CSP (Content Security Policy) bloquean estilos inline en etiquetas `<style>`
+> - El plugin se carga en un iframe con restricciones
+
+**❌ NO hacer (archivos SCSS externos):**
+
+```tsx
+// CalendarioPlugin.tsx
+import "./CalendarioPlugin.scss"; // ❌ Puede fallar en producción
+
+export const CalendarioPlugin = () => {
+  return <div className="calendario-container">...</div>;
+};
+```
+
+**✅ SÍ hacer (estilos inline de React):**
+
+```tsx
+import { CSSProperties } from "react";
+
+const styles: Record<string, CSSProperties> = {
+  container: {
+    fontFamily:
+      "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    maxWidth: "350px",
+    padding: "20px",
+    background: "#ffffff",
+    borderRadius: "12px",
+    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.1)",
+  },
+  button: {
+    background: "#4a90d9",
+    color: "white",
+    border: "none",
+    borderRadius: "8px",
+    cursor: "pointer",
+  },
+};
+
+export const CalendarioPlugin = () => {
+  return (
+    <div style={styles.container}>
+      <button style={styles.button}>Click</button>
+    </div>
+  );
+};
+```
 
 ### Local Structure
 
@@ -526,29 +822,29 @@ Since plugins run on the Prolibu platform (not your dev server), you need to dyn
 #### Available Functions
 
 ```typescript
-import { getAssetUrl, createAssetGetter } from '../../utils/assets';
+import { getAssetUrl, createAssetGetter } from "../../utils/assets";
 
 // Option 1: Direct usage
-const logoUrl = getAssetUrl('my-plugin', 'images/logo.svg');
+const logoUrl = getAssetUrl("my-plugin", "images/logo.svg");
 
 // Option 2: Create a getter for multiple assets
-const getAsset = createAssetGetter('my-plugin');
-const logoUrl = getAsset('images/logo.svg');
-const badgeUrl = getAsset('images/badge.png');
+const getAsset = createAssetGetter("my-plugin");
+const logoUrl = getAsset("images/logo.svg");
+const badgeUrl = getAsset("images/badge.png");
 ```
 
 #### Usage in React Components
 
 ```tsx
 // src/plugins/MyPlugin/MyPlugin.tsx
-import React from 'react';
-import { getAssetUrl } from '../../utils/assets';
+import React from "react";
+import { getAssetUrl } from "../../utils/assets";
 
-const PLUGIN_CODE = 'my-plugin';
+const PLUGIN_CODE = "my-plugin";
 
 export const MyPlugin: React.FC<{ ctx: any }> = ({ ctx }) => {
-  const logoUrl = getAssetUrl(PLUGIN_CODE, 'images/logo.svg');
-  const badgeUrl = getAssetUrl(PLUGIN_CODE, 'images/badge.png');
+  const logoUrl = getAssetUrl(PLUGIN_CODE, "images/logo.svg");
+  const badgeUrl = getAssetUrl(PLUGIN_CODE, "images/badge.png");
 
   return (
     <div>
@@ -567,13 +863,9 @@ For CSS, you have two options:
 
 ```tsx
 const MyPlugin: React.FC = () => {
-  const bgUrl = getAssetUrl('my-plugin', 'images/background.jpg');
+  const bgUrl = getAssetUrl("my-plugin", "images/background.jpg");
 
-  return (
-    <div style={{ backgroundImage: `url(${bgUrl})` }}>
-      Content
-    </div>
-  );
+  return <div style={{ backgroundImage: `url(${bgUrl})` }}>Content</div>;
 };
 ```
 
@@ -582,7 +874,7 @@ const MyPlugin: React.FC = () => {
 ```scss
 // This only works in dev mode!
 .container {
-  background-image: url('/src/assets/images/background.jpg');
+  background-image: url("/src/assets/images/background.jpg");
 }
 ```
 
@@ -591,14 +883,14 @@ const MyPlugin: React.FC = () => {
 #### Using Custom Fonts
 
 ```tsx
-import { getAssetUrl } from '../../utils/assets';
+import { getAssetUrl } from "../../utils/assets";
 
-const PLUGIN_CODE = 'my-plugin';
+const PLUGIN_CODE = "my-plugin";
 
 // Dynamically inject font-face
 const injectFont = () => {
-  const fontUrl = getAssetUrl(PLUGIN_CODE, 'fonts/custom-font.woff2');
-  const style = document.createElement('style');
+  const fontUrl = getAssetUrl(PLUGIN_CODE, "fonts/custom-font.woff2");
+  const style = document.createElement("style");
   style.textContent = `
     @font-face {
       font-family: 'CustomFont';
@@ -615,19 +907,15 @@ export const MyPlugin: React.FC = () => {
     injectFont();
   }, []);
 
-  return (
-    <div style={{ fontFamily: 'CustomFont' }}>
-      Text with custom font
-    </div>
-  );
+  return <div style={{ fontFamily: "CustomFont" }}>Text with custom font</div>;
 };
 ```
 
 ### Dev vs Production URLs
 
-| Environment | Bundle URL | Asset URL |
-|-------------|------------|-----------|
-| **Dev** | `http://localhost:4500/src/index.tsx` | `/src/assets/images/logo.svg` |
+| Environment    | Bundle URL                                    | Asset URL                                               |
+| -------------- | --------------------------------------------- | ------------------------------------------------------- |
+| **Dev**        | `http://localhost:4500/src/index.tsx`         | `/src/assets/images/logo.svg`                           |
 | **Production** | `https://domain.com/plugins/.../my-plugin.js` | `https://domain.com/plugins/.../assets/images/logo.svg` |
 
 The `getAssetUrl()` helper handles this difference automatically.
@@ -635,23 +923,26 @@ The `getAssetUrl()` helper handles this difference automatically.
 ### Important Considerations
 
 1. **Always use `getAssetUrl()` for assets**
+
    ```typescript
    // ❌ This won't work in production
-   import logo from './assets/logo.svg';
-   <img src="/src/assets/images/logo.svg" />
+   import logo from "./assets/logo.svg";
+   <img src="/src/assets/images/logo.svg" />;
 
    // ✅ Use the included utility
-   import { getAssetUrl } from '../../utils/assets';
-   const logo = getAssetUrl('my-plugin', 'images/logo.svg');
-   <img src={logo} />
+   import { getAssetUrl } from "../../utils/assets";
+   const logo = getAssetUrl("my-plugin", "images/logo.svg");
+   <img src={logo} />;
    ```
 
 2. **Icon is handled separately**
+
    - The plugin icon (`src/assets/icon.svg`) is uploaded as a separate file
    - It's not included in the assets folder of the ZIP
    - The icon is used in the Prolibu plugin catalog
 
 3. **CSS is embedded in the bundle**
+
    - All `.scss` and `.css` files imported in your components are bundled into the JS
    - The `cssInjectedByJsPlugin` injects styles when the plugin loads
    - No separate CSS files are served
@@ -679,16 +970,17 @@ The development environment includes a Figma-like interface for plugin developme
 
 ### Keyboard Shortcuts & Interactions
 
-| Action | Description |
-|--------|-------------|
-| `Escape` | Close file viewer |
-| `Drag frame` | Move the preview anywhere on canvas |
-| `Drag edges/corner` | Resize the preview frame |
-| `Double-click frame` | Reset size to 800×600 and center |
+| Action               | Description                         |
+| -------------------- | ----------------------------------- |
+| `Escape`             | Close file viewer                   |
+| `Drag frame`         | Move the preview anywhere on canvas |
+| `Drag edges/corner`  | Resize the preview frame            |
+| `Double-click frame` | Reset size to 800×600 and center    |
 
 ### Publish from Studio
 
 Click the "Publish" button to:
+
 1. Build the plugin with Vite
 2. Upload to production API
 3. Show success/error feedback
@@ -702,26 +994,77 @@ This calls the same `prolibu plugin prod` command internally.
 ### src/index.tsx
 
 ```typescript
-import { ProlibuPluginsConfig } from 'prolibu-cli/plugins/types';
-import { createRenderFn } from 'prolibu-cli/plugins/utils';
-import { MyPlugin } from './plugins/MyPlugin/MyPlugin';
+import { MyPlugin } from "./plugins/MyPlugin/MyPlugin";
+
+// Re-export FormRenderer for use in plugins (optional)
+export { FormRenderer } from "./utils/FormRenderer";
+
+// Helper to create render function
+const createRenderFn = (Component: React.ComponentType<any>) => {
+  return (node: HTMLElement, opts: any = {}, mode = "prod") => {
+    if (mode === "dev") return Component;
+
+    const draw = (attempts: number) => {
+      if (attempts > 10) return;
+      if (typeof window.ReactDOM?.createRoot === "function") {
+        const root = window.ReactDOM.createRoot(node);
+        root.render(window.React.createElement(Component, { ctx: opts }));
+      } else {
+        setTimeout(() => draw(attempts + 1), 100);
+      }
+    };
+    draw(0);
+  };
+};
 
 export default {
   components: [
     {
       active: true,
-      label: 'My Plugin',
-      containerId: 'my-plugin',
-      description: 'Plugin description',
+      label: "My Plugin",
+      containerId: "my-plugin-plugin",
+      description: "Plugin description",
       render: createRenderFn(MyPlugin),
-      icon: '/assets/icon.svg',
+      icon: "/assets/icon.svg",
+      // JSON Schema format (Formily compatible)
       formSchema: {
-        // Form fields configuration
-      }
-    }
-  ]
-} satisfies ProlibuPluginsConfig;
+        type: "object",
+        properties: {
+          theme: {
+            type: "string",
+            title: "Theme",
+            enum: ["light", "dark"],
+            default: "light",
+          },
+          message: {
+            type: "string",
+            title: "Message",
+            default: "Hello!",
+            description: "Welcome message",
+          },
+          showHeader: {
+            type: "boolean",
+            title: "Show Header",
+            default: true,
+          },
+        },
+      },
+    },
+  ],
+};
 ```
+
+> **⚠️ REGLA OBLIGATORIA: containerId**
+>
+> El `containerId` **DEBE** ser el mismo nombre del `name` en `package.json` con el sufijo `-plugin`.
+>
+> | package.json name | containerId (obligatorio) |
+> | ----------------- | ------------------------- |
+> | `calculadora`     | `calculadora-plugin`      |
+> | `my-widget`       | `my-widget-plugin`        |
+> | `sales-dashboard` | `sales-dashboard-plugin`  |
+>
+> **Ejemplo:** Si tu `package.json` tiene `"name": "calculadora"`, entonces `containerId` debe ser `"calculadora-plugin"`.
 
 ### Component Interface
 
@@ -743,21 +1086,25 @@ interface PluginComponentProps {
 ### Common Issues
 
 **"No API key found for domain"**
+
 - Run `prolibu plugin create` first to configure the API key
 - Or manually create `accounts/<domain>/profile.json` with `{ "apiKey": "..." }`
 
 **"No bundle found in dist"**
+
 - Ensure `vite.config.js` has correct `fileName` configuration
 - Check build output for errors
 
 **"fsevents" error on macOS**
+
 - Add to vite.config.js:
   ```javascript
   optimizeDeps: {
-    exclude: ['fsevents']
+    exclude: ["fsevents"];
   }
   ```
 
 **Icon not uploading**
+
 - Place icon file in `src/assets/`
 - Supported formats: `.svg`, `.png`, `.jpg`, `.gif`
