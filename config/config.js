@@ -1,6 +1,22 @@
 const fs = require('fs');
 const path = require('path');
 
+// Resource type subfolder names inside each account
+const RESOURCE_TYPES = {
+  scripts: 'scripts',
+  sites: 'sites',
+  plugins: 'plugins',
+  vt: 'vt',
+};
+
+function getAccountPath(domain) {
+  return path.join(process.cwd(), 'accounts', domain);
+}
+
+function getResourcePath(domain, resourceType, name) {
+  return path.join(process.cwd(), 'accounts', domain, resourceType, name);
+}
+
 function getProfilePath(domain) {
   return path.join(process.cwd(), 'accounts', domain, 'profile.json');
 }
@@ -32,11 +48,11 @@ function set(key, value, domain) {
 }
 
 function getScriptCodePath(domain, scriptName) {
-  return path.join(process.cwd(), 'accounts', domain, scriptName, 'code.js');
+  return path.join(process.cwd(), 'accounts', domain, RESOURCE_TYPES.scripts, scriptName, 'code.js');
 }
 
 function getScriptEntryPath(domain, scriptName, fileName = 'index') {
-  return path.join(process.cwd(), 'accounts', domain, scriptName, `${fileName}.js`);
+  return path.join(process.cwd(), 'accounts', domain, RESOURCE_TYPES.scripts, scriptName, `${fileName}.js`);
 }
 
 function ensureScriptCode(domain, scriptName, fileName = 'index') {
@@ -63,6 +79,9 @@ module.exports = {
   get,
   set,
   getProfilePath,
+  getAccountPath,
+  getResourcePath,
+  RESOURCE_TYPES,
   ensureConfig,
   getScriptCodePath,
   getScriptEntryPath,

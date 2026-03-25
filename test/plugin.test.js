@@ -20,20 +20,21 @@ describe('Prolibu CLI - Plugins', () => {
       fs.writeFileSync(profilePath, JSON.stringify({ apiKey: config.apiKey }, null, 2));
     }
 
-    // Remove all folders inside the domain that start with 'plugin-test-'
+    // Remove all folders inside the domain/plugins that start with 'plugin-test-'
     const domainPath = path.join(__dirname, '..', 'accounts', config.domain);
-    if (fs.existsSync(domainPath)) {
-      fs.readdirSync(domainPath, { withFileTypes: true })
+    const pluginsPath = path.join(domainPath, 'plugins');
+    if (fs.existsSync(pluginsPath)) {
+      fs.readdirSync(pluginsPath, { withFileTypes: true })
         .filter(dirent => dirent.isDirectory() && dirent.name.startsWith('plugin-test-'))
         .forEach(dirent => {
-          const folderPath = path.join(domainPath, dirent.name);
+          const folderPath = path.join(pluginsPath, dirent.name);
           fs.rmSync(folderPath, { recursive: true, force: true });
         });
     }
 
     const timestamp = Date.now();
     pluginCode = `plugin-test-${timestamp}`;
-    pluginFolder = path.join(__dirname, '..', 'accounts', config.domain, pluginCode);
+    pluginFolder = path.join(__dirname, '..', 'accounts', config.domain, 'plugins', pluginCode);
 
     // Create plugin folder manually
     fs.mkdirSync(pluginFolder, { recursive: true });

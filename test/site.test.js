@@ -20,20 +20,21 @@ describe('Prolibu CLI - Sites', () => {
       fs.writeFileSync(profilePath, JSON.stringify({ apiKey: config.apiKey }, null, 2));
     }
 
-    // Remove all folders inside the domain that start with 'site-test-'
+    // Remove all folders inside the domain/sites that start with 'site-test-'
     const domainPath = path.join(__dirname, '..', 'accounts', config.domain);
-    if (fs.existsSync(domainPath)) {
-      fs.readdirSync(domainPath, { withFileTypes: true })
+    const sitesPath = path.join(domainPath, 'sites');
+    if (fs.existsSync(sitesPath)) {
+      fs.readdirSync(sitesPath, { withFileTypes: true })
         .filter(dirent => dirent.isDirectory() && dirent.name.startsWith('site-test-'))
         .forEach(dirent => {
-          const folderPath = path.join(domainPath, dirent.name);
+          const folderPath = path.join(sitesPath, dirent.name);
           fs.rmSync(folderPath, { recursive: true, force: true });
         });
     }
     
     const timestamp = Date.now();
     siteCode = `site-test-${timestamp}`;
-    siteFolder = path.join(__dirname, '..', 'accounts', config.domain, siteCode);
+    siteFolder = path.join(__dirname, '..', 'accounts', config.domain, 'sites', siteCode);
     
     // Create site folder manually with Hola Mundo
     fs.mkdirSync(siteFolder, { recursive: true });

@@ -144,7 +144,7 @@ module.exports = async function downloadVt(flags) {
     }
 
     // 6. Create output directory
-    const vtDir = path.join(process.cwd(), 'accounts', domain, prefix);
+    const vtDir = path.join(process.cwd(), 'accounts', domain, 'vt', prefix);
     const virtualToursPath = path.join(vtDir, 'virtualTours');
 
     if (!fs.existsSync(virtualToursPath)) {

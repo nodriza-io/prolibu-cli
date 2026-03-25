@@ -193,7 +193,7 @@ async function runDevSite(sitePrefix, env, domain, apiKey, watch = false, port =
   const envLabel = env === 'dev' ? 'Dev' : 'Prod';
   const siteNameLabel = `${sitePrefix} - ${envLabel}`;
   
-  const siteFolder = path.join(process.cwd(), 'accounts', domain, sitePrefix);
+  const siteFolder = path.join(process.cwd(), 'accounts', domain, 'sites', sitePrefix);
   const publicFolder = path.join(siteFolder, 'public');
   const distZip = path.join(siteFolder, 'dist.zip');
   const configPath = path.join(siteFolder, 'config.json');

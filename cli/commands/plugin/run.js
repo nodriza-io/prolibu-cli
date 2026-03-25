@@ -43,7 +43,7 @@ module.exports = async function runPlugin(mode, flags) {
   }
 
   // Plugin paths
-  const pluginDir = path.join(process.cwd(), 'accounts', domain, pluginPrefix);
+  const pluginDir = path.join(process.cwd(), 'accounts', domain, 'plugins', pluginPrefix);
   const configPath = path.join(pluginDir, 'config.json');
   const settingsPath = path.join(pluginDir, 'settings.json');
   const readmePath = path.join(pluginDir, 'README.md');
