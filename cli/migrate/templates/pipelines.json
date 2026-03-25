@@ -1,0 +1,30 @@
+{
+  "pipeline": {
+    "order": [
+      "accounts",
+      "products",
+      "contacts",
+      "opportunities"
+    ],
+    "batchSize": 200,
+    "concurrency": 1,
+    "onError": "skip"
+  },
+  "phases": [
+    {
+      "key": "discover",
+      "label": "Discovery",
+      "description": "Scan CRM and discover available objects and fields"
+    },
+    {
+      "key": "review",
+      "label": "Review & Configure",
+      "description": "Review discovered objects, select entities and fields"
+    },
+    {
+      "key": "migrate",
+      "label": "Migration",
+      "description": "Execute data migration from CRM to Prolibu"
+    }
+  ]
+}

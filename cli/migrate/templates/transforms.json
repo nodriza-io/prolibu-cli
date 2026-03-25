@@ -1,0 +1,72 @@
+{
+  "entities": {
+    "accounts": {
+      "transforms": []
+    },
+    "contacts": {
+      "transforms": [
+        {
+          "type": "trim",
+          "field": "firstName"
+        },
+        {
+          "type": "trim",
+          "field": "lastName"
+        },
+        {
+          "type": "lowercase",
+          "field": "email"
+        },
+        {
+          "type": "concat",
+          "fields": [
+            "firstName",
+            "lastName"
+          ],
+          "separator": " ",
+          "to": "fullName"
+        }
+      ]
+    },
+    "products": {
+      "transforms": [
+        {
+          "type": "uppercase",
+          "field": "code"
+        },
+        {
+          "type": "boolean",
+          "field": "active",
+          "truthy": [
+            "true",
+            "1",
+            "yes"
+          ]
+        }
+      ]
+    },
+    "opportunities": {
+      "transforms": [
+        {
+          "type": "trim",
+          "field": "dealName"
+        },
+        {
+          "type": "map",
+          "field": "stage",
+          "values": {
+            "Prospecting": "prospecting",
+            "Qualification": "qualification",
+            "Needs Analysis": "analysis",
+            "Value Proposition": "proposal",
+            "Perception Analysis": "negotiation",
+            "Proposal/Price Quote": "proposal",
+            "Negotiation/Review": "negotiation",
+            "Closed Won": "won",
+            "Closed Lost": "lost"
+          }
+        }
+      ]
+    }
+  }
+}

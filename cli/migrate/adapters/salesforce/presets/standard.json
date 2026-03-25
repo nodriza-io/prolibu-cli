@@ -1,0 +1,18 @@
+{
+  "name": "standard",
+  "label": "Standard Salesforce Migration",
+  "description": "Accounts, products, contacts, and opportunities with standard field mappings",
+  "config": {
+    "entities": {
+      "accounts": { "enabled": true },
+      "products": { "enabled": true },
+      "contacts": { "enabled": true },
+      "opportunities": { "enabled": true },
+      "leads": { "enabled": false }
+    },
+    "batchSize": 200
+  },
+  "pipeline": {
+    "order": ["accounts", "products", "contacts", "opportunities"]
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "full",
+  "label": "Full Salesforce Migration",
+  "description": "All standard Salesforce objects — accounts, contacts, leads, products, opportunities, plus quotes, cases, tasks, events and more",
+  "config": {
+    "entities": {
+      "accounts": { "enabled": true },
+      "products": { "enabled": true },
+      "pricebooks": { "enabled": true },
+      "pricebookentries": { "enabled": true },
+      "contacts": { "enabled": true },
+      "leads": { "enabled": true },
+      "opportunities": { "enabled": true },
+      "quotes": { "enabled": true },
+      "lineitems": { "enabled": true },
+      "contracts": { "enabled": true },
+      "cases": { "enabled": true },
+      "tasks": { "enabled": true },
+      "events": { "enabled": true },
+      "campaigns": { "enabled": true },
+      "notes": { "enabled": true }
+    },
+    "batchSize": 200
+  },
+  "pipeline": {
+    "order": [
+      "accounts",
+      "products",
+      "pricebooks",
+      "pricebookentries",
+      "contacts",
+      "leads",
+      "opportunities",
+      "quotes",
+      "lineitems",
+      "contracts",
+      "cases",
+      "tasks",
+      "events",
+      "campaigns",
+      "notes"
+    ]
+  }
+}
