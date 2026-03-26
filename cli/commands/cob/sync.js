@@ -134,14 +134,20 @@ module.exports = async function syncCobs(flags) {
       cobSynced = true;
     } catch (err) {
       const msg = err.message || '';
+      const errData = err.response?.data;
+      const errMsg = errData?.error || errData?.message || msg;
       const isRestart = msg.includes('socket hang up') || msg.includes('ECONNRESET') || msg.includes('ECONNREFUSED');
-      if (isRestart) {
-        // Server restarted mid-response — the COB was likely saved
+      const alreadyExists = /already exists|duplicate|11000|exists/i.test(errMsg);
+
+      if (alreadyExists) {
+        console.log(chalk.cyan(`  ℹ️  COB ${modelName} already exists on platform — skipping`));
+        cobSuccess++;
+        // No restart triggered, no need to wait
+      } else if (isRestart) {
         console.log(chalk.yellow(`  ⚠️  COB ${modelName} → backend restarted (operation likely succeeded)`));
         cobSynced = true;
       } else {
-        const errData = err.response?.data;
-        console.error(chalk.red(`  ❌ COB ${modelName}: ${errData?.error || err.message}`));
+        console.error(chalk.red(`  ❌ COB ${modelName}: ${errMsg}`));
         errors++;
       }
     }
@@ -172,14 +178,20 @@ module.exports = async function syncCobs(flags) {
         await waitForBackend(modelName);
       } catch (cfErr) {
         const cfMsg = cfErr.message || '';
+        const cfErrData = cfErr.response?.data;
+        const cfErrMsg = cfErrData?.error || cfErrData?.message || cfMsg;
         const cfIsRestart = cfMsg.includes('socket hang up') || cfMsg.includes('ECONNRESET') || cfMsg.includes('ECONNREFUSED');
-        if (cfIsRestart) {
+        const cfAlreadyExists = /already exists|duplicate|11000|exists/i.test(cfErrMsg);
+
+        if (cfAlreadyExists) {
+          console.log(chalk.cyan(`  ℹ️  CustomField ${modelName} already exists on platform — skipping`));
+          cfSuccess++;
+        } else if (cfIsRestart) {
           console.log(chalk.yellow(`  ⚠️  CustomField ${modelName} → backend restarted (operation likely succeeded)`));
           cfSuccess++;
           await waitForBackend(modelName);
         } else {
-          const cfErrData = cfErr.response?.data;
-          console.error(chalk.red(`  ❌ CustomField ${modelName}: ${cfErrData?.error || cfErr.message}`));
+          console.error(chalk.red(`  ❌ CustomField ${modelName}: ${cfErrMsg}`));
           errors++;
         }
       }
