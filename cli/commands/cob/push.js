@@ -2,10 +2,43 @@ module.exports = async function pushCobs(flags) {
   const chalk = (await import('chalk')).default;
   const fs = require('fs');
   const path = require('path');
+  const axios = require('axios');
   const { resolveDomainAndKey } = require('../../core/domainResolver');
   const api = require('../../../api/cobClient');
 
   const { domain, apiKey } = await resolveDomainAndKey(flags);
+
+  // Wait for backend to be ready after a restart
+  async function waitForBackend(label) {
+    const spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    let i = 0;
+    const start = Date.now();
+    const maxWait = 60000;
+    const pollInterval = 3000;
+    const initialDelay = 12000;
+
+    process.stdout.write(chalk.yellow(`  ⏳ ${label} — waiting for backend restart`));
+
+    await new Promise((r) => setTimeout(r, initialDelay));
+
+    while (Date.now() - start < maxWait) {
+      try {
+        await axios.get(`https://${domain}/v2/cob?limit=1`, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+          timeout: 5000,
+        });
+        process.stdout.write('\r' + ' '.repeat(80) + '\r');
+        console.log(chalk.green(`  ✓ Backend ready (${Math.round((Date.now() - start) / 1000)}s)`));
+        return;
+      } catch {
+        process.stdout.write(`\r  ${spinner[i % spinner.length]} ${label} — waiting for backend restart (${Math.round((Date.now() - start) / 1000)}s)`);
+        i++;
+        await new Promise((r) => setTimeout(r, pollInterval));
+      }
+    }
+    process.stdout.write('\r' + ' '.repeat(80) + '\r');
+    console.log(chalk.yellow(`  ⚠️  Backend wait timeout — continuing anyway`));
+  }
 
   const cobDir = path.join(process.cwd(), 'accounts', domain, 'objects', 'Cob');
   if (!fs.existsSync(cobDir)) {
@@ -52,9 +85,20 @@ module.exports = async function pushCobs(flags) {
         await api.createCob(domain, apiKey, payload);
         console.log(chalk.green(`  ✅ ${file} → created (${modelName})`));
       }
+
+      // COB create/update triggers backend restart — wait before next operation
+      await waitForBackend(modelName);
     } catch (err) {
-      const errData = err.response?.data;
-      console.error(chalk.red(`  ❌ ${file}: ${errData?.error || err.message}`));
+      const msg = err.message || '';
+      const isRestart = msg.includes('socket hang up') || msg.includes('ECONNRESET') || msg.includes('ECONNREFUSED');
+      if (isRestart) {
+        const modelName = path.basename(file, '.json');
+        console.log(chalk.yellow(`  ⚠️  ${file} → backend restarted (operation likely succeeded)`));
+        await waitForBackend(modelName);
+      } else {
+        const errData = err.response?.data;
+        console.error(chalk.red(`  ❌ ${file}: ${errData?.error || err.message}`));
+      }
     }
   }
 

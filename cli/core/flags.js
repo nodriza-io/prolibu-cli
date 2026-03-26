@@ -23,6 +23,8 @@ function parseFlags(argv) {
       'instance-url',
       'client-key',
       'client-secret',
+      'modelName',
+      'id'
     ],
     boolean: [
       'watch',
