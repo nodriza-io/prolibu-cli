@@ -9,7 +9,7 @@ module.exports = async function salesforceHandler(command, flags, args) {
     console.log('  apex-to-js  Convert Apex code (.cls/.apex/.trigger) to Prolibu script using AI');
     console.log('');
     console.log('Migration phases (--phase <name>):');
-    console.log('  discover    Introspect Salesforce — list all SObjects, fields and counts');
+    console.log('  discover    Introspect Salesforce — list all SObjects, fields, counts, and Apex code');
     console.log('  review      Interactive UI to map objects/fields and export prolibu_setup.json');
     console.log('  scaffold    Generate objects/Cob/ and objects/CustomField/ files from prolibu_setup.json');
     console.log('  migrate     Fetch records from Salesforce and write to Prolibu');

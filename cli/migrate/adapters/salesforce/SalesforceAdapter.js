@@ -106,6 +106,66 @@ class SalesforceAdapter {
     );
     return response.data;
   }
+
+  /**
+   * List all Apex Classes using Tooling API.
+   * Returns metadata only (Id, Name, NamespacePrefix, etc), not the actual code body.
+   *
+   * @returns {Promise<object[]>} Array of ApexClass metadata
+   */
+  async listApexClasses() {
+    if (!this.api.authenticated) await this.api.authenticate();
+    const response = await this.api.axios.get(
+      `/services/data/v${this.api.apiVersion}/tooling/query?q=SELECT+Id,Name,NamespacePrefix,ApiVersion,Status,IsValid,LengthWithoutComments,CreatedDate,LastModifiedDate+FROM+ApexClass+ORDER+BY+Name`,
+      { headers: { Authorization: `Bearer ${this.api.accessToken}` } }
+    );
+    return response.data?.records || [];
+  }
+
+  /**
+   * List all Apex Triggers using Tooling API.
+   * Returns metadata only, not the actual code body.
+   *
+   * @returns {Promise<object[]>} Array of ApexTrigger metadata
+   */
+  async listApexTriggers() {
+    if (!this.api.authenticated) await this.api.authenticate();
+    const response = await this.api.axios.get(
+      `/services/data/v${this.api.apiVersion}/tooling/query?q=SELECT+Id,Name,TableEnumOrId,ApiVersion,Status,IsValid,LengthWithoutComments,CreatedDate,LastModifiedDate+FROM+ApexTrigger+ORDER+BY+Name`,
+      { headers: { Authorization: `Bearer ${this.api.accessToken}` } }
+    );
+    return response.data?.records || [];
+  }
+
+  /**
+   * Fetch the full source body of an Apex Class by ID.
+   *
+   * @param {string} classId - Salesforce ApexClass Id (e.g. '01p...')
+   * @returns {Promise<string>} The Apex class source code
+   */
+  async fetchApexClassBody(classId) {
+    if (!this.api.authenticated) await this.api.authenticate();
+    const response = await this.api.axios.get(
+      `/services/data/v${this.api.apiVersion}/tooling/sobjects/ApexClass/${classId}`,
+      { headers: { Authorization: `Bearer ${this.api.accessToken}` } }
+    );
+    return response.data?.Body || '';
+  }
+
+  /**
+   * Fetch the full source body of an Apex Trigger by ID.
+   *
+   * @param {string} triggerId - Salesforce ApexTrigger Id (e.g. '01q...')
+   * @returns {Promise<string>} The Apex trigger source code
+   */
+  async fetchApexTriggerBody(triggerId) {
+    if (!this.api.authenticated) await this.api.authenticate();
+    const response = await this.api.axios.get(
+      `/services/data/v${this.api.apiVersion}/tooling/sobjects/ApexTrigger/${triggerId}`,
+      { headers: { Authorization: `Bearer ${this.api.accessToken}` } }
+    );
+    return response.data?.Body || '';
+  }
 }
 
 module.exports = SalesforceAdapter;

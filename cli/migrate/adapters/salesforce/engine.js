@@ -16,7 +16,7 @@ const migratePhase = require('./phases/migrate');
 const PHASES = [
   {
     name: 'discover',
-    description: 'Introspect Salesforce — list all SObjects, fields and record counts',
+    description: 'Introspect Salesforce — list all SObjects, fields, record counts, and Apex code',
     execute: async (context) => discoverPhase(context),
   },
   {

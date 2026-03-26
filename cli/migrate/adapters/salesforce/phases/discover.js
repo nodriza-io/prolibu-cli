@@ -1,13 +1,20 @@
+const fs = require('fs');
+const path = require('path');
 const pLimit = require('p-limit');
 const credentialStore = require('../../../shared/credentialStore');
 
 /**
  * Phase: discover
  *
- * Connects to Salesforce and introspects ALL queryable SObjects using the REST
- * Metadata API (describeGlobal + describeSObject in parallel).
- * Produces a discovery.json artifact saved under:
- *   accounts/<domain>/migrations/salesforce/discovery.json
+ * Connects to Salesforce and introspects:
+ *   1. ALL queryable SObjects (fields, relationships, record counts)
+ *   2. ALL Apex Classes and Triggers (source code + metadata)
+ *
+ * Produces artifacts:
+ *   - accounts/<domain>/migrations/salesforce/discovery.json
+ *   - accounts/<domain>/migrations/salesforce/apex/classes/*.cls
+ *   - accounts/<domain>/migrations/salesforce/apex/triggers/*.trigger
+ *   - accounts/<domain>/migrations/salesforce/apex/apex-inventory.json
  *
  * discovery.json shape:
  * {
@@ -132,7 +139,7 @@ async function discover({ domain, adapter, withCount = false, concurrency = 10, 
     const errCount = Object.values(objects).filter((o) => o.error).length;
 
     console.log('');
-    console.log(`✅ Discovery complete — ${Object.keys(objects).length} objects documented`);
+    console.log(`✅ SObject discovery complete — ${Object.keys(objects).length} objects documented`);
     console.log(`   📦 ${describedCustom} custom objects`);
     if (withCount) {
         const withData = Object.values(objects).filter((o) => (o.records ?? 0) > 0).length;
@@ -140,6 +147,132 @@ async function discover({ domain, adapter, withCount = false, concurrency = 10, 
     }
     if (errCount) console.log(`   ⚠️  ${errCount} objects skipped (describe error)`);
     console.log(`   💾 Saved to: accounts/${domain}/migrations/salesforce/discovery.json`);
+    console.log('');
+
+    // ─── Download Apex Classes & Triggers ────────────────────────────
+
+    console.log('📥 Discovering Apex classes and triggers...');
+
+    const baseDir = path.join(process.cwd(), 'accounts', domain, 'migrations', 'salesforce', 'apex');
+    const classesDir = path.join(baseDir, 'classes');
+    const triggersDir = path.join(baseDir, 'triggers');
+
+    // Ensure directories exist
+    fs.mkdirSync(classesDir, { recursive: true });
+    fs.mkdirSync(triggersDir, { recursive: true });
+
+    // List all Apex Classes and Triggers
+    const [classes, triggers] = await Promise.all([
+        adapter.listApexClasses(),
+        adapter.listApexTriggers(),
+    ]);
+
+    console.log(`   Found ${classes.length} Apex classes`);
+    console.log(`   Found ${triggers.length} Apex triggers`);
+
+    if (classes.length === 0 && triggers.length === 0) {
+        console.log('   (no Apex code found in this org)');
+        console.log('');
+        return discovery;
+    }
+
+    console.log('');
+    console.log('   📦 Downloading Apex source code...');
+
+    // Download all class bodies in parallel
+    const apexLimit = pLimit(5); // Lower concurrency for Tooling API
+    let apexDownloaded = 0;
+    const apexTotal = classes.length + triggers.length;
+
+    const classResults = await Promise.all(
+        classes.map((cls) =>
+            apexLimit(async () => {
+                try {
+                    const body = await adapter.fetchApexClassBody(cls.Id);
+                    const filename = `${cls.Name}.cls`;
+                    const filePath = path.join(classesDir, filename);
+                    fs.writeFileSync(filePath, body, 'utf8');
+                    apexDownloaded++;
+                    process.stdout.write(`\r   Progress: ${apexDownloaded}/${apexTotal}`);
+                    return { ...cls, filename, success: true };
+                } catch (err) {
+                    apexDownloaded++;
+                    process.stdout.write(`\r   Progress: ${apexDownloaded}/${apexTotal}`);
+                    return { ...cls, error: err.message, success: false };
+                }
+            })
+        )
+    );
+
+    const triggerResults = await Promise.all(
+        triggers.map((trg) =>
+            apexLimit(async () => {
+                try {
+                    const body = await adapter.fetchApexTriggerBody(trg.Id);
+                    const filename = `${trg.Name}.trigger`;
+                    const filePath = path.join(triggersDir, filename);
+                    fs.writeFileSync(filePath, body, 'utf8');
+                    apexDownloaded++;
+                    process.stdout.write(`\r   Progress: ${apexDownloaded}/${apexTotal}`);
+                    return { ...trg, filename, success: true };
+                } catch (err) {
+                    apexDownloaded++;
+                    process.stdout.write(`\r   Progress: ${apexDownloaded}/${apexTotal}`);
+                    return { ...trg, error: err.message, success: false };
+                }
+            })
+        )
+    );
+
+    console.log(''); // newline after progress
+
+    // Save Apex inventory metadata
+    const apexInventory = {
+        fetchedAt: new Date().toISOString(),
+        domain,
+        classes: classResults.map((c) => ({
+            id: c.Id,
+            name: c.Name,
+            filename: c.filename,
+            namespace: c.NamespacePrefix,
+            apiVersion: c.ApiVersion,
+            status: c.Status,
+            isValid: c.IsValid,
+            linesOfCode: c.LengthWithoutComments,
+            lastModified: c.LastModifiedDate,
+            success: c.success,
+            ...(c.error ? { error: c.error } : {}),
+        })),
+        triggers: triggerResults.map((t) => ({
+            id: t.Id,
+            name: t.Name,
+            filename: t.filename,
+            sobject: t.TableEnumOrId,
+            apiVersion: t.ApiVersion,
+            status: t.Status,
+            isValid: t.IsValid,
+            linesOfCode: t.LengthWithoutComments,
+            lastModified: t.LastModifiedDate,
+            success: t.success,
+            ...(t.error ? { error: t.error } : {}),
+        })),
+    };
+
+    const inventoryPath = path.join(baseDir, 'apex-inventory.json');
+    fs.writeFileSync(inventoryPath, JSON.stringify(apexInventory, null, 2));
+
+    const successClasses = classResults.filter((c) => c.success).length;
+    const successTriggers = triggerResults.filter((t) => t.success).length;
+    const apexFailedCount = classResults.filter((c) => !c.success).length + triggerResults.filter((t) => !t.success).length;
+
+    console.log('');
+    console.log(`✅ Apex discovery complete — ${successClasses + successTriggers} files downloaded`);
+    console.log(`   📦 ${successClasses} classes → apex/classes/`);
+    console.log(`   ⚡ ${successTriggers} triggers → apex/triggers/`);
+    if (apexFailedCount > 0) {
+        console.log(`   ⚠️  ${apexFailedCount} downloads failed (check apex-inventory.json)`);
+    }
+    console.log(`   💾 Inventory saved to: apex/apex-inventory.json`);
 
     return discovery;
 }
