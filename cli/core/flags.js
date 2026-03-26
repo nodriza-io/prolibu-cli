@@ -17,7 +17,9 @@ function parseFlags(argv) {
       'siteType',
       'port',
       'ext',
-      'message'
+      'message',
+      'modelName',
+      'id'
     ],
     boolean: [
       'watch',
