@@ -29,7 +29,7 @@
           "foreignKey": "OpportunityId",
           "strategy": "latest",
           "as": "quote",
-          "select": "Id, Name, QuoteNumber, Status, ExpirationDate, GrandTotal, Discount, Tax, ShippingHandling, Description"
+          "select": "Id, Name, QuoteNumber, Status, ExpirationDate, GrandTotal, Discount, Tax, ShippingHandling, Description, CurrencyIsoCode"
         },
         {
           "source": "QuoteLineItem",
@@ -37,7 +37,7 @@
           "parentJoin": "quote",
           "strategy": "all",
           "as": "lineItems",
-          "select": "Id, Quantity, UnitPrice, TotalPrice, Discount, Description, Product2Id, PricebookEntryId"
+          "select": "Id, Quantity, UnitPrice, TotalPrice, Discount, Description, Product2Id, Product2.Name, Product2.ProductCode, PricebookEntryId, ServiceDate, CurrencyIsoCode"
         }
       ]
     },

@@ -4,6 +4,33 @@ const ProlibuApi = require('../../../lib/vendors/prolibu/ProlibuApi');
 const SchemaSetup = require('./SchemaSetup');
 
 /**
+ * Expand dot-notation keys into nested objects.
+ * e.g. { "proposal.quote.lineItems": [...] } → { proposal: { quote: { lineItems: [...] } } }
+ */
+function expandDotNotation(obj) {
+  const result = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (!key.includes('.')) {
+      result[key] = value;
+      continue;
+    }
+    const parts = key.split('.');
+    let current = result;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (current[parts[i]] === undefined || current[parts[i]] === null) {
+        current[parts[i]] = {};
+      } else if (typeof current[parts[i]] !== 'object' || Array.isArray(current[parts[i]])) {
+        // Don't overwrite non-object values
+        break;
+      }
+      current = current[parts[i]];
+    }
+    current[parts[parts.length - 1]] = value;
+  }
+  return result;
+}
+
+/**
  * Batch writer for Prolibu that wraps ProlibuApi.
  * Handles findOneOrCreate logic (update if exists, create if not) and dry-run mode.
  * Also provides convenience methods for schema setup (custom fields & custom objects).
@@ -94,13 +121,16 @@ class ProlibuWriter {
       }
 
       try {
+        // Expand dot-notation keys to nested objects before sending to API
+        const expanded = expandDotNotation(record);
+
         if (idField && record[idField]) {
           // Use findOneOrCreate: update if exists, create if not
           const { created } = await this.api.findOneOrCreate(
             model,
             record[idField],
             { field: idField },
-            record
+            expanded
           );
           if (created) {
             result.created++;
@@ -108,7 +138,7 @@ class ProlibuWriter {
             result.updated++;
           }
         } else {
-          await this.api.create(model, record);
+          await this.api.create(model, expanded);
           result.created++;
         }
         result.migrated++;

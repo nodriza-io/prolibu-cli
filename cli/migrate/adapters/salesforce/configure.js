@@ -2,7 +2,6 @@ const path = require('path');
 const fs = require('fs');
 const credentialStore = require('../../shared/credentialStore');
 const configLoader = require('../../shared/configLoader');
-const presets = require('./presets');
 
 module.exports = async function configureSalesforce(flags) {
   const inquirer = await import('inquirer');
@@ -76,70 +75,18 @@ module.exports = async function configureSalesforce(flags) {
   credentialStore.saveCredentials(domain, 'salesforce', { instanceUrl, clientKey, clientSecret });
   console.log(`✅ Salesforce credentials saved for "${domain}"`);
 
-  // 4. Apply preset (defaults to "standard", override with --preset <name> or --preset custom)
-  let presetName = flags.preset || 'standard';
-
-  if (presetName && presetName !== 'custom') {
-    const preset = presets.load(presetName);
-    if (!preset) {
-      console.error(`❌ Unknown preset: ${presetName}`);
-      console.log(`Available presets: ${presets.names().join(', ')}, custom`);
-      process.exit(1);
-    }
-
-    // Apply preset config (entities + batchSize)
-    credentialStore.saveConfig(domain, 'salesforce', preset.config, true);
-    console.log(`✅ Preset "${preset.label}" applied → config.json`);
-
-    // Apply preset pipeline order if it differs from template default
-    if (preset.pipeline?.order) {
-      const templatePipelines = configLoader.loadPipelines(domain, 'salesforce');
-      const templateOrder = templatePipelines.data?.pipeline?.order || [];
-      const presetOrder = preset.pipeline.order;
-      const orderChanged = JSON.stringify(presetOrder) !== JSON.stringify(templateOrder);
-
-      if (orderChanged) {
-        const pipelinesPath = path.join(
-          configLoader.domainDir(domain, 'salesforce'),
-          'pipelines.json'
-        );
-        const pipelinesData = templatePipelines.data || {};
-        pipelinesData.pipeline = { ...pipelinesData.pipeline, order: presetOrder };
-        configLoader.writeConfig(pipelinesPath, pipelinesData);
-        console.log(`✅ Pipeline order customized → pipelines.json`);
-      }
-    }
-
-    // Scaffold template config files to domain for local customization
-    const scaffolded = configLoader.scaffoldConfig(domain, 'salesforce');
-    if (scaffolded.length) {
-      console.log(`📄 Configuration files scaffolded for customization:`);
-      for (const f of scaffolded) {
-        console.log(`   ${path.basename(f)}`);
-      }
-    }
-
-    // Print preset summary
-    console.log('');
-    console.log(`📋 Preset "${preset.name}" — enabled entities:`);
-    for (const [entity, cfg] of Object.entries(preset.config.entities)) {
-      const status = cfg.enabled ? '✅' : '⏭️ ';
-      console.log(`   ${status} ${entity}`);
+  // 4. Scaffold configuration files from templates to domain folder
+  //    This gives the user local copies of schema, mappings, pipelines, and transforms
+  //    that they can customize. All entities come enabled by default — the user removes
+  //    what they don't need via the Review UI or by editing the files directly.
+  const scaffolded = configLoader.scaffoldConfig(domain, 'salesforce');
+  if (scaffolded.length) {
+    console.log(`📄 Configuration files ready for customization:`);
+    for (const f of scaffolded) {
+      console.log(`   ${path.basename(f)}`);
     }
   } else {
-    // Custom / no preset — use minimal default config
-    const defaultConfig = {
-      entities: {
-        contacts: { enabled: true },
-        products: { enabled: true },
-        accounts: { enabled: false },
-      },
-      batchSize: 200,
-    };
-    const created = credentialStore.saveConfig(domain, 'salesforce', defaultConfig);
-    if (created) {
-      console.log(`✅ Default config.json created`);
-    }
+    console.log(`📄 Configuration files already exist (not overwritten)`);
   }
 
   // 5. Ensure transformers directory exists
@@ -151,7 +98,7 @@ module.exports = async function configureSalesforce(flags) {
   console.log(`📁 Pipelines folder ready: ${pipelinesDir}`);
 
   console.log('');
-  console.log('💡 To customize the configuration:');
+  console.log('💡 To customize the migration (disable entities, adjust mappings, etc.):');
   console.log(`   prolibu migrate ui --domain ${domain} --crm salesforce`);
   console.log(`   Or edit files directly in accounts/${domain}/migrations/salesforce/`);
   console.log('');

@@ -669,10 +669,40 @@ async function startUIServer({ domain, apiKey, crm }) {
             flow = [{ name: 'Paso 1', entities: pipeline.order }];
           }
 
+          // Detect entity conflicts (e.g. lineitems + opportunities with joins)
+          const warnings = [];
+          try {
+            const { data: schemaCheck } = yamlLoader.loadSchema(domain, CRM);
+            const oppDef = schemaCheck?.entities?.opportunities;
+            const liDef = schemaCheck?.entities?.lineitems;
+            const quoteDef = schemaCheck?.entities?.quotes;
+            if (oppDef?.enabled !== false && liDef?.enabled !== false) {
+              const hasLineItemJoin = (oppDef?.join || []).some(j => j.as === 'lineItems');
+              if (hasLineItemJoin) {
+                warnings.push({
+                  type: 'conflict',
+                  entities: ['lineitems', 'opportunities'],
+                  message: 'Los line items ya se importan automáticamente vía el join de opportunities (QuoteLineItem → proposal.quote.lineItems). Habilitar "lineitems" como entidad independiente puede causar datos duplicados.',
+                });
+              }
+            }
+            if (oppDef?.enabled !== false && quoteDef?.enabled !== false) {
+              const hasQuoteJoin = (oppDef?.join || []).some(j => j.as === 'quote');
+              if (hasQuoteJoin) {
+                warnings.push({
+                  type: 'conflict',
+                  entities: ['quotes', 'opportunities'],
+                  message: 'Los datos de Quote ya se importan vía el join de opportunities (Quote → proposal.quote.*). Prolibu no tiene un modelo "quote" independiente — esta entidad fallará si se ejecuta.',
+                });
+              }
+            }
+          } catch { /* no schema — skip warnings */ }
+
           return ok({
             flow,
             order: pipeline.order || [],
             availableEntities: [...entitySet],
+            warnings,
             batchSize: pipeline.batchSize || 200,
             concurrency: pipeline.concurrency || 1,
             onError: pipeline.onError || 'skip',

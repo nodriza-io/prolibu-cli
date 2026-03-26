@@ -3,8 +3,24 @@
     "order": [
       "accounts",
       "products",
+      "pricebooks",
+      "pricebookentries",
       "contacts",
-      "opportunities"
+      "leads",
+      "opportunities",
+      "contracts",
+      "cases",
+      "tasks",
+      "events",
+      "campaigns",
+      "notes"
+    ],
+    "flow": [
+      { "name": "Base data", "entities": ["accounts", "products", "pricebooks", "pricebookentries"] },
+      { "name": "People", "entities": ["contacts", "leads"] },
+      { "name": "Deals", "entities": ["opportunities"] },
+      { "name": "Operations", "entities": ["contracts", "cases"] },
+      { "name": "Activities", "entities": ["tasks", "events", "campaigns", "notes"] }
     ],
     "batchSize": 200,
     "concurrency": 1,

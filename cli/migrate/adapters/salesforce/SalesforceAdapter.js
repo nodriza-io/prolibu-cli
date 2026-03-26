@@ -81,6 +81,17 @@ class SalesforceAdapter {
   }
 
   /**
+   * Execute a raw SOQL query against Salesforce.
+   * Used by the join mechanism to fetch related records.
+   *
+   * @param {string} soql - Raw SOQL query string
+   * @returns {Promise<{ data: object[], pagination: object }>}
+   */
+  async query(soql) {
+    return this.api.find('', soql);
+  }
+
+  /**
    * Describe a single SObject in full (fields, relationships, etc).
    * Calls GET /services/data/v<ver>/sobjects/<name>/describe
    *

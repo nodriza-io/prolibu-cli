@@ -311,6 +311,15 @@ function flattenJoinedArrays(record) {
         const items = record[key];
         delete record[key];
 
+        // Normalize lineItems: convert discount percentages to decimals (SF: 15 → Prolibu: 0.15)
+        if (Array.isArray(items)) {
+            for (const item of items) {
+                if (item.discountRate != null && item.discountRate > 1) {
+                    item.discountRate = item.discountRate / 100;
+                }
+            }
+        }
+
         // Store as proposal.quote.lineItems for Deal, or as <alias> for others
         // The downstream writer handles dot-notation expansion
         record[`proposal.quote.${alias}`] = items;

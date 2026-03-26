@@ -337,11 +337,11 @@
           },
           {
             "from": "Name",
-            "to": "proposal.quote.name"
+            "to": "proposal.quote.quoteName"
           },
           {
             "from": "QuoteNumber",
-            "to": "proposal.quote.code"
+            "to": "proposal.quote.quoteCode"
           },
           {
             "from": "Status",
@@ -349,19 +349,15 @@
           },
           {
             "from": "ExpirationDate",
-            "to": "proposal.quote.endDate"
-          },
-          {
-            "from": "GrandTotal",
-            "to": "proposal.quote.total"
+            "to": "proposal.expirationDate"
           },
           {
             "from": "Discount",
-            "to": "proposal.quote.discount"
+            "to": "proposal.quote.discountRate"
           },
           {
             "from": "Tax",
-            "to": "proposal.quote.tax"
+            "to": "proposal.quote.taxRate"
           },
           {
             "from": "ShippingHandling",
@@ -369,7 +365,12 @@
           },
           {
             "from": "Description",
-            "to": "proposal.quote.description"
+            "to": "proposal.quote.quoteDescription"
+          },
+          {
+            "from": "CurrencyIsoCode",
+            "to": "proposal.quote.quoteCurrency",
+            "default": "USD"
           }
         ],
         "lineItems": [
@@ -378,16 +379,20 @@
             "to": "externalId"
           },
           {
+            "from": "Product2.Name",
+            "to": "productName"
+          },
+          {
+            "from": "Product2.ProductCode",
+            "to": "productCode"
+          },
+          {
             "from": "Quantity",
             "to": "quantity"
           },
           {
             "from": "UnitPrice",
             "to": "price"
-          },
-          {
-            "from": "TotalPrice",
-            "to": "total"
           },
           {
             "from": "Discount",
@@ -400,11 +405,20 @@
           {
             "from": "Product2Id",
             "to": "product"
+          },
+          {
+            "from": "ServiceDate",
+            "to": "startDate"
+          },
+          {
+            "from": "CurrencyIsoCode",
+            "to": "currency"
           }
         ]
       },
       "static": {
-        "source": "salesforce"
+        "source": "salesforce",
+        "proposal.enabled": true
       }
     },
     "quotes": {

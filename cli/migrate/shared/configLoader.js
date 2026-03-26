@@ -4,38 +4,36 @@ const fs = require('fs');
 const path = require('path');
 
 const ACCOUNTS_DIR = path.join(process.cwd(), 'accounts');
-const TEMPLATES_DIR = path.join(__dirname, '..', 'templates');
+const ADAPTERS_DIR = path.join(__dirname, '..', 'adapters');
+const GLOBAL_TEMPLATES_DIR = path.join(__dirname, '..', 'templates');
 
 const CONFIG_FILES = ['schema.json', 'mappings.json', 'pipelines.json', 'transforms.json'];
 
 // ─── Path helpers ──────────────────────────────────────────────
 
-/**
- * Directory where domain-specific config lives.
- * accounts/<domain>/migrations/<crm>/
- */
 function domainDir(domain, crm) {
     return path.join(ACCOUNTS_DIR, domain, 'migrations', crm);
 }
 
-/**
- * Resolve a config file path.
- * If the domain-specific file exists, return it.
- * Otherwise return the template path.
- *
- * @param {string} domain
- * @param {string} crm
- * @param {string} filename - e.g. 'schema.json'
- * @returns {{ path: string, isTemplate: boolean }}
- */
+function crmTemplatesDir(crm) {
+    return path.join(ADAPTERS_DIR, crm, 'templates');
+}
+
 function resolveConfigPath(domain, crm, filename) {
+    // 1. Domain-level config (highest priority)
     const domainPath = path.join(domainDir(domain, crm), filename);
     if (fs.existsSync(domainPath)) {
         return { path: domainPath, isTemplate: false };
     }
-    const templatePath = path.join(TEMPLATES_DIR, filename);
-    if (fs.existsSync(templatePath)) {
-        return { path: templatePath, isTemplate: true };
+    // 2. CRM-specific template (e.g. adapters/salesforce/templates/)
+    const crmPath = path.join(crmTemplatesDir(crm), filename);
+    if (fs.existsSync(crmPath)) {
+        return { path: crmPath, isTemplate: true };
+    }
+    // 3. Global fallback template
+    const globalPath = path.join(GLOBAL_TEMPLATES_DIR, filename);
+    if (fs.existsSync(globalPath)) {
+        return { path: globalPath, isTemplate: true };
     }
     return { path: null, isTemplate: false };
 }
@@ -157,6 +155,26 @@ function validatePipelines(data, filePath) {
     if (!Array.isArray(data.pipeline.order) || !data.pipeline.order.length) {
         throw new ConfigError('pipeline.order must be a non-empty array', filePath);
     }
+    // Check for duplicates in order
+    const seen = new Set();
+    for (const entity of data.pipeline.order) {
+        if (seen.has(entity)) {
+            console.warn(`⚠️  Duplicate entity "${entity}" in pipeline.order (${filePath})`);
+        }
+        seen.add(entity);
+    }
+    // Check for duplicates within flow steps
+    if (Array.isArray(data.pipeline.flow)) {
+        const flowSeen = new Set();
+        for (const step of data.pipeline.flow) {
+            for (const entity of step.entities || []) {
+                if (flowSeen.has(entity)) {
+                    console.warn(`⚠️  Duplicate entity "${entity}" across flow steps (${filePath})`);
+                }
+                flowSeen.add(entity);
+            }
+        }
+    }
 }
 
 // ─── Custom error ──────────────────────────────────────────────
@@ -216,6 +234,32 @@ function buildEngineConfig(domain, crm) {
     const batchSize = pipelineConfig.batchSize || 200;
     const concurrency = pipelineConfig.concurrency || 1;
     const onError = pipelineConfig.onError || 'skip';
+
+    // Cross-validate: warn about entities in pipeline that don't exist in schema
+    for (const name of entityOrder) {
+        if (!entityDefinitions[name]) {
+            console.warn(`⚠️  Entity "${name}" is in pipeline.order but not defined in schema.json — it will be skipped during migration.`);
+        }
+    }
+
+    // Warn if standalone lineitems + opportunities with joins are both enabled
+    const lineitemsDef = entityDefinitions['lineitems'];
+    const opportunitiesDef = entityDefinitions['opportunities'];
+    if (lineitemsDef?.enabled && opportunitiesDef?.enabled && opportunitiesDef?.join?.length) {
+        const hasLineItemJoin = opportunitiesDef.join.some(j => j.as === 'lineItems');
+        if (hasLineItemJoin && entityOrder.includes('lineitems')) {
+            console.warn('⚠️  "lineitems" is enabled as a standalone entity, but "opportunities" already imports line items via join. This may cause duplicate data. Disable one of them in schema.json or remove "lineitems" from pipeline.order.');
+        }
+    }
+
+    // Warn if standalone quotes is enabled — Quote data is consumed via the opportunities join
+    const quotesDef = entityDefinitions['quotes'];
+    if (quotesDef?.enabled && opportunitiesDef?.enabled && opportunitiesDef?.join?.length) {
+        const hasQuoteJoin = opportunitiesDef.join.some(j => j.as === 'quote');
+        if (hasQuoteJoin && entityOrder.includes('quotes')) {
+            console.warn('⚠️  "quotes" is enabled as a standalone entity, but "opportunities" already imports quote data via join (Quote → proposal.quote.*). Prolibu has no standalone "quote" model — this entity will fail. Remove "quotes" from pipeline.order or disable it in schema.json.');
+        }
+    }
 
     const phases = (pipelines.data.phases || []).map(p => ({
         key: p.key,
@@ -418,6 +462,13 @@ function applyTransform(record, rule) {
         }
         case 'date':
             break;
+        case 'divide': {
+            const val = Number(record[rule.field]);
+            if (!isNaN(val) && rule.by) {
+                record[rule.field] = val / rule.by;
+            }
+            break;
+        }
         default:
             break;
     }
@@ -441,7 +492,10 @@ function scaffoldConfig(domain, crm) {
     for (const file of CONFIG_FILES) {
         const dest = path.join(dir, file);
         if (fs.existsSync(dest)) continue;
-        const src = path.join(TEMPLATES_DIR, file);
+        // Prefer CRM-specific template, fall back to global
+        const crmSrc = path.join(crmTemplatesDir(crm), file);
+        const globalSrc = path.join(GLOBAL_TEMPLATES_DIR, file);
+        const src = fs.existsSync(crmSrc) ? crmSrc : globalSrc;
         if (!fs.existsSync(src)) continue;
         fs.copyFileSync(src, dest);
         created.push(dest);

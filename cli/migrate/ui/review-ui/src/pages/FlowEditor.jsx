@@ -7,6 +7,7 @@ export default function FlowEditor() {
   const { state } = useMigration();
   const [flow, setFlow] = useState([]);
   const [allEntities, setAllEntities] = useState([]);
+  const [warnings, setWarnings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -28,6 +29,9 @@ export default function FlowEditor() {
         // Set available entities from server (schema + config + transformers)
         if (data.availableEntities?.length) {
           setAllEntities(data.availableEntities);
+        }
+        if (data.warnings?.length) {
+          setWarnings(data.warnings);
         }
 
         const known = new Set(data.availableEntities || []);
@@ -216,6 +220,16 @@ export default function FlowEditor() {
           </button>
         </div>
       </div>
+
+      {/* Conflict warnings — only show when conflicting entities are both in the flow */}
+      {warnings.filter(w =>
+        w.type === 'conflict' && w.entities.every(e => assignedEntities.has(e))
+      ).map((w, i) => (
+        <div key={i} className="flow-warning">
+          <span className="flow-warning-icon">⚠️</span>
+          <span>{w.message}</span>
+        </div>
+      ))}
 
       {/* Entity Pool */}
       <div

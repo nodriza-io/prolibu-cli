@@ -13,6 +13,11 @@
     "batchSize": 200
   },
   "pipeline": {
-    "order": ["accounts", "products", "contacts", "opportunities"]
+    "order": ["accounts", "products", "contacts", "opportunities"],
+    "flow": [
+      { "name": "Base data", "entities": ["accounts", "products"] },
+      { "name": "People", "entities": ["contacts"] },
+      { "name": "Deals", "entities": ["opportunities"] }
+    ]
   }
 }

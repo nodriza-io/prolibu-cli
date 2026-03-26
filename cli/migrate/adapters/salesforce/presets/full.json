@@ -1,7 +1,7 @@
 {
   "name": "full",
   "label": "Full Salesforce Migration",
-  "description": "All standard Salesforce objects — accounts, contacts, leads, products, opportunities, plus quotes, cases, tasks, events and more",
+  "description": "All standard Salesforce objects — accounts, contacts, leads, products, opportunities, plus cases, tasks, events and more",
   "config": {
     "entities": {
       "accounts": { "enabled": true },
@@ -11,8 +11,8 @@
       "contacts": { "enabled": true },
       "leads": { "enabled": true },
       "opportunities": { "enabled": true },
-      "quotes": { "enabled": true },
-      "lineitems": { "enabled": true },
+      "quotes": { "enabled": false, "_note": "Quotes are imported via the opportunities join (Quote → proposal.quote.*). No standalone model in Prolibu." },
+      "lineitems": { "enabled": false, "_note": "Line items are already imported via the opportunities join (QuoteLineItem → proposal.quote.lineItems). Enable only if you need standalone OpportunityLineItem records." },
       "contracts": { "enabled": true },
       "cases": { "enabled": true },
       "tasks": { "enabled": true },
@@ -24,21 +24,16 @@
   },
   "pipeline": {
     "order": [
-      "accounts",
-      "products",
-      "pricebooks",
-      "pricebookentries",
-      "contacts",
-      "leads",
-      "opportunities",
-      "quotes",
-      "lineitems",
-      "contracts",
-      "cases",
-      "tasks",
-      "events",
-      "campaigns",
-      "notes"
+      "accounts", "products", "pricebooks", "pricebookentries",
+      "contacts", "leads", "opportunities",
+      "contracts", "cases", "tasks", "events", "campaigns", "notes"
+    ],
+    "flow": [
+      { "name": "Base data", "entities": ["accounts", "products", "pricebooks", "pricebookentries"] },
+      { "name": "People", "entities": ["contacts", "leads"] },
+      { "name": "Deals", "entities": ["opportunities"] },
+      { "name": "Operations", "entities": ["contracts", "cases"] },
+      { "name": "Activities", "entities": ["tasks", "events", "campaigns", "notes"] }
     ]
   }
 }
