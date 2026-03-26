@@ -178,6 +178,26 @@ async function startUIServer({ domain, apiKey, crm }) {
       fieldMapping = crmMeta.fieldMapping || {};
     }
 
+    // Read local objects/ inventory from disk
+    const objectsDir = path.join(process.cwd(), 'accounts', domain, 'objects');
+    const readJsonDir = (dir) => {
+      if (!fs.existsSync(dir)) return [];
+      return fs.readdirSync(dir)
+        .filter(f => f.endsWith('.json'))
+        .map(f => { try { return JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch { return null; } })
+        .filter(Boolean);
+    };
+    const localObjects = {
+      cobs: readJsonDir(path.join(objectsDir, 'Cob')),
+      customFields: readJsonDir(path.join(objectsDir, 'CustomField')),
+    };
+
+    // Read prolibu_setup.json if it exists
+    let prolibuSetup = null;
+    try {
+      if (fs.existsSync(setupPath)) prolibuSetup = JSON.parse(fs.readFileSync(setupPath, 'utf8'));
+    } catch { /* ignore */ }
+
     return {
       domain,
       crm: CRM,
@@ -193,7 +213,9 @@ async function startUIServer({ domain, apiKey, crm }) {
       prolibuSpec: null, // fetched lazily below
       sfToProlibu: crmMeta.entityMapping,
       fieldMapping,
-      paths: { config: configPath, setup: setupPath },
+      localObjects,
+      prolibuSetup,
+      paths: { config: configPath, setup: setupPath, objects: objectsDir },
       lastLog: lastLog ? {
         startedAt: lastLog.startedAt,
         finishedAt: lastLog.finishedAt,
@@ -852,6 +874,205 @@ async function startUIServer({ domain, apiKey, crm }) {
       }
 
       // ── Graceful shutdown ───────────────────────────────
+      // ── Objects CLI bridge ──────────────────────────────
+      // GET  /api/objects/state   — inventory of local objects/ folder
+      // POST /api/objects/pull    — runs `objects pull` (Prolibu → disk)
+      // POST /api/objects/push    — runs `objects push` (disk → Prolibu)
+      // POST /api/objects/scaffold — runs scaffold phase (prolibu_setup.json → disk)
+
+      if (method === 'GET' && pathname === '/api/objects/state') {
+        const objectsDir = path.join(process.cwd(), 'accounts', domain, 'objects');
+        const cobDir = path.join(objectsDir, 'Cob');
+        const cfDir = path.join(objectsDir, 'CustomField');
+
+        const readJsonDir = (dir) => {
+          if (!fs.existsSync(dir)) return [];
+          return fs.readdirSync(dir)
+            .filter(f => f.endsWith('.json'))
+            .map(f => {
+              try { return JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); }
+              catch { return null; }
+            })
+            .filter(Boolean);
+        };
+
+        return ok({
+          cobs: readJsonDir(cobDir),
+          customFields: readJsonDir(cfDir),
+          paths: { cob: cobDir, customField: cfDir },
+        });
+      }
+
+      if (method === 'POST' && pathname === '/api/objects/pull') {
+        if (!apiKey) return fail(400, 'No apiKey available');
+        ok({ ok: true, message: 'Pull iniciado' });
+
+        setTimeout(async () => {
+          // Capture console.log from pull command
+          const origLog = console.log;
+          const origErr = console.error;
+          console.log = (...args) => {
+            const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+            origLog(...args);
+            broadcastSSE({ type: 'objects-log', data: line });
+          };
+          console.error = (...args) => {
+            const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+            origErr(...args);
+            broadcastSSE({ type: 'objects-log', data: `❌ ${line}` });
+          };
+          try {
+            const pullObjects = require('../../commands/objects/pull');
+            await pullObjects({ domain, apikey: apiKey });
+            broadcastSSE({ type: 'objects-done', data: { action: 'pull', ok: true } });
+          } catch (e) {
+            broadcastSSE({ type: 'objects-log', data: `❌ Pull error: ${e.message}` });
+            broadcastSSE({ type: 'objects-done', data: { action: 'pull', ok: false, error: e.message } });
+          } finally {
+            console.log = origLog;
+            console.error = origErr;
+          }
+        }, 500);
+        return;
+      }
+
+      if (method === 'POST' && pathname === '/api/objects/push') {
+        if (!apiKey) return fail(400, 'No apiKey available');
+        ok({ ok: true, message: 'Push iniciado' });
+
+        setTimeout(async () => {
+          const origLog = console.log;
+          const origErr = console.error;
+          console.log = (...args) => {
+            const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+            origLog(...args);
+            broadcastSSE({ type: 'objects-log', data: line });
+          };
+          console.error = (...args) => {
+            const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+            origErr(...args);
+            broadcastSSE({ type: 'objects-log', data: `❌ ${line}` });
+          };
+          try {
+            const pushObjects = require('../../commands/objects/push');
+            await pushObjects({ domain, apikey: apiKey });
+            broadcastSSE({ type: 'objects-done', data: { action: 'push', ok: true } });
+          } catch (e) {
+            broadcastSSE({ type: 'objects-log', data: `❌ Push error: ${e.message}` });
+            broadcastSSE({ type: 'objects-done', data: { action: 'push', ok: false, error: e.message } });
+          } finally {
+            console.log = origLog;
+            console.error = origErr;
+          }
+        }, 500);
+        return;
+      }
+
+      if (method === 'POST' && pathname === '/api/objects/scaffold') {
+        const body = await readBody();
+        const force = body.force === true;
+        // Scaffold is pure disk I/O — run synchronously and return result in response
+        const origLog = console.log;
+        const origErr = console.error;
+        const logs = [];
+        console.log = (...args) => {
+          const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+          origLog(...args);
+          logs.push(line);
+          broadcastSSE({ type: 'objects-log', data: line });
+        };
+        console.error = (...args) => {
+          const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+          origErr(...args);
+          logs.push(`❌ ${line}`);
+          broadcastSSE({ type: 'objects-log', data: `❌ ${line}` });
+        };
+        try {
+          const scaffold = require('../adapters/salesforce/phases/scaffold');
+          const result = await scaffold({ domain, force });
+          console.log = origLog;
+          console.error = origErr;
+          return ok({ ok: true, logs, warnings: result?.warnings || [] });
+        } catch (e) {
+          console.log = origLog;
+          console.error = origErr;
+          return ok({ ok: false, error: e.message, logs });
+        }
+      }
+
+      // Scaffold directly from discovery.json selection (bypasses prolibu_setup.json)
+      // Body: { cobs: [{ sfObject, prolibuEntity }], force }
+      if (method === 'POST' && pathname === '/api/objects/scaffold-from-discovery') {
+        const body = await readBody();
+        const force = body.force === true;
+        const discovery = credentialStore.loadDiscovery(domain, CRM);
+
+        // Build setup: customObjects + auto-derived customFields from discovery fieldDetails
+        const customObjects = (body.cobs || []).map(c => ({
+          prolibuEntity: c.prolibuEntity,
+          label: c.prolibuEntity,
+          sourceSObject: c.sfObject,
+        }));
+
+        // For each selected Cob, generate CustomField entries from SF fieldDetails
+        const customFields = [];
+        for (const cob of (body.cobs || [])) {
+          const sfObj = discovery?.objects?.[cob.sfObject];
+          if (!sfObj?.fieldDetails?.length) continue;
+          for (const field of sfObj.fieldDetails) {
+            // Skip SF system fields that are not useful as custom fields
+            if (['id', 'reference'].includes(field.type) && !field.custom) continue;
+            if (field.name === 'Id') continue;
+            // Determine required: SF field is required when nillable=false AND createable=true
+            const isRequired = field.nillable === false && field.createable === true;
+            customFields.push({
+              prolibuEntity: cob.prolibuEntity,
+              apiName: field.name.toLowerCase().replace(/__c$/i, ''),
+              label: field.label || field.name,
+              type: field.type,
+              sourceSField: field.name,
+              ...(isRequired ? { required: true } : {}),
+              ...(field.referenceTo ? { referenceTo: field.referenceTo } : {}),
+              ...(field.picklistValues?.length ? { enum: field.picklistValues } : {}),
+            });
+          }
+        }
+
+        const setup = { customObjects, customFields };
+
+        if (!setup.customObjects.length) {
+          return fail(400, 'No objects selected');
+        }
+
+        // Scaffold is pure disk I/O — run synchronously and return result in response
+        const origLog = console.log;
+        const origErr = console.error;
+        const logs = [];
+        console.log = (...args) => {
+          const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+          origLog(...args);
+          logs.push(line);
+          broadcastSSE({ type: 'objects-log', data: line });
+        };
+        console.error = (...args) => {
+          const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+          origErr(...args);
+          logs.push(`❌ ${line}`);
+          broadcastSSE({ type: 'objects-log', data: `❌ ${line}` });
+        };
+        try {
+          const scaffold = require('../adapters/salesforce/phases/scaffold');
+          const result = await scaffold({ domain, force, setup });
+          console.log = origLog;
+          console.error = origErr;
+          return ok({ ok: true, logs, warnings: result?.warnings || [] });
+        } catch (e) {
+          console.log = origLog;
+          console.error = origErr;
+          return ok({ ok: false, error: e.message, logs });
+        }
+      }
+
       if (method === 'POST' && pathname === '/api/done') {
         ok({ ok: true });
         if (viteProcess) { viteProcess.kill(); viteProcess = null; }

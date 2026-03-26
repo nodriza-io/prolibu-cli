@@ -65,8 +65,13 @@ async function discover({ domain, adapter, withCount = false, concurrency = 10, 
                         label: f.label,
                         type: f.type,
                         custom: f.custom,
+                        nillable: f.nillable,
+                        createable: f.createable,
                         ...(f.picklistValues?.length
                             ? { picklistValues: f.picklistValues.map((p) => p.value) }
+                            : {}),
+                        ...(f.type === 'reference' && f.referenceTo?.length
+                            ? { referenceTo: f.referenceTo[0] }
                             : {}),
                     }));
 

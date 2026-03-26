@@ -10,6 +10,7 @@ import Pipelines from "./pages/Pipelines";
 import FlowEditor from "./pages/FlowEditor";
 import Execution from "./pages/Execution";
 import YamlConfig from "./pages/YamlConfig";
+import Objects from "./pages/Objects";
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
         <Route path="pipelines" element={<Pipelines />} />
         <Route path="flow" element={<FlowEditor />} />
         <Route path="execution" element={<Execution />} />
+        <Route path="objects" element={<Objects />} />
       </Route>
     </Routes>
   );

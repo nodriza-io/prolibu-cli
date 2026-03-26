@@ -221,3 +221,62 @@ export function refreshProlibuSchema() {
 export function fetchFieldMapping() {
     return request('/api/field-mapping');
 }
+
+// ── Objects CLI bridge ──────────────────────────────────────
+
+/** Read local objects/ folder inventory from disk. */
+export function fetchObjectsState() {
+    return request('/api/objects/state');
+}
+
+/** Pull Cobs and CustomFields from Prolibu → local disk. Starts async, use SSE for progress. */
+export function pullObjects() {
+    return request('/api/objects/pull', { method: 'POST' });
+}
+
+/** Push local Cobs and CustomFields → Prolibu. Starts async, use SSE for progress. */
+export function pushObjects() {
+    return request('/api/objects/push', { method: 'POST' });
+}
+
+/** Generate local objects/ files from prolibu_setup.json. Starts async, use SSE for progress. */
+export function scaffoldObjects(force = false) {
+    return request('/api/objects/scaffold', {
+        method: 'POST',
+        body: JSON.stringify({ force }),
+    });
+}
+
+/**
+ * Scaffold Cobs and CustomFields directly from a discovery.json selection.
+ * @param {{ cobs: {sfObject, prolibuEntity}[], customFields: [], force: boolean }} payload
+ */
+export function scaffoldFromDiscovery(payload) {
+    return request('/api/objects/scaffold-from-discovery', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
+}
+
+/**
+ * Subscribe to objects operation logs via SSE (same stream as migration).
+ * Returns an unsubscribe function.
+ * @param {(msg: {type: string, data: any}) => void} onMessage
+ * @param {() => void} onClose
+ */
+export function subscribeObjectsLogs(onMessage, onClose) {
+    const es = new EventSource('/api/migrate/stream');
+    es.onmessage = (e) => {
+        try {
+            const msg = JSON.parse(e.data);
+            if (msg.type === 'objects-log' || msg.type === 'objects-done') {
+                onMessage(msg);
+            }
+        } catch { /* ignore */ }
+    };
+    es.onerror = () => {
+        es.close();
+        if (onClose) onClose();
+    };
+    return () => es.close();
+}

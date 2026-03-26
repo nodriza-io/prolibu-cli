@@ -15,6 +15,7 @@ function getNavItems(crm) {
     { to: `/${crm}`, label: "🏠 Dashboard", end: true },
     { to: `/${crm}/schema`, label: "📊 Schema Map" },
     { to: `/${crm}/config`, label: "📄 YAML Config" },
+    { to: `/${crm}/objects`, label: "📦 Objects" },
     { to: `/${crm}/prolibu`, label: "🟦 Prolibu Schema" },
     { to: `/${crm}/pipelines`, label: "🔗 Pipelines" },
     { to: `/${crm}/flow`, label: "🔀 Flujo" },

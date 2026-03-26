@@ -1,7 +1,25 @@
 const path = require('path');
+const fs = require('fs');
 const cliProgress = require('cli-progress');
 const ProlibuApi = require('../../../lib/vendors/prolibu/ProlibuApi');
 const SchemaSetup = require('./SchemaSetup');
+
+// Fields that are internal/meta and should never be validated against the schema
+const META_FIELDS = new Set([
+  '_id', '_source', '_joined', '__v', 'createdAt', 'updatedAt',
+  'createdBy', 'updatedBy', 'status',
+]);
+
+/**
+ * Get top-level keys from a record (dot-notation prefix = first segment only).
+ * Excludes meta/internal fields.
+ */
+function getRecordFieldKeys(record) {
+  return Object.keys(record)
+    .map(k => k.includes('.') ? k.split('.')[0] : k)
+    .filter(k => !META_FIELDS.has(k) && !k.startsWith('_'))
+    .filter((k, i, arr) => arr.indexOf(k) === i); // unique
+}
 
 /**
  * Expand dot-notation keys into nested objects.
@@ -70,20 +88,78 @@ class ProlibuWriter {
       console.log(`📤 Writing ${records.length} ${model} records to https://${this.domain}/v2/${model}`);
     }
 
-    // Validate that the idField exists on the Prolibu model before processing the batch
-    if (idField && !this.dryRun) {
+    // ── Schema validation ─────────────────────────────────────
+    // Fetch schema once and use it for both idField and field-level checks
+    let schemaAttrs = null;
+    if (records.length > 0) {
       try {
         const res = await this.api.axios.get(`${this.api.prefix}/service/getSchema`, {
           params: { modelName: model, type: 'attrs' },
         });
-        const attrs = res.data || {};
-        if (!attrs[idField]) {
-          throw new Error(`El modelo "${model}" en Prolibu no tiene el campo "${idField}". Créalo antes de migrar.`);
-        }
+        schemaAttrs = res.data || {};
       } catch (err) {
-        if (err.message.includes('no tiene el campo')) throw err;
-        // If schema check fails (network, auth), let it through — the writes will fail on their own
         console.log(`   ⚠️  No se pudo validar el schema de "${model}": ${err.message}`);
+      }
+    }
+
+    if (schemaAttrs) {
+      // 1. Validate idField exists
+      if (idField && !schemaAttrs[idField]) {
+        throw new Error(`El modelo "${model}" en Prolibu no tiene el campo "${idField}". Créalo antes de migrar.`);
+      }
+
+      // 2. Validate all fields in the sample record exist in the schema
+      const sample = records.find(r => r && typeof r === 'object');
+      if (sample) {
+        const recordKeys = getRecordFieldKeys(sample);
+        const unknownFields = recordKeys.filter(k => !(k in schemaAttrs));
+
+        if (unknownFields.length > 0) {
+          // Cross-reference with local CustomField file to give a better hint
+          const cfPath = path.join(
+            process.cwd(), 'accounts', this.domain, 'objects', 'CustomField', `${model}.json`
+          );
+          let localOnly = [];
+          if (fs.existsSync(cfPath)) {
+            try {
+              const cfDef = JSON.parse(fs.readFileSync(cfPath, 'utf8'));
+              const localFieldNames = Object.keys(cfDef.customFields || {});
+              localOnly = unknownFields.filter(f => localFieldNames.includes(f));
+            } catch { /* ignore parse error */ }
+          }
+
+          const notLocal = unknownFields.filter(f => !localOnly.includes(f));
+          const lines = [
+            `\n❌ El modelo "${model}" en Prolibu no reconoce los siguientes campos:`,
+            `   ${unknownFields.map(f => `"${f}"`).join(', ')}`,
+            '',
+          ];
+
+          if (localOnly.length) {
+            lines.push(
+              `   ⚠️  Estos campos están declarados en objects/CustomField/${model}.json`,
+              `       pero no se han pusheado a Prolibu todavía:`,
+              `       ${localOnly.map(f => `"${f}"`).join(', ')}`,
+              '',
+              `   👉  Corre primero:  ./prolibu objects push --domain ${this.domain}`,
+            );
+          }
+
+          if (notLocal.length) {
+            lines.push(
+              `   ⚠️  Estos campos no existen ni en disco ni en Prolibu:`,
+              `       ${notLocal.map(f => `"${f}"`).join(', ')}`,
+              '',
+              `   👉  Opciones:`,
+              `       A) Agrégalos en accounts/${this.domain}/objects/CustomField/${model}.json`,
+              `          y luego corre:  ./prolibu objects push --domain ${this.domain}`,
+              `       B) Créalos directamente en Prolibu (UI o API)`,
+              `       C) Excluye estos campos del transformer devolviendo undefined para ellos`,
+            );
+          }
+
+          throw new Error(lines.join('\n'));
+        }
       }
     }
 

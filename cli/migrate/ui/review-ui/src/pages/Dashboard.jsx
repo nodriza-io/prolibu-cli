@@ -291,6 +291,52 @@ export default function Dashboard() {
                 Migrar datos con dry-run o en vivo
               </span>
             </button>
+            <button
+              className="dash-link-card"
+              onClick={() => navigate(`/${crm}/objects`)}
+            >
+              <span className="dash-link-icon">📦</span>
+              <span className="dash-link-label">Objects</span>
+              <span className="dash-link-desc">
+                Gestionar Cobs y Custom Fields (pull / push / scaffold)
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Objects summary card */}
+      {(state.localObjects?.cobs?.length > 0 ||
+        state.localObjects?.customFields?.length > 0) && (
+        <div className="card" style={{ marginTop: 20 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 10,
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 14 }}>
+              📦 Objects locales
+            </div>
+            <button
+              className="btn btn-sm btn-ghost"
+              onClick={() => navigate(`/${crm}/objects`)}
+            >
+              Ver todos →
+            </button>
+          </div>
+          <div style={{ display: "flex", gap: 20 }}>
+            <div style={{ fontSize: 13, color: "#475569" }}>
+              <strong>{state.localObjects?.cobs?.length || 0}</strong> Custom
+              Object{state.localObjects?.cobs?.length !== 1 ? "s" : ""}
+            </div>
+            <div style={{ fontSize: 13, color: "#475569" }}>
+              <strong>{state.localObjects?.customFields?.length || 0}</strong>{" "}
+              Custom Field entit
+              {state.localObjects?.customFields?.length !== 1 ? "ies" : "y"}
+            </div>
           </div>
         </div>
       )}

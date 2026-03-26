@@ -8,11 +8,20 @@ module.exports = async function salesforceHandler(command, flags, args) {
     console.log('  status      Show credentials, config, and last run summary');
     console.log('  apex-to-js  Convert Apex code (.cls/.apex/.trigger) to Prolibu script using AI');
     console.log('');
+    console.log('Migration phases (--phase <name>):');
+    console.log('  discover    Introspect Salesforce — list all SObjects, fields and counts');
+    console.log('  review      Interactive UI to map objects/fields and export prolibu_setup.json');
+    console.log('  scaffold    Generate objects/Cob/ and objects/CustomField/ files from prolibu_setup.json');
+    console.log('  migrate     Fetch records from Salesforce and write to Prolibu');
+    console.log('');
+    console.log('Scaffold options:');
+    console.log('  --force     Overwrite existing scaffold files');
+    console.log('');
     console.log('Dashboard (CRM-agnostic):');
     console.log('  prolibu migrate ui --domain <domain>');
     console.log('');
     console.log('Options:');
-    console.log('  --domain <domain>          Prolibu domain (e.g. dev10.prolibu.com)');
+    console.log('  --domain <domain>          Prolibu domain (e.g. stg.prolibu.com)');
     console.log('  --entity <entity>          Entity to migrate: contacts | products | accounts | all');
     console.log('  --preset <preset>          Migration preset for configure: standard | minimal | full');
     console.log('  --dry-run                  Simulate migration without writing to Prolibu');
@@ -29,13 +38,15 @@ module.exports = async function salesforceHandler(command, flags, args) {
     console.log('  --output <path>            Output file or directory path');
     console.log('');
     console.log('Examples:');
-    console.log('  prolibu migrate salesforce configure --domain dev10.prolibu.com');
-    console.log('  prolibu migrate salesforce configure --domain dev10.prolibu.com --preset standard');
-    console.log('  prolibu migrate salesforce run --domain dev10.prolibu.com --entity contacts --dry-run');
-    console.log('  prolibu migrate salesforce run --domain dev10.prolibu.com --entity all');
-    console.log('  prolibu migrate salesforce status --domain dev10.prolibu.com');
+    console.log('  prolibu migrate salesforce configure --domain stg.prolibu.com');
+    console.log('  prolibu migrate salesforce run --domain stg.prolibu.com --phase discover');
+    console.log('  prolibu migrate salesforce run --domain stg.prolibu.com --phase review');
+    console.log('  prolibu migrate salesforce run --domain stg.prolibu.com --phase scaffold');
+    console.log('  prolibu objects push --domain stg.prolibu.com');
+    console.log('  prolibu migrate salesforce run --domain stg.prolibu.com --phase migrate --entity all');
+    console.log('  prolibu migrate salesforce run --domain stg.prolibu.com --entity all --dry-run');
+    console.log('  prolibu migrate salesforce status --domain stg.prolibu.com');
     console.log('  prolibu migrate salesforce apex-to-js --file MyTrigger.trigger --domain stg.prolibu.com');
-    console.log('  prolibu migrate salesforce apex-to-js --file MyClass.cls --domain stg.prolibu.com --scaffold');
     return;
   }
 

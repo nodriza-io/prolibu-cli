@@ -46,16 +46,8 @@ module.exports = async function runSalesforceMigration(flags) {
     fs.writeFileSync(profilePath, JSON.stringify({ apiKey }, null, 2));
   }
 
-  // 3. Check credentials exist
-  const credentials = credentialStore.getCredentials(domain, 'salesforce');
-  if (!credentials) {
-    console.error(`❌ No Salesforce credentials found for domain "${domain}".`);
-    console.error(`   Run: prolibu migrate salesforce configure --domain ${domain}`);
-    process.exit(1);
-  }
-
   // 4. Resolve phases to run — do this before entity prompt so we can skip it
-  //    --phase discover|migrate|all  (default: all phases)
+  //    --phase discover|review|scaffold|migrate|all  (default: all phases)
   //    --from <n> --to <n>           (1-based phase index range)
   let phases;
   let from;
@@ -70,10 +62,26 @@ module.exports = async function runSalesforceMigration(flags) {
   }
   // else: run all phases in order (phases/from/to all undefined)
 
-  // Determine if the selected phases require entities (discover does not)
+  // Phases that require Salesforce credentials (scaffold and review read local files only)
+  const sfOnlyPhases = ['discover', 'migrate'];
+  const needsSfCredentials = !phases || phases.some((p) => sfOnlyPhases.includes(p));
+
+  if (needsSfCredentials) {
+    const credentials = credentialStore.getCredentials(domain, 'salesforce');
+    if (!credentials) {
+      console.error(`❌ No Salesforce credentials found for domain "${domain}".`);
+      console.error(`   Run: prolibu migrate salesforce configure --domain ${domain}`);
+      process.exit(1);
+    }
+  }
+
+  // --force: overwrite existing scaffold files
+  const force = flags.force === true;
+
+  // Determine if the selected phases require entities (discover/scaffold/review do not)
   const needsEntities = !phases || phases.some((p) => p === 'migrate');
 
-  // 5. Resolve entities to migrate (skip if only running discover)
+  // 5. Resolve entities to migrate (skip if only running discover/scaffold/review)
   let entities = ['all'];
   if (needsEntities) {
     let entity = flags.entity;
@@ -105,5 +113,5 @@ module.exports = async function runSalesforceMigration(flags) {
   const withCount = flags.count === true;
 
   // 7. Run engine
-  await engine.run({ domain, apiKey, entities, phases, from, to, dryRun, withCount });
+  await engine.run({ domain, apiKey, entities, phases, from, to, dryRun, withCount, force });
 };

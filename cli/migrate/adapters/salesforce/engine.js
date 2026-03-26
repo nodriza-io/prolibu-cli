@@ -6,6 +6,7 @@ const logger = require('../../shared/migrationLogger');
 const yamlLoader = require('../../shared/configLoader');
 const discoverPhase = require('./phases/discover');
 const reviewPhase = require('./phases/review');
+const scaffoldPhase = require('./phases/scaffold');
 const migratePhase = require('./phases/migrate');
 
 /**
@@ -22,6 +23,11 @@ const PHASES = [
     name: 'review',
     description: 'Start interactive review UI (http://localhost:3721) — schema map, config builder, prolibu_setup export',
     execute: async (context) => reviewPhase(context),
+  },
+  {
+    name: 'scaffold',
+    description: 'Generate objects/Cob/ and objects/CustomField/ files from prolibu_setup.json',
+    execute: async (context) => scaffoldPhase(context),
   },
   {
     name: 'migrate',
@@ -134,11 +140,7 @@ function resolveConfig(domain) {
  *
  * @returns {Promise<object>} - Final migration log
  */
-async function run({ domain, apiKey, entities, phases: phaseFilter, from, to, dryRun = false, withCount = false, onProgress, onEntityResult, onDiscoverProgress }) {
-  const credentials = credentialStore.getCredentials(domain, 'salesforce');
-  if (!credentials) {
-    throw new Error(`No Salesforce credentials found for domain "${domain}". Run: prolibu migrate salesforce configure --domain ${domain}`);
-  }
+async function run({ domain, apiKey, entities, phases: phaseFilter, from, to, dryRun = false, withCount = false, force = false, onProgress, onEntityResult, onDiscoverProgress }) {
 
   // Resolve config from YAML (with fallback to hardcoded definitions)
   const resolved = resolveConfig(domain);
@@ -172,6 +174,10 @@ async function run({ domain, apiKey, entities, phases: phaseFilter, from, to, dr
   const needsWriter = phasesToRun.some((p) => p.name === 'migrate');
 
   if (needsSalesforce) {
+    const credentials = credentialStore.getCredentials(domain, 'salesforce');
+    if (!credentials) {
+      throw new Error(`No Salesforce credentials found for domain "${domain}". Run: prolibu migrate salesforce configure --domain ${domain}`);
+    }
     adapter = new SalesforceAdapter(credentials);
     console.log(`🔗 Connecting to Salesforce (${credentials.instanceUrl})...`);
     await adapter.authenticate();
@@ -194,6 +200,7 @@ async function run({ domain, apiKey, entities, phases: phaseFilter, from, to, dr
     batchSize,
     dryRun,
     withCount,
+    force,
     onProgress,
     onEntityResult,
     onDiscoverProgress,
