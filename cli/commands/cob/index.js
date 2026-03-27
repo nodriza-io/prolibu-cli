@@ -16,6 +16,7 @@ module.exports = async function cobHandler(command, flags, args) {
     console.log('  --modelName <name>         Model name for create (PascalCase)');
     console.log('  --id <id>                  Custom object ID (for get/update/delete)');
     console.log('  --file, -f <path>          JSON file path (for create/update)');
+    console.log('  --all                      Sync all objects without prompting (for sync)');
     console.log('');
     console.log('Examples:');
     console.log('  ./prolibu cob create --domain dev12.prolibu.com --modelName Vehicle');
@@ -23,6 +24,7 @@ module.exports = async function cobHandler(command, flags, args) {
     console.log('  ./prolibu cob list --domain dev12.prolibu.com');
     console.log('  ./prolibu cob pull --domain dev12.prolibu.com');
     console.log('  ./prolibu cob sync --domain dev12.prolibu.com');
+    console.log('  ./prolibu cob sync --domain dev12.prolibu.com --all');
     return;
   }
 

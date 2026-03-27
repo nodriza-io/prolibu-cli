@@ -5,11 +5,7 @@ import Dashboard from "./pages/Dashboard";
 import Credentials from "./pages/Credentials";
 import SchemaMap from "./pages/SchemaMap";
 import ConfigBuilder from "./pages/ConfigBuilder";
-import ProlibuSchema from "./pages/ProlibuSchema";
-import Pipelines from "./pages/Pipelines";
 import FlowEditor from "./pages/FlowEditor";
-import Execution from "./pages/Execution";
-import YamlConfig from "./pages/YamlConfig";
 import Objects from "./pages/Objects";
 
 export default function App() {
@@ -19,13 +15,9 @@ export default function App() {
       <Route path="/:crm" element={<MigrationShell />}>
         <Route index element={<Dashboard />} />
         <Route path="credentials" element={<Credentials />} />
-        <Route path="config" element={<YamlConfig />} />
         <Route path="schema" element={<SchemaMap />} />
         <Route path="config-builder" element={<ConfigBuilder />} />
-        <Route path="prolibu" element={<ProlibuSchema />} />
-        <Route path="pipelines" element={<Pipelines />} />
         <Route path="flow" element={<FlowEditor />} />
-        <Route path="execution" element={<Execution />} />
         <Route path="objects" element={<Objects />} />
       </Route>
     </Routes>

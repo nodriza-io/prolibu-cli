@@ -65,6 +65,7 @@ class ProlibuWriter {
     this.dryRun = dryRun;
     this.api = new ProlibuApi({ domain, apiKey });
     this._schemaSetup = new SchemaSetup({ domain, apiKey, dryRun });
+    this._openApiSpec = null; // Cache for OpenAPI specification
   }
 
   /**
@@ -89,14 +90,24 @@ class ProlibuWriter {
     }
 
     // ── Schema validation ─────────────────────────────────────
-    // Fetch schema once and use it for both idField and field-level checks
+    // Fetch OpenAPI spec once and extract model schema for validation
     let schemaAttrs = null;
     if (records.length > 0) {
       try {
-        const res = await this.api.axios.get(`${this.api.prefix}/service/getSchema`, {
-          params: { modelName: model, type: 'attrs' },
-        });
-        schemaAttrs = res.data || {};
+        // Use cached OpenAPI specification or fetch it
+        if (!this._openApiSpec) {
+          const res = await this.api.axios.get(`${this.api.prefix}/openapi/specification`);
+          this._openApiSpec = res.data || {};
+        }
+        const schemas = this._openApiSpec?.components?.schemas || {};
+
+        // Find schema by model name (case-insensitive)
+        const modelLower = model.toLowerCase();
+        const schemaKey = Object.keys(schemas).find(k => k.toLowerCase() === modelLower);
+
+        if (schemaKey && schemas[schemaKey]?.properties) {
+          schemaAttrs = schemas[schemaKey].properties;
+        }
       } catch (err) {
         console.log(`   ⚠️  No se pudo validar el schema de "${model}": ${err.message}`);
       }

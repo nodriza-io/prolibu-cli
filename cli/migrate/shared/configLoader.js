@@ -291,6 +291,7 @@ function buildEngineConfig(domain, crm) {
  * @param {string} domain
  * @param {string} crm
  * @param {object} fieldMaps - Keyed by SF object name, e.g. { "Account": { "Id": "externalId", "Name": "companyName" } }
+ *                             Fields can also be objects: { "Id": { to: "externalId", ref: "User" } }
  * @param {object} schema - schema.json data (to resolve SF object → entity key)
  * @returns {string} Path where mappings were saved
  */
@@ -311,10 +312,22 @@ function saveMappings(domain, crm, fieldMaps, schema) {
         const entityKey = sourceToKey[sfObjectName];
         if (!entityKey) continue;
 
-        // Convert { "Id": "externalId", "Name": "companyName" } → [{ from: "Id", to: "externalId" }, ...]
+        // Convert { "Id": "externalId", "OwnerId": { to: "assignee", ref: "User" } }
+        // → [{ from: "Id", to: "externalId" }, { from: "OwnerId", to: "assignee", ref: "User" }, ...]
         const fields = [];
-        for (const [from, to] of Object.entries(fieldMap)) {
-            if (to) fields.push({ from, to });
+        for (const [from, toVal] of Object.entries(fieldMap)) {
+            if (!toVal) continue;
+            if (typeof toVal === 'object' && toVal.to) {
+                // Field with reference: { to: "assignee", ref: "User" }
+                fields.push({
+                    from,
+                    to: toVal.to,
+                    ...(toVal.ref ? { ref: toVal.ref } : {}),
+                });
+            } else {
+                // Simple field: "externalId"
+                fields.push({ from, to: toVal });
+            }
         }
 
         // Preserve existing static fields and other properties
@@ -466,6 +479,17 @@ function applyTransform(record, rule) {
             const val = Number(record[rule.field]);
             if (!isNaN(val) && rule.by) {
                 record[rule.field] = val / rule.by;
+            }
+            break;
+        }
+        case 'expr': {
+            // Evaluate JavaScript expression with `record` in scope
+            try {
+                // eslint-disable-next-line no-new-func
+                const fn = new Function('record', `return (${rule.expr});`);
+                record[rule.field] = fn(record);
+            } catch (e) {
+                console.warn(`⚠️  Transform expr error on "${rule.field}": ${e.message}`);
             }
             break;
         }

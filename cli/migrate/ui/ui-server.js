@@ -4,6 +4,8 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const { spawn, spawnSync } = require('child_process');
 const credentialStore = require('../shared/credentialStore');
 const migrationLogger = require('../shared/migrationLogger');
 const yamlLoader = require('../shared/configLoader');
@@ -14,6 +16,80 @@ const ProlibuSchemaService = require('../shared/ProlibuSchemaService');
 const UI_PORT = 3721;
 const UI_ROOT = path.join(__dirname, 'review-ui');
 const CONNECTION_CHECK_TIMEOUT = 15000; // 15s timeout for CRM auth check
+const CLI_ROOT = path.join(__dirname, '..', '..', '..'); // prolibu-cli root
+
+/**
+ * Spawn a CLI command and stream output via SSE.
+ * @param {string[]} args - CLI arguments (e.g. ['objects', 'push', '--domain', 'x.prolibu.com'])
+ * @param {Function} broadcastSSE - SSE broadcast function
+ * @param {string} sseType - SSE event type prefix (e.g. 'objects-log', 'log')
+ * @param {Function} onDone - Callback when process exits: (ok: boolean, error?: string)
+ */
+function spawnCLI(args, broadcastSSE, sseType, onDone) {
+  const proc = spawn('./prolibu', args, {
+    cwd: CLI_ROOT,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: true,
+  });
+
+  proc.stdout.on('data', (data) => {
+    const lines = data.toString().split('\n').filter(Boolean);
+    for (const line of lines) {
+      broadcastSSE({ type: sseType, data: line });
+    }
+  });
+
+  proc.stderr.on('data', (data) => {
+    const lines = data.toString().split('\n').filter(Boolean);
+    for (const line of lines) {
+      broadcastSSE({ type: sseType, data: `❌ ${line}` });
+    }
+  });
+
+  proc.on('close', (code) => {
+    if (code === 0) {
+      onDone(true);
+    } else {
+      onDone(false, `Process exited with code ${code}`);
+    }
+  });
+
+  proc.on('error', (err) => {
+    broadcastSSE({ type: sseType, data: `❌ Spawn error: ${err.message}` });
+    onDone(false, err.message);
+  });
+
+  return proc;
+}
+
+/**
+ * Run a CLI command synchronously that requires a JSON file input.
+ * Writes the body to a temp file, runs the command, and cleans up.
+ * @param {string[]} baseArgs - CLI args before --file (e.g. ['customfield', 'create', '--domain', 'x'])
+ * @param {object} body - JSON body to write to temp file
+ * @returns {{ ok: boolean, output: string, error?: string }}
+ */
+function spawnCLIWithFile(baseArgs, body) {
+  const tmpFile = path.join(os.tmpdir(), `prolibu-cli-${Date.now()}.json`);
+  try {
+    fs.writeFileSync(tmpFile, JSON.stringify(body, null, 2));
+    const args = [...baseArgs, '--file', tmpFile];
+    const result = spawnSync('./prolibu', args, {
+      cwd: CLI_ROOT,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: true,
+      encoding: 'utf8',
+    });
+    const output = (result.stdout || '') + (result.stderr || '');
+    if (result.status === 0) {
+      return { ok: true, output };
+    } else {
+      return { ok: false, output, error: result.stderr || `Exit code ${result.status}` };
+    }
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch { }
+  }
+}
 
 /**
  * Load CRM metadata (entity mapping, label, adapter info).
@@ -508,34 +584,23 @@ async function startUIServer({ domain, apiKey, crm }) {
 
         ok({ ok: true, message: 'Discover phase started' });
 
-        setImmediate(async () => {
-          const origLog = console.log;
-          try {
-            console.log = (...args) => {
-              const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-              origLog(...args);
-              broadcastSSE({ type: 'log', data: line });
-            };
+        setImmediate(() => {
+          const args = ['migrate', CRM, 'run', '--phase', 'discover', '--domain', domain];
+          if (body.withCount) args.push('--count');
 
-            const engine = require(`../adapters/${CRM}/engine`);
-            await engine.run({
-              domain,
-              apiKey,
-              entities: [],
-              phases: ['discover'],
-              withCount: body.withCount || false,
-              onDiscoverProgress: (progress) => {
-                broadcastSSE({ type: 'discover-progress', data: progress });
-              },
-            });
-
-            broadcastSSE({ type: 'phase-done', data: { phase: 'discover' } });
-          } catch (e) {
-            broadcastSSE({ type: 'error', data: e.message });
-            broadcastSSE({ type: 'phase-done', data: { phase: 'discover', error: e.message } });
-          } finally {
-            console.log = origLog;
-          }
+          spawnCLI(
+            args,
+            broadcastSSE,
+            'log',
+            (success, error) => {
+              if (success) {
+                broadcastSSE({ type: 'phase-done', data: { phase: 'discover' } });
+              } else {
+                broadcastSSE({ type: 'error', data: error || 'Discover failed' });
+                broadcastSSE({ type: 'phase-done', data: { phase: 'discover', error } });
+              }
+            }
+          );
         });
         return;
       }
@@ -582,20 +647,24 @@ async function startUIServer({ domain, apiKey, crm }) {
       if (method === 'POST' && pathname === '/api/prolibu/create-field') {
         if (!apiKey) return fail(400, 'No apiKey available');
         const body = await readBody();
-        try {
-          const result = await prolibuPost(domain, apiKey, 'custom-fields', body);
-          return ok(result);
-        } catch (e) { return fail(500, e.message); }
+        const result = spawnCLIWithFile(['customfield', 'create', '--domain', domain], body);
+        if (result.ok) {
+          return ok({ ok: true, message: 'Custom field created', output: result.output });
+        } else {
+          return fail(500, result.error || 'Failed to create custom field');
+        }
       }
 
       // ── Prolibu proxy: create object ────────────────────
       if (method === 'POST' && pathname === '/api/prolibu/create-object') {
         if (!apiKey) return fail(400, 'No apiKey available');
         const body = await readBody();
-        try {
-          const result = await prolibuPost(domain, apiKey, 'custom-objects', body);
-          return ok(result);
-        } catch (e) { return fail(500, e.message); }
+        const result = spawnCLIWithFile(['cob', 'create', '--domain', domain], body);
+        if (result.ok) {
+          return ok({ ok: true, message: 'Custom object created', output: result.output });
+        } else {
+          return fail(500, result.error || 'Failed to create custom object');
+        }
       }
 
       // ── Prolibu schema service endpoints ────────────────
@@ -651,39 +720,22 @@ async function startUIServer({ domain, apiKey, crm }) {
           const { data: pipelinesData } = yamlLoader.loadPipelines(domain, CRM);
           const pipeline = pipelinesData?.pipeline || {};
 
-          // Gather available entities from multiple sources
+          // Gather available entities: only those with mapping defined AND enabled
           const entitySet = new Set();
 
-          // 1. From schema.json entity definitions
           try {
             const { data: schemaData } = yamlLoader.loadSchema(domain, CRM);
-            for (const key of Object.keys(schemaData?.entities || {})) {
-              entitySet.add(key);
+            for (const [key, def] of Object.entries(schemaData?.entities || {})) {
+              // Must have targetModel and fieldMappings
+              const hasMapping = def.targetModel && def.fieldMappings && Object.keys(def.fieldMappings).length > 0;
+              // Must be enabled (not explicitly disabled)
+              const isEnabled = def.enabled !== false;
+
+              if (hasMapping && isEnabled) {
+                entitySet.add(key);
+              }
             }
           } catch { /* no schema */ }
-
-          // 2. From config.json
-          const config = credentialStore.getConfig(domain, CRM) || {};
-          for (const key of Object.keys(config.entities || {})) {
-            entitySet.add(key);
-          }
-
-          // 3. From transformers directory
-          const configPath = credentialStore.getConfigPath(domain, CRM);
-          const transformersDir = path.join(path.dirname(configPath), 'transformers');
-          if (fs.existsSync(transformersDir)) {
-            for (const f of fs.readdirSync(transformersDir)) {
-              if (f.endsWith('.js')) entitySet.add(f.replace('.js', ''));
-            }
-          }
-
-          // 4. From pipelines directory
-          const pipelinesDir = path.join(path.dirname(configPath), 'pipelines');
-          if (fs.existsSync(pipelinesDir)) {
-            for (const f of fs.readdirSync(pipelinesDir)) {
-              if (f.endsWith('.js')) entitySet.add(f.replace('.js', ''));
-            }
-          }
 
           // Auto-convert flat order to a single-step flow when no flow is defined
           let flow = pipeline.flow || null;
@@ -819,42 +871,25 @@ async function startUIServer({ domain, apiKey, crm }) {
 
         ok({ ok: true, message: 'Migration started', dryRun });
 
-        setImmediate(async () => {
-          const origLog = console.log;
-          try {
-            const engine = require(`../adapters/${CRM}/engine`);
-            console.log = (...args) => {
-              const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-              origLog(...args);
-              broadcastSSE({ type: 'log', data: line });
-            };
+        setImmediate(() => {
+          // Build CLI args: ./prolibu migrate <CRM> run --phase migrate --domain X --entity X [--dry-run]
+          const entityArg = entities.length > 1 || entities.includes('all') ? 'all' : entities[0];
+          const args = ['migrate', CRM, 'run', '--phase', 'migrate', '--domain', domain, '--entity', entityArg];
+          if (dryRun) args.push('--dry-run');
 
-            console.log(`🎯 Target Prolibu domain: ${domain}`);
-            console.log(`🔑 Using API key: ${apiKey.slice(0, 8)}...`);
-            console.log(`🧪 Dry run: ${dryRun ? 'YES (no data will be written)' : 'NO (real migration)'}`);
-            console.log('');
-
-            await engine.run({
-              domain,
-              apiKey,
-              entities,
-              phases: ['migrate'],
-              dryRun,
-              onProgress: (progress) => {
-                broadcastSSE({ type: 'progress', data: progress });
-              },
-              onEntityResult: (entityKey, result) => {
-                broadcastSSE({ type: 'result', data: { entity: entityKey, ...result } });
-              },
-            });
-
-            broadcastSSE({ type: 'done', data: 'Migration completed' });
-          } catch (e) {
-            broadcastSSE({ type: 'error', data: e.message });
-            broadcastSSE({ type: 'done', data: 'Migration failed' });
-          } finally {
-            console.log = origLog;
-          }
+          spawnCLI(
+            args,
+            broadcastSSE,
+            'log',
+            (success, error) => {
+              if (success) {
+                broadcastSSE({ type: 'done', data: 'Migration completed' });
+              } else {
+                broadcastSSE({ type: 'error', data: error || 'Migration failed' });
+                broadcastSSE({ type: 'done', data: 'Migration failed' });
+              }
+            }
+          );
         });
         return;
       }
@@ -907,32 +942,29 @@ async function startUIServer({ domain, apiKey, crm }) {
         if (!apiKey) return fail(400, 'No apiKey available');
         ok({ ok: true, message: 'Pull iniciado' });
 
-        setTimeout(async () => {
-          // Capture console.log from pull command
-          const origLog = console.log;
-          const origErr = console.error;
-          console.log = (...args) => {
-            const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-            origLog(...args);
-            broadcastSSE({ type: 'objects-log', data: line });
-          };
-          console.error = (...args) => {
-            const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-            origErr(...args);
-            broadcastSSE({ type: 'objects-log', data: `❌ ${line}` });
-          };
-          try {
-            const pullObjects = require('../../commands/objects/pull');
-            await pullObjects({ domain, apikey: apiKey });
-            broadcastSSE({ type: 'objects-done', data: { action: 'pull', ok: true } });
-          } catch (e) {
-            broadcastSSE({ type: 'objects-log', data: `❌ Pull error: ${e.message}` });
-            broadcastSSE({ type: 'objects-done', data: { action: 'pull', ok: false, error: e.message } });
-          } finally {
-            console.log = origLog;
-            console.error = origErr;
-          }
-        }, 500);
+        setImmediate(() => {
+          // First: cob pull, then: customfield pull
+          spawnCLI(
+            ['cob', 'pull', '--domain', domain],
+            broadcastSSE,
+            'objects-log',
+            (cobSuccess, cobError) => {
+              if (!cobSuccess) {
+                broadcastSSE({ type: 'objects-done', data: { action: 'pull', ok: false, error: cobError } });
+                return;
+              }
+              // Now run customfield pull
+              spawnCLI(
+                ['customfield', 'pull', '--domain', domain],
+                broadcastSSE,
+                'objects-log',
+                (cfSuccess, cfError) => {
+                  broadcastSSE({ type: 'objects-done', data: { action: 'pull', ok: cfSuccess, error: cfError } });
+                }
+              );
+            }
+          );
+        });
         return;
       }
 
@@ -940,64 +972,74 @@ async function startUIServer({ domain, apiKey, crm }) {
         if (!apiKey) return fail(400, 'No apiKey available');
         ok({ ok: true, message: 'Push iniciado' });
 
-        setTimeout(async () => {
-          const origLog = console.log;
-          const origErr = console.error;
-          console.log = (...args) => {
-            const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-            origLog(...args);
-            broadcastSSE({ type: 'objects-log', data: line });
-          };
-          console.error = (...args) => {
-            const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-            origErr(...args);
-            broadcastSSE({ type: 'objects-log', data: `❌ ${line}` });
-          };
-          try {
-            const pushObjects = require('../../commands/objects/push');
-            await pushObjects({ domain, apikey: apiKey });
-            broadcastSSE({ type: 'objects-done', data: { action: 'push', ok: true } });
-          } catch (e) {
-            broadcastSSE({ type: 'objects-log', data: `❌ Push error: ${e.message}` });
-            broadcastSSE({ type: 'objects-done', data: { action: 'push', ok: false, error: e.message } });
-          } finally {
-            console.log = origLog;
-            console.error = origErr;
-          }
-        }, 500);
+        setImmediate(() => {
+          // First: cob sync --all, then: customfield push
+          spawnCLI(
+            ['cob', 'sync', '--domain', domain, '--all'],
+            broadcastSSE,
+            'objects-log',
+            (cobSuccess, cobError) => {
+              if (!cobSuccess) {
+                broadcastSSE({ type: 'objects-done', data: { action: 'push', ok: false, error: cobError } });
+                return;
+              }
+              // Now run customfield push
+              spawnCLI(
+                ['customfield', 'push', '--domain', domain],
+                broadcastSSE,
+                'objects-log',
+                (cfSuccess, cfError) => {
+                  broadcastSSE({ type: 'objects-done', data: { action: 'push', ok: cfSuccess, error: cfError } });
+                }
+              );
+            }
+          );
+        });
         return;
       }
 
       if (method === 'POST' && pathname === '/api/objects/scaffold') {
         const body = await readBody();
         const force = body.force === true;
-        // Scaffold is pure disk I/O — run synchronously and return result in response
-        const origLog = console.log;
-        const origErr = console.error;
+
+        // Scaffold via CLI command — collect output and return when done
         const logs = [];
-        console.log = (...args) => {
-          const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-          origLog(...args);
-          logs.push(line);
-          broadcastSSE({ type: 'objects-log', data: line });
-        };
-        console.error = (...args) => {
-          const line = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-          origErr(...args);
-          logs.push(`❌ ${line}`);
-          broadcastSSE({ type: 'objects-log', data: `❌ ${line}` });
-        };
-        try {
-          const scaffold = require('../adapters/salesforce/phases/scaffold');
-          const result = await scaffold({ domain, force });
-          console.log = origLog;
-          console.error = origErr;
-          return ok({ ok: true, logs, warnings: result?.warnings || [] });
-        } catch (e) {
-          console.log = origLog;
-          console.error = origErr;
-          return ok({ ok: false, error: e.message, logs });
-        }
+        const args = ['migrate', CRM, 'run', '--phase', 'scaffold', '--domain', domain];
+        if (force) args.push('--force');
+
+        const proc = spawn('./prolibu', args, {
+          cwd: CLI_ROOT,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          shell: true,
+        });
+
+        proc.stdout.on('data', (data) => {
+          const lines = data.toString().split('\n').filter(Boolean);
+          for (const line of lines) {
+            logs.push(line);
+            broadcastSSE({ type: 'objects-log', data: line });
+          }
+        });
+
+        proc.stderr.on('data', (data) => {
+          const lines = data.toString().split('\n').filter(Boolean);
+          for (const line of lines) {
+            logs.push(`❌ ${line}`);
+            broadcastSSE({ type: 'objects-log', data: `❌ ${line}` });
+          }
+        });
+
+        proc.on('close', (code) => {
+          broadcastSSE({ type: 'objects-done', data: { action: 'scaffold', ok: code === 0, logs } });
+        });
+
+        proc.on('error', (err) => {
+          logs.push(`❌ Spawn error: ${err.message}`);
+          broadcastSSE({ type: 'objects-done', data: { action: 'scaffold', ok: false, error: err.message, logs } });
+        });
+
+        // Return immediately, the process will stream via SSE
+        return ok({ ok: true, message: 'Scaffold iniciado' });
       }
 
       // Scaffold directly from discovery.json selection (bypasses prolibu_setup.json)
@@ -1088,7 +1130,6 @@ async function startUIServer({ domain, apiKey, crm }) {
     // ── Start listening ─────────────────────────────────────
     server.listen(UI_PORT, '127.0.0.1', () => {
       const url = `http://localhost:${UI_PORT}`;
-      const { spawn } = require('child_process');
       const viteUrl = 'http://localhost:5173';
 
       console.log('🌐 Migration Dashboard:');

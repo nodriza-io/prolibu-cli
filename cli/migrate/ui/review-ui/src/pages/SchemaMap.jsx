@@ -85,6 +85,7 @@ export default function SchemaMap() {
 
   /* ── field mapping state ───────────────────────────── */
   const [fieldMaps, setFieldMaps] = useState({});
+  const [fieldRefs, setFieldRefs] = useState({}); // { sfObject: { sfField: 'ProlibuModel' } }
   const [createdFields, setCreatedFields] = useState({});
   const [creatingFor, setCreatingFor] = useState(null);
   const [newField, setNewField] = useState({
@@ -117,6 +118,38 @@ export default function SchemaMap() {
   } = state;
   const sfMap = sfToProlibu || {};
   const knownFields = knownFieldMapping || {};
+
+  // Available Prolibu models for reference fields
+  // Extract from: 1) OpenAPI paths, 2) components.schemas, 3) known sfToProlibu mappings
+  const prolibuModels = useMemo(() => {
+    const models = new Set();
+
+    // 1. Extract from OpenAPI paths: /v2/{model}/ patterns
+    const paths = prolibuSpec?.paths || {};
+    for (const p of Object.keys(paths)) {
+      const m = p.match(/^\/v2\/([a-z][a-z0-9-]*)\/$/i);
+      if (m) {
+        // Capitalize first letter for display
+        const name = m[1].charAt(0).toUpperCase() + m[1].slice(1);
+        models.add(name);
+      }
+    }
+
+    // 2. Add from components.schemas if available
+    const schemas = prolibuSpec?.components?.schemas || {};
+    for (const name of Object.keys(schemas)) {
+      models.add(name);
+    }
+
+    // 3. Add known Prolibu models from sfToProlibu mapping as fallback
+    for (const mapping of Object.values(sfMap)) {
+      if (mapping?.prolibu) {
+        models.add(mapping.prolibu);
+      }
+    }
+
+    return [...models].sort((a, b) => a.localeCompare(b));
+  }, [prolibuSpec, sfMap]);
 
   /* ── auto-init mappings on object select ────────────── */
   useEffect(() => {
@@ -176,6 +209,21 @@ export default function SchemaMap() {
       }));
     },
     [selectedObj, discovery],
+  );
+
+  /* ── set reference model for a field ─────────────────── */
+  const setFieldRef = useCallback(
+    (sfField, refModel) => {
+      if (!selectedObj) return;
+      setFieldRefs((prev) => ({
+        ...prev,
+        [selectedObj]: {
+          ...(prev[selectedObj] || {}),
+          [sfField]: refModel || undefined,
+        },
+      }));
+    },
+    [selectedObj],
   );
 
   const handleCreateField = useCallback(async () => {
@@ -253,13 +301,31 @@ export default function SchemaMap() {
   /* ── save field mappings to mappings.json ────────────── */
   const handleSaveMappings = useCallback(async () => {
     try {
-      const d = await apiSaveMappings({ fieldMaps });
+      // Include ref info in fieldMaps for fields that are references
+      const enrichedFieldMaps = {};
+      for (const [sfObj, maps] of Object.entries(fieldMaps)) {
+        enrichedFieldMaps[sfObj] = {};
+        const refs = fieldRefs[sfObj] || {};
+        for (const [sfField, toField] of Object.entries(maps)) {
+          if (refs[sfField]) {
+            // Field has a reference - store as object
+            enrichedFieldMaps[sfObj][sfField] = {
+              to: toField,
+              ref: refs[sfField],
+            };
+          } else {
+            // Simple mapping
+            enrichedFieldMaps[sfObj][sfField] = toField;
+          }
+        }
+      }
+      const d = await apiSaveMappings({ fieldMaps: enrichedFieldMaps });
       if (d.ok) showToast(`✅ mappings.json guardado → ${d.path}`);
       else showToast(`❌ ${d.error}`, true);
     } catch (e) {
       showToast(`❌ ${e.message}`, true);
     }
-  }, [fieldMaps]);
+  }, [fieldMaps, fieldRefs]);
 
   /* ── migrate single entity ───────────────────────────── */
   const openMigrateModal = useCallback(() => {
@@ -566,6 +632,9 @@ export default function SchemaMap() {
       a.localeCompare(b),
     );
 
+    // Current field refs for this object
+    const currentRefs = fieldRefs[selectedObj] || {};
+
     return (
       <>
         <div className="det-header">
@@ -587,21 +656,6 @@ export default function SchemaMap() {
                 💾 Guardar Mappings
               </button>
             )}
-            {showMapping && (
-              <button
-                className="save-mapping-btn"
-                onClick={handleSaveSetup}
-                style={{ opacity: 0.7 }}
-              >
-                📦 Guardar Setup
-              </button>
-            )}
-            <button
-              className="add-cfg-btn"
-              onClick={() => addToConfig(selectedObj)}
-            >
-              + Agregar al Config
-            </button>
           </div>
         </div>
 
@@ -700,6 +754,7 @@ export default function SchemaMap() {
               <th>Campo CRM</th>
               <th>Tipo</th>
               <th>Custom</th>
+              {showMapping && <th>Ref Model</th>}
               {showMapping && <th>→ Campo Prolibu</th>}
               {showMapping && <th>Tipo Prolibu</th>}
               {showMapping && <th>Estado</th>}
@@ -710,6 +765,7 @@ export default function SchemaMap() {
               const mapped = currentMaps[f.name] || "";
               const autoM = matchField(f.name, prolibuProps);
               const knownMatch = known[f.name];
+              const currentRef = currentRefs[f.name] || "";
               const isDuplicate =
                 mapped &&
                 usedFields.has(mapped) &&
@@ -719,7 +775,9 @@ export default function SchemaMap() {
 
               let statusEl = null;
               if (showMapping) {
-                if (!mapped) {
+                if (currentRef) {
+                  statusEl = <span className="s-ref">🔗 Ref</span>;
+                } else if (!mapped) {
                   statusEl = <span className="s-none">· Sin mapeo</span>;
                 } else if (knownMatch === mapped) {
                   statusEl = <span className="s-ok">✅ YAML</span>;
@@ -762,47 +820,87 @@ export default function SchemaMap() {
                   </td>
                   {showMapping && (
                     <td>
-                      <select
-                        className={`mapping-select${
-                          mapped
-                            ? autoM === mapped
-                              ? " matched"
-                              : " manual"
-                            : " empty"
-                        }`}
-                        value={mapped}
-                        onChange={(e) => setMapping(f.name, e.target.value)}
-                      >
-                        <option value="">— sin asignar —</option>
-                        <optgroup label="Campos del modelo">
-                          {prolibuFieldNames.map((pf) => (
-                            <option key={pf} value={pf}>
-                              {pf}
-                              {allProlibuFields[pf]?.type
-                                ? ` (${allProlibuFields[pf].type})`
-                                : ""}
+                      {f.type === "reference" || f.referenceTo ? (
+                        <select
+                          className="ref-select"
+                          value={currentRef}
+                          onChange={(e) => setFieldRef(f.name, e.target.value)}
+                          title={
+                            f.referenceTo
+                              ? `SF → ${f.referenceTo}`
+                              : "Seleccionar modelo destino"
+                          }
+                        >
+                          <option value="">— sin ref —</option>
+                          {prolibuModels.map((model) => (
+                            <option key={model} value={model}>
+                              {model}
                             </option>
                           ))}
-                        </optgroup>
-                        <optgroup label="Acciones">
-                          <option value="__create__">
-                            ➕ Crear custom field…
-                          </option>
-                        </optgroup>
-                      </select>
-                      {isDuplicate && (
-                        <span
-                          className="dup-warn"
-                          title="Campo usado en otro mapeo"
-                        >
-                          ⚠️
+                        </select>
+                      ) : (
+                        <span style={{ color: "#64748b", fontSize: 10 }}>
+                          —
                         </span>
                       )}
                     </td>
                   )}
                   {showMapping && (
                     <td>
-                      {mapped && allProlibuFields[mapped]?.type ? (
+                      {currentRef ? (
+                        <span
+                          className="ref-indicator"
+                          title={`Referencia a ${currentRef}._id`}
+                        >
+                          → <code>{currentRef}._id</code>
+                        </span>
+                      ) : (
+                        <>
+                          <select
+                            className={`mapping-select${
+                              mapped
+                                ? autoM === mapped
+                                  ? " matched"
+                                  : " manual"
+                                : " empty"
+                            }`}
+                            value={mapped}
+                            onChange={(e) => setMapping(f.name, e.target.value)}
+                          >
+                            <option value="">— sin asignar —</option>
+                            <optgroup label="Campos del modelo">
+                              {prolibuFieldNames.map((pf) => (
+                                <option key={pf} value={pf}>
+                                  {pf}
+                                  {allProlibuFields[pf]?.type
+                                    ? ` (${allProlibuFields[pf].type})`
+                                    : ""}
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="Acciones">
+                              <option value="__create__">
+                                ➕ Crear custom field…
+                              </option>
+                            </optgroup>
+                          </select>
+                          {isDuplicate && (
+                            <span
+                              className="dup-warn"
+                              title="Campo usado en otro mapeo"
+                            >
+                              ⚠️
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </td>
+                  )}
+                  {showMapping && (
+                    <td>
+                      {currentRef ? (
+                        <span className="type-tag type-prolibu">objectid</span>
+                      ) : mapped && allProlibuFields[mapped]?.type ? (
                         <span className="type-tag type-prolibu">
                           {allProlibuFields[mapped].type}
                         </span>

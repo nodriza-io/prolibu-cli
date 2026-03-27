@@ -16,6 +16,11 @@ export default function FlowEditor() {
   const [editingStep, setEditingStep] = useState(null);
   const editRef = useRef(null);
 
+  // Execution states
+  const [running, setRunning] = useState(false);
+  const [logs, setLogs] = useState([]);
+  const logsEndRef = useRef(null);
+
   // Entities already placed in the flow
   const assignedEntities = new Set(flow.flatMap((s) => s.entities));
 
@@ -41,7 +46,9 @@ export default function FlowEditor() {
           setFlow(
             data.flow.map((step) => ({
               ...step,
-              entities: step.entities.filter((e) => known.size === 0 || known.has(e)),
+              entities: step.entities.filter(
+                (e) => known.size === 0 || known.has(e),
+              ),
             })),
           );
         }
@@ -59,13 +66,10 @@ export default function FlowEditor() {
     }
   }, [editingStep]);
 
-  const updateFlow = useCallback(
-    (newFlow) => {
-      setFlow(newFlow);
-      setDirty(true);
-    },
-    [],
-  );
+  const updateFlow = useCallback((newFlow) => {
+    setFlow(newFlow);
+    setDirty(true);
+  }, []);
 
   // ── Drag handlers ──
   const handleDragStart = (entity, fromStep) => {
@@ -121,10 +125,7 @@ export default function FlowEditor() {
 
   // ── Step management ──
   const addStep = () => {
-    updateFlow([
-      ...flow,
-      { name: `Paso ${flow.length + 1}`, entities: [] },
-    ]);
+    updateFlow([...flow, { name: `Paso ${flow.length + 1}`, entities: [] }]);
   };
 
   const removeStep = (idx) => {
@@ -132,9 +133,7 @@ export default function FlowEditor() {
   };
 
   const renameStep = (idx, name) => {
-    const newFlow = flow.map((s, i) =>
-      i === idx ? { ...s, name } : s,
-    );
+    const newFlow = flow.map((s, i) => (i === idx ? { ...s, name } : s));
     updateFlow(newFlow);
   };
 
@@ -159,12 +158,99 @@ export default function FlowEditor() {
     }
   };
 
+  // Auto-scroll logs to bottom
+  useEffect(() => {
+    if (logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [logs]);
+
+  // Execute migration flow
+  const handleExecute = async () => {
+    if (dirty) {
+      showToast("Guarda el flujo antes de ejecutar", true);
+      return;
+    }
+    const allFlowEntities = flow.flatMap((step) => step.entities);
+    if (allFlowEntities.length === 0) {
+      showToast("No hay entidades en el flujo", true);
+      return;
+    }
+
+    setRunning(true);
+    setLogs([{ time: new Date(), text: "🚀 Iniciando migración..." }]);
+
+    // Connect to SSE stream
+    const eventSource = new EventSource("/api/migrate/stream");
+
+    eventSource.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "log") {
+          setLogs((prev) => [...prev, { time: new Date(), text: msg.data }]);
+        } else if (msg.type === "done") {
+          setLogs((prev) => [
+            ...prev,
+            { time: new Date(), text: `✅ ${msg.data}` },
+          ]);
+          setRunning(false);
+          eventSource.close();
+        } else if (msg.type === "error") {
+          setLogs((prev) => [
+            ...prev,
+            { time: new Date(), text: `❌ ${msg.data}` },
+          ]);
+        }
+      } catch {}
+    };
+
+    eventSource.onerror = () => {
+      setLogs((prev) => [
+        ...prev,
+        { time: new Date(), text: "❌ Conexión perdida con el servidor" },
+      ]);
+      setRunning(false);
+      eventSource.close();
+    };
+
+    // Execute each step sequentially
+    try {
+      for (let i = 0; i < flow.length; i++) {
+        const step = flow[i];
+        if (step.entities.length === 0) continue;
+
+        setLogs((prev) => [
+          ...prev,
+          { time: new Date(), text: `\n── Paso ${i + 1}: ${step.name} ──` },
+        ]);
+
+        const res = await fetch("/api/migrate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ entities: step.entities, dryRun: false }),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Error en paso ${i + 1}`);
+        }
+
+        // Wait a bit for SSE logs to arrive before next step
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    } catch (err) {
+      setLogs((prev) => [
+        ...prev,
+        { time: new Date(), text: `❌ Error: ${err.message}` },
+      ]);
+      setRunning(false);
+    }
+  };
+
   // Quick add: add entity directly to a step
   const addEntityToStep = (stepIdx, entity) => {
     const newFlow = flow.map((s, i) =>
-      i === stepIdx
-        ? { ...s, entities: [...s.entities, entity] }
-        : s,
+      i === stepIdx ? { ...s, entities: [...s.entities, entity] } : s,
     );
     updateFlow(newFlow);
   };
@@ -202,9 +288,7 @@ export default function FlowEditor() {
           </p>
         </div>
         <div className="flow-header-actions">
-          {dirty && (
-            <span className="flow-unsaved">● Cambios sin guardar</span>
-          )}
+          {dirty && <span className="flow-unsaved">● Cambios sin guardar</span>}
           <button
             className="btn btn-primary flow-save-btn"
             onClick={handleSave}
@@ -218,18 +302,37 @@ export default function FlowEditor() {
               "💾 Guardar flujo"
             )}
           </button>
+          <button
+            className="btn btn-success flow-execute-btn"
+            onClick={handleExecute}
+            disabled={
+              running || dirty || flow.flatMap((s) => s.entities).length === 0
+            }
+          >
+            {running ? (
+              <>
+                <span className="spinner small" /> Ejecutando…
+              </>
+            ) : (
+              "▶️ Ejecutar Flujo"
+            )}
+          </button>
         </div>
       </div>
 
       {/* Conflict warnings — only show when conflicting entities are both in the flow */}
-      {warnings.filter(w =>
-        w.type === 'conflict' && w.entities.every(e => assignedEntities.has(e))
-      ).map((w, i) => (
-        <div key={i} className="flow-warning">
-          <span className="flow-warning-icon">⚠️</span>
-          <span>{w.message}</span>
-        </div>
-      ))}
+      {warnings
+        .filter(
+          (w) =>
+            w.type === "conflict" &&
+            w.entities.every((e) => assignedEntities.has(e)),
+        )
+        .map((w, i) => (
+          <div key={i} className="flow-warning">
+            <span className="flow-warning-icon">⚠️</span>
+            <span>{w.message}</span>
+          </div>
+        ))}
 
       {/* Entity Pool */}
       <div
@@ -292,18 +395,13 @@ export default function FlowEditor() {
                     stroke="#94a3b8"
                     strokeWidth="2"
                   />
-                  <polygon
-                    points="36,6 48,12 36,18"
-                    fill="#94a3b8"
-                  />
+                  <polygon points="36,6 48,12 36,18" fill="#94a3b8" />
                 </svg>
               </div>
             )}
 
             <div
-              className={`flow-step${
-                dropTarget === idx ? " drop-active" : ""
-              }`}
+              className={`flow-step${dropTarget === idx ? " drop-active" : ""}`}
               onDragOver={(e) => handleDragOver(e, idx)}
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, idx)}
@@ -394,8 +492,7 @@ export default function FlowEditor() {
                     className="flow-add-select"
                     value=""
                     onChange={(e) => {
-                      if (e.target.value)
-                        addEntityToStep(idx, e.target.value);
+                      if (e.target.value) addEntityToStep(idx, e.target.value);
                     }}
                   >
                     <option value="">+ Agregar entidad…</option>
@@ -435,27 +532,30 @@ export default function FlowEditor() {
         )}
       </div>
 
-      {/* Summary */}
-      {flow.length > 0 && (
-        <div className="flow-summary">
-          <h3>Resumen de ejecución</h3>
-          <div className="flow-summary-steps">
-            {flow.map((step, idx) => (
-              <div key={idx} className="flow-summary-item">
-                <span className="flow-summary-num">{idx + 1}</span>
-                <div className="flow-summary-detail">
-                  <strong>{step.name}</strong>
-                  <span className="flow-summary-entities">
-                    {step.entities.length === 0
-                      ? "Sin entidades"
-                      : step.entities.join(", ")}
-                  </span>
-                </div>
-                {idx < flow.length - 1 && (
-                  <span className="flow-summary-arrow">→</span>
-                )}
+      {/* Execution Logs */}
+      {logs.length > 0 && (
+        <div className="flow-logs">
+          <div className="flow-logs-header">
+            <h3>📋 Logs de Ejecución</h3>
+            {!running && (
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => setLogs([])}
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
+          <div className="flow-logs-content">
+            {logs.map((log, i) => (
+              <div key={i} className="flow-log-line">
+                <span className="flow-log-time">
+                  {log.time.toLocaleTimeString()}
+                </span>
+                <span className="flow-log-text">{log.text}</span>
               </div>
             ))}
+            <div ref={logsEndRef} />
           </div>
         </div>
       )}

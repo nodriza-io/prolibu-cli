@@ -61,31 +61,34 @@ module.exports = async function syncCobs(flags) {
   // Build list of model names from COB files
   const models = cobFiles.map((f) => f.replace('.json', ''));
 
-  // Ask: all or specific?
-  const { syncMode } = await inquirer.default.prompt({
-    type: 'list',
-    name: 'syncMode',
-    message: 'What do you want to sync?',
-    choices: [
-      { name: 'All objects', value: 'all' },
-      { name: 'Select specific objects', value: 'select' },
-    ],
-  });
-
+  // If --all flag is passed, skip the prompt and sync all
   let selectedModels = models;
 
-  if (syncMode === 'select') {
-    const { chosen } = await inquirer.default.prompt({
-      type: 'checkbox',
-      name: 'chosen',
-      message: 'Select objects to sync:',
-      choices: models.map((m) => {
-        const hasCf = fs.existsSync(path.join(cfDir, `${m}.json`));
-        return { name: hasCf ? `${m} (+ CustomField)` : m, value: m };
-      }),
-      validate: (v) => v.length > 0 ? true : 'Select at least one object.',
+  if (!flags.all) {
+    // Ask: all or specific?
+    const { syncMode } = await inquirer.default.prompt({
+      type: 'list',
+      name: 'syncMode',
+      message: 'What do you want to sync?',
+      choices: [
+        { name: 'All objects', value: 'all' },
+        { name: 'Select specific objects', value: 'select' },
+      ],
     });
-    selectedModels = chosen;
+
+    if (syncMode === 'select') {
+      const { chosen } = await inquirer.default.prompt({
+        type: 'checkbox',
+        name: 'chosen',
+        message: 'Select objects to sync:',
+        choices: models.map((m) => {
+          const hasCf = fs.existsSync(path.join(cfDir, `${m}.json`));
+          return { name: hasCf ? `${m} (+ CustomField)` : m, value: m };
+        }),
+        validate: (v) => v.length > 0 ? true : 'Select at least one object.',
+      });
+      selectedModels = chosen;
+    }
   }
 
   // Fetch existing COBs and CustomFields from platform
@@ -94,11 +97,11 @@ module.exports = async function syncCobs(flags) {
   try {
     const cobResult = await cobApi.listCobs(domain, apiKey);
     existingCobs = cobResult.data || [];
-  } catch {}
+  } catch { }
   try {
     const cfResult = await cfApi.listCustomFields(domain, apiKey);
     existingCfs = cfResult.data || [];
-  } catch {}
+  } catch { }
 
   const cobMap = {};
   for (const cob of existingCobs) cobMap[cob.modelName] = cob._id;

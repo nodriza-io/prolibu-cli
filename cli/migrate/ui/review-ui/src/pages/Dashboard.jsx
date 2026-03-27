@@ -79,7 +79,7 @@ export default function Dashboard() {
     );
 
     try {
-      await runDiscover();
+      await runDiscover({ withCount: true });
     } catch (e) {
       showToast(`Error: ${e.message}`, "error");
       setRunning(null);
@@ -222,85 +222,6 @@ export default function Dashboard() {
                 {line}
               </div>
             ))}
-          </div>
-        </div>
-      )}
-
-      {/* Quick links */}
-      {state.hasDiscovery && (
-        <div className="dash-quicklinks">
-          <h3>Herramientas</h3>
-          <div className="dash-quicklinks-grid">
-            <button
-              className="dash-link-card"
-              onClick={() => navigate(`/${crm}/schema`)}
-            >
-              <span className="dash-link-icon">📊</span>
-              <span className="dash-link-label">Schema Map</span>
-              <span className="dash-link-desc">
-                Comparar esquemas CRM ↔ Prolibu
-              </span>
-            </button>
-            <button
-              className="dash-link-card"
-              onClick={() => navigate(`/${crm}/config`)}
-            >
-              <span className="dash-link-icon">⚙️</span>
-              <span className="dash-link-label">Config Builder</span>
-              <span className="dash-link-desc">
-                Configurar entidades y campos
-              </span>
-            </button>
-            <button
-              className="dash-link-card"
-              onClick={() => navigate(`/${crm}/prolibu`)}
-            >
-              <span className="dash-link-icon">🟦</span>
-              <span className="dash-link-label">Prolibu Schema</span>
-              <span className="dash-link-desc">
-                Explorar entidades de Prolibu
-              </span>
-            </button>
-            <button
-              className="dash-link-card"
-              onClick={() => navigate(`/${crm}/pipelines`)}
-            >
-              <span className="dash-link-icon">🔗</span>
-              <span className="dash-link-label">Pipelines</span>
-              <span className="dash-link-desc">
-                Ver transformaciones configuradas
-              </span>
-            </button>
-            <button
-              className="dash-link-card"
-              onClick={() => navigate(`/${crm}/flow`)}
-            >
-              <span className="dash-link-icon">🔀</span>
-              <span className="dash-link-label">Editor de Flujo</span>
-              <span className="dash-link-desc">
-                Diseñar el orden de ejecución visual
-              </span>
-            </button>
-            <button
-              className="dash-link-card"
-              onClick={() => navigate(`/${crm}/execution`)}
-            >
-              <span className="dash-link-icon">▶️</span>
-              <span className="dash-link-label">Ejecución</span>
-              <span className="dash-link-desc">
-                Migrar datos con dry-run o en vivo
-              </span>
-            </button>
-            <button
-              className="dash-link-card"
-              onClick={() => navigate(`/${crm}/objects`)}
-            >
-              <span className="dash-link-icon">📦</span>
-              <span className="dash-link-label">Objects</span>
-              <span className="dash-link-desc">
-                Gestionar Cobs y Custom Fields (pull / push / scaffold)
-              </span>
-            </button>
           </div>
         </div>
       )}
