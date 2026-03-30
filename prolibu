@@ -34,8 +34,8 @@ const command = args[1]; // create, dev, prod, import, test
     console.log('  bulk     Upload virtual tours in bulk (vt only)');
     console.log('');
     console.log('Examples:');
-    console.log('  ./prolibu account import --domain account-faranda --repo git@github.com:org/account-faranda.git');
-    console.log('  ./prolibu account pull --domain account-faranda');
+    console.log('  ./prolibu account import --domain accountname.prolibu.com --repo git@github.com:org/account-repo.git');
+    console.log('  ./prolibu account pull --domain accountname.prolibu.com');
     console.log('  ./prolibu account list');
     console.log('  ./prolibu script create --domain dev10.prolibu.com --prefix my-hook');
     console.log('  ./prolibu script dev --domain dev10.prolibu.com --prefix my-hook --watch');

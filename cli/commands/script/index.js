@@ -8,6 +8,7 @@ module.exports = async function scriptHandler(command, flags, args) {
     console.log('  create   Create a new script');
     console.log('  dev      Run script in development mode');
     console.log('  prod     Run script in production mode');
+    console.log('  sync     Sync multiple scripts to the platform');
     console.log('  import   Import script from git repository');
     console.log('  test     Run script tests');
     console.log('');
@@ -28,6 +29,9 @@ module.exports = async function scriptHandler(command, flags, args) {
   } else if (command === 'dev' || command === 'prod') {
     const runScript = require('./run');
     await runScript(command, flags, args);
+  } else if (command === 'sync') {
+    const syncScripts = require('./sync');
+    await syncScripts(flags);
   } else if (command === 'import') {
     const importScript = require('./import');
     await importScript(flags, args);
@@ -36,7 +40,7 @@ module.exports = async function scriptHandler(command, flags, args) {
     await testScript(flags, args);
   } else {
     console.error(`❌ Unknown command: ${command}`);
-    console.log('Available commands: create, dev, prod, import, test');
+    console.log('Available commands: create, dev, prod, sync, import, test');
     process.exit(1);
   }
 };

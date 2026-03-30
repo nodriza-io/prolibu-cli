@@ -14,7 +14,7 @@ module.exports = async function importAccount(flags) {
     const response = await inquirer.default.prompt({
       type: 'input',
       name: 'domain',
-      message: 'Enter the account domain (e.g., account-faranda):',
+      message: 'Enter the account domain (e.g., accountname.prolibu.com):',
       validate: input => input ? true : 'Domain is required.'
     });
     domain = response.domain;

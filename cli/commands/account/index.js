@@ -14,9 +14,9 @@ module.exports = async function accountHandler(command, flags, args) {
     console.log('  -m <message>        Commit message (for push)');
     console.log('');
     console.log('Examples:');
-    console.log('  ./prolibu account import --domain account-faranda --repo git@github.com:org/account-faranda.git');
-    console.log('  ./prolibu account pull --domain account-faranda');
-    console.log('  ./prolibu account push --domain faranda.prolibu.com -m "feat: update agreements-handler"');
+    console.log('  ./prolibu account import --domain accountname.prolibu.com --repo git@github.com:org/account-repo.git');
+    console.log('  ./prolibu account pull --domain accountname.prolibu.com');
+    console.log('  ./prolibu account push --domain accountname.prolibu.com -m "feat: update agreements-handler"');
     console.log('  ./prolibu account list');
     return;
   }
