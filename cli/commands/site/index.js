@@ -6,6 +6,7 @@ module.exports = async function siteHandler(command, flags, args) {
     console.log('  create   Create a new site');
     console.log('  dev      Run site in development mode');
     console.log('  prod     Run site in production mode');
+    console.log('  sync     Sync multiple sites to the platform');
     console.log('  import   Import site from git repository');
     console.log('');
     console.log('Options:');
@@ -26,12 +27,15 @@ module.exports = async function siteHandler(command, flags, args) {
   } else if (command === 'dev' || command === 'prod') {
     const runSite = require('./run');
     await runSite(command, flags, args);
+  } else if (command === 'sync') {
+    const syncSites = require('./sync');
+    await syncSites(flags);
   } else if (command === 'import') {
     const importSite = require('./import');
     await importSite(flags, args);
   } else {
     console.error(`❌ Unknown command: ${command}`);
-    console.log('Available commands: create, dev, prod, import');
+    console.log('Available commands: create, dev, prod, sync, import');
     process.exit(1);
   }
 };
