@@ -77,6 +77,14 @@ module.exports = async function runPlugin(mode, flags) {
 
   const chalk = (await import('chalk')).default;
 
+  // Auto-install dependencies if node_modules is missing
+  const nodeModulesDir = path.join(pluginDir, 'node_modules');
+  if (!fs.existsSync(nodeModulesDir)) {
+    console.log(chalk.yellow(`[NPM] node_modules not found in plugin directory. Installing dependencies...`));
+    execSync('npm install --legacy-peer-deps', { cwd: pluginDir, stdio: 'inherit' });
+    console.log(chalk.green(`[NPM] Dependencies installed successfully`));
+  }
+
   if (mode === 'dev') {
     // DEV MODE: Start Vite dev server
     console.log(chalk.blue(`\n[DEV] Starting Vite dev server for '${pluginCode}'...`));

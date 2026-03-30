@@ -9,6 +9,23 @@ import fs from 'fs';
 const packageJson = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
 const pluginCode = packageJson.name;
 
+const projectRoot = __dirname;
+
+// Resolve bare imports from aliased dirs (e.g. shared/) using this project's node_modules
+function resolveFromProject() {
+  const fakeImporter = path.join(projectRoot, '_resolve.js');
+  return {
+    name: 'resolve-from-project',
+    enforce: 'pre',
+    async resolveId(source, importer, options) {
+      if (!importer || source.startsWith('.') || source.startsWith('/') || source.startsWith('\0')) return null;
+      if (importer.startsWith(__dirname)) return null;
+      const resolved = await this.resolve(source, fakeImporter, { skipSelf: true, ...options });
+      return resolved;
+    }
+  };
+}
+
 // Plugin to handle publish from the Studio UI
 function prolibuPublishPlugin() {
   return {
@@ -29,7 +46,7 @@ function prolibuPublishPlugin() {
             }
 
             const domain = parts[accountsIdx + 1];
-            const pluginPrefix = parts[accountsIdx + 2];
+            const pluginPrefix = parts[accountsIdx + 3];
 
             // Find prolibu CLI (go up to the CLI root)
             const cliRoot = parts.slice(0, accountsIdx).join(path.sep);
@@ -62,6 +79,7 @@ function prolibuPublishPlugin() {
 
 export default defineConfig({
   plugins: [
+    resolveFromProject(),
     react({
       jsxRuntime: 'classic'  // Use classic runtime for better compatibility
     }),
@@ -76,7 +94,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@prolibu/shared': path.resolve(__dirname, '../../../shared')
+      '@prolibu/shared': path.resolve(__dirname, '../../../../shared')
     }
   },
   build: {
