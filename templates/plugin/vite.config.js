@@ -1,9 +1,9 @@
-import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import cssInjectedByJsPlugin from 'vite-plugin-css-injected-by-js';
 import { execSync } from 'child_process';
-import path from 'path';
 import fs from 'fs';
+import path from 'path';
+import { defineConfig } from 'vite';
+import cssInjectedByJsPlugin from 'vite-plugin-css-injected-by-js';
 
 // Read plugin name from package.json (must match pluginCode)
 const packageJson = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
