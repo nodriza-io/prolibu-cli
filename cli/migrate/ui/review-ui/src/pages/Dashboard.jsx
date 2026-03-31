@@ -5,7 +5,6 @@ import { fetchStatus, runDiscover, subscribeMigrationLogs } from "../api";
 import { showToast } from "../components/Toast";
 
 const PHASE_ICONS = {
-  configure: "🔑",
   discover: "🔍",
   config: "⚙️",
   migrate: "🚀",
@@ -13,10 +12,9 @@ const PHASE_ICONS = {
 
 function getPhaseLink(crm, key) {
   const map = {
-    configure: `/${crm}/credentials`,
     discover: null,
-    config: `/${crm}/config`,
-    migrate: `/${crm}/execution`,
+    config: `/${crm}/schema`,
+    migrate: `/${crm}/flow`,
   };
   return map[key] || null;
 }
@@ -110,87 +108,78 @@ export default function Dashboard() {
       </div>
 
       <div className="dash-phases">
-        {Object.entries(phases).map(([key, phase]) => (
-          <div
-            key={key}
-            className={`dash-phase-card ${phase.done ? "done" : "pending"}`}
-          >
-            <div className="dash-phase-icon">{PHASE_ICONS[key] || "📦"}</div>
-            <div className="dash-phase-info">
-              <div className="dash-phase-label">
-                {phase.label}
-                <span
-                  className={`dash-phase-status ${phase.done ? "ok" : "wait"}`}
-                >
-                  {phase.done ? "✓ Listo" : "Pendiente"}
-                </span>
+        {Object.entries(phases)
+          .filter(([key]) => key !== "configure")
+          .map(([key, phase]) => (
+            <div
+              key={key}
+              className={`dash-phase-card ${phase.done ? "done" : "pending"}`}
+            >
+              <div className="dash-phase-icon">{PHASE_ICONS[key] || "📦"}</div>
+              <div className="dash-phase-info">
+                <div className="dash-phase-label">
+                  {phase.label}
+                  <span
+                    className={`dash-phase-status ${
+                      phase.done ? "ok" : "wait"
+                    }`}
+                  >
+                    {phase.done ? "✓ Listo" : "Pendiente"}
+                  </span>
+                </div>
+                {phase.detail && (
+                  <div className="dash-phase-detail">{phase.detail}</div>
+                )}
               </div>
-              {phase.detail && (
-                <div className="dash-phase-detail">{phase.detail}</div>
-              )}
+              <div className="dash-phase-actions">
+                {key === "discover" && (
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={handleDiscover}
+                    disabled={running === "discover"}
+                  >
+                    {running === "discover"
+                      ? "Ejecutando…"
+                      : phase.done
+                      ? "Re-descubrir"
+                      : "Ejecutar"}
+                  </button>
+                )}
+                {key === "config" && phase.done && (
+                  <button
+                    className="btn btn-sm"
+                    onClick={() => navigate(`/${crm}/schema`)}
+                  >
+                    Editar
+                  </button>
+                )}
+                {key === "config" && !phase.done && phases.discover?.done && (
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={() => navigate(`/${crm}/schema`)}
+                  >
+                    Configurar
+                  </button>
+                )}
+                {key === "migrate" && phases.config?.done && (
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={() => navigate(`/${crm}/flow`)}
+                  >
+                    {phase.done ? "Volver a migrar" : "Migrar"}
+                  </button>
+                )}
+                {getPhaseLink(crm, key) && phase.done && (
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    onClick={() => navigate(getPhaseLink(crm, key))}
+                  >
+                    Ver →
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="dash-phase-actions">
-              {key === "configure" && (
-                <button
-                  className="btn btn-sm btn-primary"
-                  onClick={() => navigate(`/${crm}/credentials`)}
-                >
-                  {phase.done ? "Editar" : "Configurar"}
-                </button>
-              )}
-              {key === "discover" && (
-                <button
-                  className="btn btn-sm btn-primary"
-                  onClick={handleDiscover}
-                  disabled={running === "discover" || !phases.configure?.done}
-                  title={
-                    !phases.configure?.done
-                      ? "Configura credenciales del CRM primero"
-                      : ""
-                  }
-                >
-                  {running === "discover"
-                    ? "Ejecutando…"
-                    : phase.done
-                    ? "Re-descubrir"
-                    : "Ejecutar"}
-                </button>
-              )}
-              {key === "config" && phase.done && (
-                <button
-                  className="btn btn-sm"
-                  onClick={() => navigate(`/${crm}/config`)}
-                >
-                  Editar
-                </button>
-              )}
-              {key === "config" && !phase.done && phases.discover?.done && (
-                <button
-                  className="btn btn-sm btn-primary"
-                  onClick={() => navigate(`/${crm}/config`)}
-                >
-                  Configurar
-                </button>
-              )}
-              {key === "migrate" && phases.config?.done && (
-                <button
-                  className="btn btn-sm btn-primary"
-                  onClick={() => navigate(`/${crm}/execution`)}
-                >
-                  {phase.done ? "Volver a migrar" : "Migrar"}
-                </button>
-              )}
-              {getPhaseLink(crm, key) && phase.done && (
-                <button
-                  className="btn btn-sm btn-ghost"
-                  onClick={() => navigate(getPhaseLink(crm, key))}
-                >
-                  Ver →
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
+          ))}
       </div>
 
       {/* Discovery logs */}

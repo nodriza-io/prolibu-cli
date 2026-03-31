@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useMigration } from "../store";
-import { fetchFlow, saveFlow } from "../api";
+import {
+  fetchFlow,
+  saveFlow,
+  startMigration,
+  subscribeMigrationLogs,
+} from "../api";
 import { showToast } from "../components/Toast";
 
 export default function FlowEditor() {
@@ -8,6 +13,7 @@ export default function FlowEditor() {
   const [flow, setFlow] = useState([]);
   const [allEntities, setAllEntities] = useState([]);
   const [warnings, setWarnings] = useState([]);
+  const [dependencies, setDependencies] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -37,6 +43,9 @@ export default function FlowEditor() {
         }
         if (data.warnings?.length) {
           setWarnings(data.warnings);
+        }
+        if (data.dependencies) {
+          setDependencies(data.dependencies);
         }
 
         const known = new Set(data.availableEntities || []);
@@ -107,14 +116,38 @@ export default function FlowEditor() {
     // Add to target
     if (targetStep === "pool") {
       // Just removed — entity goes back to pool
+      updateFlow(newFlow);
     } else if (targetStep !== undefined && targetStep !== null) {
       if (!newFlow[targetStep].entities.includes(entity)) {
         newFlow[targetStep].entities.push(entity);
       }
+      // Auto-place dependencies only when dragging from the pool (not step→step)
+      if (fromStep === null || fromStep === undefined || fromStep === "pool") {
+        const {
+          newFlow: resolvedFlow,
+          adjustedIdx,
+          autoAdded,
+        } = resolveAndPlaceDeps(entity, targetStep, newFlow);
+        // Move entity from targetStep to adjustedIdx if they differ (step was inserted)
+        if (adjustedIdx !== targetStep) {
+          resolvedFlow[targetStep].entities = resolvedFlow[
+            targetStep
+          ].entities.filter((e2) => e2 !== entity);
+          if (!resolvedFlow[adjustedIdx].entities.includes(entity)) {
+            resolvedFlow[adjustedIdx].entities.push(entity);
+          }
+        }
+        updateFlow(resolvedFlow);
+        if (autoAdded.length > 0) {
+          showToast(
+            `🔗 Dependencias agregadas al paso previo: ${autoAdded.join(", ")}`,
+          );
+        }
+      } else {
+        updateFlow(newFlow);
+      }
     }
 
-    // Remove empty steps (optional — keep them)
-    updateFlow(newFlow);
     setDragItem(null);
   };
 
@@ -181,37 +214,29 @@ export default function FlowEditor() {
     setLogs([{ time: new Date(), text: "🚀 Iniciando migración..." }]);
 
     // Connect to SSE stream
-    const eventSource = new EventSource("/api/migrate/stream");
-
-    eventSource.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
+    const closeSse = subscribeMigrationLogs(
+      (msg) => {
         if (msg.type === "log") {
           setLogs((prev) => [...prev, { time: new Date(), text: msg.data }]);
         } else if (msg.type === "done") {
           setLogs((prev) => [
             ...prev,
-            { time: new Date(), text: `✅ ${msg.data}` },
+            {
+              time: new Date(),
+              text: `✅ ${msg.data || "Migración completada"}`,
+            },
           ]);
-          setRunning(false);
-          eventSource.close();
         } else if (msg.type === "error") {
           setLogs((prev) => [
             ...prev,
             { time: new Date(), text: `❌ ${msg.data}` },
           ]);
         }
-      } catch {}
-    };
-
-    eventSource.onerror = () => {
-      setLogs((prev) => [
-        ...prev,
-        { time: new Date(), text: "❌ Conexión perdida con el servidor" },
-      ]);
-      setRunning(false);
-      eventSource.close();
-    };
+      },
+      () => {
+        setRunning(false);
+      },
+    );
 
     // Execute each step sequentially
     try {
@@ -224,15 +249,12 @@ export default function FlowEditor() {
           { time: new Date(), text: `\n── Paso ${i + 1}: ${step.name} ──` },
         ]);
 
-        const res = await fetch("/api/migrate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ entities: step.entities, dryRun: false }),
+        const res = await startMigration({
+          entities: step.entities,
+          dryRun: false,
         });
-
         if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || `Error en paso ${i + 1}`);
+          throw new Error(res.error || `Error en paso ${i + 1}`);
         }
 
         // Wait a bit for SSE logs to arrive before next step
@@ -244,15 +266,100 @@ export default function FlowEditor() {
         { time: new Date(), text: `❌ Error: ${err.message}` },
       ]);
       setRunning(false);
+      closeSse();
     }
+  };
+
+  // Resolve deps and place them forming a chain of steps when deps are themselves
+  // dependent on each other. Deps at the same topological level share a step.
+  // Returns { newFlow, adjustedIdx, autoAdded }.
+  const resolveAndPlaceDeps = (entity, stepIdx, baseFlow) => {
+    const deps = dependencies[entity] || [];
+    if (deps.length === 0)
+      return { newFlow: baseFlow, adjustedIdx: stepIdx, autoAdded: [] };
+
+    const beforeSet = new Set(
+      baseFlow.slice(0, stepIdx).flatMap((s) => s.entities),
+    );
+    const fromSet = new Set(baseFlow.slice(stepIdx).flatMap((s) => s.entities));
+
+    const needToPlace = deps.filter((d) => !beforeSet.has(d));
+    if (needToPlace.length === 0)
+      return { newFlow: baseFlow, adjustedIdx: stepIdx, autoAdded: [] };
+
+    // Compute topological level for each dep that needs placing.
+    // Level 0 = no deps in needSet (must go first).
+    // Level N = max(level of its deps within needSet) + 1.
+    const needSet = new Set(needToPlace);
+    const levels = {};
+    const computing = new Set(); // cycle guard
+    const getLevel = (dep) => {
+      if (dep in levels) return levels[dep];
+      if (computing.has(dep)) return 0; // cycle detected — treat as root
+      computing.add(dep);
+      const innerDeps = (dependencies[dep] || []).filter((d) => needSet.has(d));
+      const level =
+        innerDeps.length === 0 ? 0 : Math.max(...innerDeps.map(getLevel)) + 1;
+      computing.delete(dep);
+      return (levels[dep] = level);
+    };
+    for (const dep of needToPlace) getLevel(dep);
+
+    const maxLevel = Math.max(...Object.values(levels));
+
+    // How many new steps must be inserted before stepIdx to fit the chain?
+    // We need (maxLevel + 1) slots before stepIdx.
+    const insertions = Math.max(0, maxLevel + 1 - stepIdx);
+    const adjustedIdx = stepIdx + insertions;
+
+    // Deep-copy and remove misplaced deps (in steps >= stepIdx)
+    let newFlow = baseFlow.map((s) => ({ ...s, entities: [...s.entities] }));
+    for (const d of needToPlace) {
+      if (fromSet.has(d)) {
+        for (let i = stepIdx; i < newFlow.length; i++) {
+          newFlow[i].entities = newFlow[i].entities.filter((e2) => e2 !== d);
+        }
+      }
+    }
+
+    // Insert blank steps at the front for the chain links that don't exist yet
+    if (insertions > 0) {
+      const newSteps = Array.from({ length: insertions }, (_, i) => ({
+        name: insertions === 1 ? "Prerequisitos" : `Prerequisitos ${i + 1}`,
+        entities: [],
+      }));
+      newFlow = [...newSteps, ...newFlow];
+    }
+
+    // Place each dep at its level-determined step:
+    // level 0 → adjustedIdx - maxLevel - 1 (earliest)
+    // level maxLevel → adjustedIdx - 1 (immediately before entity)
+    for (const dep of needToPlace) {
+      const targetStepIdx = adjustedIdx - (maxLevel - levels[dep]) - 1;
+      if (!newFlow[targetStepIdx].entities.includes(dep)) {
+        newFlow[targetStepIdx].entities.push(dep);
+      }
+    }
+
+    return { newFlow, adjustedIdx, autoAdded: needToPlace };
   };
 
   // Quick add: add entity directly to a step
   const addEntityToStep = (stepIdx, entity) => {
-    const newFlow = flow.map((s, i) =>
-      i === stepIdx ? { ...s, entities: [...s.entities, entity] } : s,
+    const { newFlow, adjustedIdx, autoAdded } = resolveAndPlaceDeps(
+      entity,
+      stepIdx,
+      flow,
     );
-    updateFlow(newFlow);
+    const finalFlow = newFlow.map((s, i) =>
+      i === adjustedIdx ? { ...s, entities: [...s.entities, entity] } : s,
+    );
+    updateFlow(finalFlow);
+    if (autoAdded.length > 0) {
+      showToast(
+        `🔗 Dependencias agregadas al paso previo: ${autoAdded.join(", ")}`,
+      );
+    }
   };
 
   const removeEntityFromStep = (stepIdx, entity) => {

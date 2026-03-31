@@ -872,8 +872,8 @@ code {
   background: #1e293b;
   border: 1px solid #334155;
   border-radius: 12px;
-  width: min(560px, 90vw);
-  max-height: 80vh;
+  width: min(1024px, 90vw);
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
@@ -907,6 +907,52 @@ code {
   font-size: 11px;
   color: #94a3b8;
 }
+
+/* Migration progress bar */
+.migrate-progress {
+  padding: 12px 16px;
+  background: #1e293b;
+  border-top: 1px solid #334155;
+  border-bottom: 1px solid #334155;
+}
+.migrate-progress-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+.migrate-progress-bar {
+  height: 8px;
+  background: #334155;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.migrate-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #6366f1);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+.migrate-progress-stats {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+}
+.mp-stat {
+  font-size: 11px;
+  color: #cbd5e1;
+}
+.mp-stat.created {
+  color: #34d399;
+}
+.mp-stat.updated {
+  color: #60a5fa;
+}
+.mp-stat.errors {
+  color: #f87171;
+}
+
 .migrate-logs {
   flex: 1;
   overflow-y: auto;
@@ -1067,6 +1113,17 @@ code {
 .toggle input:checked + .slider::before {
   transform: translateX(16px);
 }
+.toggle.mini {
+  width: 26px;
+  height: 14px;
+}
+.toggle.mini .slider::before {
+  height: 10px;
+  width: 10px;
+}
+.toggle.mini input:checked + .slider::before {
+  transform: translateX(12px);
+}
 
 .fld {
   display: flex;
@@ -1112,6 +1169,121 @@ code {
   word-break: break-all;
   line-height: 1.4;
 }
+.entity-config-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.entity-config-section .fld {
+  gap: 2px;
+}
+.entity-config-section textarea {
+  font-size: 11px;
+  padding: 4px 6px;
+}
+.entity-config-section input[type="text"] {
+  font-size: 11px;
+  padding: 4px 6px;
+}
+.entity-config-section .soql-preview {
+  margin-top: 2px;
+}
+
+/* ── Assign entity row ─────────────────────────────── */
+.assign-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  align-items: center;
+}
+.assign-input {
+  flex: 1;
+  padding: 5px 10px;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 12px;
+}
+.assign-input::placeholder {
+  color: #64748b;
+}
+.assign-btn {
+  padding: 5px 14px;
+  border: none;
+  border-radius: 6px;
+  background: #6366f1;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.assign-btn:hover:not(:disabled) {
+  background: #4f46e5;
+}
+.assign-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── Entity missing warning ────────────────────────── */
+.entity-missing-banner {
+  margin: 8px 0;
+  padding: 12px 16px;
+  background: #451a03;
+  border: 1px solid #92400e;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.entity-missing-text {
+  flex: 1;
+  font-size: 12px;
+  color: #fbbf24;
+  min-width: 200px;
+}
+.create-cob-btn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 6px;
+  background: #d97706;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.create-cob-btn:hover:not(:disabled) {
+  background: #b45309;
+}
+.create-cob-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.cob-push-logs {
+  width: 100%;
+  max-height: 150px;
+  overflow-y: auto;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #0f172a;
+  border-radius: 6px;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.cob-push-log-line {
+  color: #94a3b8;
+}
+
 .right-label {
   font-size: 10px;
   font-weight: 700;

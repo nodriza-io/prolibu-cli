@@ -18,6 +18,9 @@ const UI_ROOT = path.join(__dirname, 'review-ui');
 const CONNECTION_CHECK_TIMEOUT = 15000; // 15s timeout for CRM auth check
 const CLI_ROOT = path.join(__dirname, '..', '..', '..'); // prolibu-cli root
 
+/** Currently running migration process (so we can kill it on cancel). */
+let activeMigrationProc = null;
+
 /**
  * Spawn a CLI command and stream output via SSE.
  * @param {string[]} args - CLI arguments (e.g. ['objects', 'push', '--domain', 'x.prolibu.com'])
@@ -30,10 +33,11 @@ function spawnCLI(args, broadcastSSE, sseType, onDone) {
     cwd: CLI_ROOT,
     stdio: ['ignore', 'pipe', 'pipe'],
     shell: true,
+    detached: true,
   });
 
   proc.stdout.on('data', (data) => {
-    const lines = data.toString().split('\n').filter(Boolean);
+    const lines = data.toString().split(/[\n\r]+/).filter(Boolean);
     for (const line of lines) {
       broadcastSSE({ type: sseType, data: line });
     }
@@ -274,6 +278,13 @@ async function startUIServer({ domain, apiKey, crm }) {
       if (fs.existsSync(setupPath)) prolibuSetup = JSON.parse(fs.readFileSync(setupPath, 'utf8'));
     } catch { /* ignore */ }
 
+    // Load schema entities for enabled state (single source of truth)
+    let schemaEntities = {};
+    try {
+      const { data: schemaData } = yamlLoader.loadSchema(domain, CRM);
+      schemaEntities = schemaData?.entities || {};
+    } catch { /* no schema yet */ }
+
     return {
       domain,
       crm: CRM,
@@ -286,8 +297,16 @@ async function startUIServer({ domain, apiKey, crm }) {
       hasConfig: !!Object.keys(config).length,
       discovery,
       config,
+      schemaEntities,
       prolibuSpec: null, // fetched lazily below
-      sfToProlibu: crmMeta.entityMapping,
+      sfToProlibu: {
+        ...crmMeta.entityMapping,
+        ...Object.fromEntries(
+          Object.entries(schemaEntities)
+            .filter(([, e]) => e.source && !crmMeta.entityMapping[e.source])
+            .map(([, e]) => [e.source, { prolibu: e.target, notes: `Mapped from schema: ${e.source} → ${e.target}` }]),
+        ),
+      },
       fieldMapping,
       localObjects,
       prolibuSetup,
@@ -605,9 +624,72 @@ async function startUIServer({ domain, apiKey, crm }) {
         return;
       }
 
+      // ── Toggle entity enabled in schema.json ──────────
+      if (method === 'POST' && pathname === '/api/schema/toggle-entity') {
+        const body = await readBody();
+        const { entityKey, enabled } = body;
+        if (!entityKey) return fail(400, 'entityKey is required');
+
+        try {
+          const schemaPath = path.join(process.cwd(), 'accounts', domain, 'migrations', CRM, 'schema.json');
+          if (!fs.existsSync(schemaPath)) return fail(404, 'schema.json not found');
+          const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+          if (!schema.entities?.[entityKey]) return fail(404, `Entity "${entityKey}" not found in schema.json`);
+          schema.entities[entityKey].enabled = enabled;
+          fs.writeFileSync(schemaPath, JSON.stringify(schema, null, 2));
+          console.log(`📝 schema.json: ${entityKey}.enabled = ${enabled}`);
+          return ok({ ok: true, entityKey, enabled });
+        } catch (e) {
+          return fail(500, e.message);
+        }
+      }
+
+      // ── Add entity to schema.json (dynamic mapping) ────
+      if (method === 'POST' && pathname === '/api/schema/add-entity') {
+        const body = await readBody();
+        const { source, target, entityKey } = body;
+        if (!source || !target || !entityKey) return fail(400, 'source, target and entityKey are required');
+
+        try {
+          const schemaPath = path.join(process.cwd(), 'accounts', domain, 'migrations', CRM, 'schema.json');
+          if (!fs.existsSync(schemaPath)) return fail(404, 'schema.json not found');
+          const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+
+          if (schema.entities[entityKey]) return fail(409, `Entity "${entityKey}" already exists in schema.json`);
+
+          // Add to schema.json
+          schema.entities[entityKey] = { source, target, enabled: true, idField: 'externalId' };
+          fs.writeFileSync(schemaPath, JSON.stringify(schema, null, 2));
+
+          // Add basic entity config to config.json
+          const config = credentialStore.getConfig(domain, CRM) || {};
+          if (!config.entities) config.entities = {};
+          if (!config.entities[target]) {
+            config.entities[target] = { sobject: source };
+            credentialStore.saveConfig(domain, CRM, config, true);
+          }
+
+          console.log(`📝 schema.json: added entity ${entityKey} (${source} → ${target})`);
+          return ok({
+            ok: true,
+            entityKey,
+            entity: schema.entities[entityKey],
+            sfToProlibuEntry: { prolibu: target, notes: `Mapped from UI: ${source} → ${target}` },
+          });
+        } catch (e) {
+          return fail(500, e.message);
+        }
+      }
+
       // ── Save config ─────────────────────────────────────
       if (method === 'POST' && pathname === '/api/save-config') {
         const body = await readBody();
+        // Strip `enabled` from entities — enabled lives in schema.json only
+        if (body.entities) {
+          for (const ent of Object.values(body.entities)) {
+            delete ent.enabled;
+          }
+        }
         const configPath = credentialStore.getConfigPath(domain, CRM);
         credentialStore.saveConfig(domain, CRM, body, true);
         console.log(`💾 config.json guardado → ${configPath}`);
@@ -655,18 +737,6 @@ async function startUIServer({ domain, apiKey, crm }) {
         }
       }
 
-      // ── Prolibu proxy: create object ────────────────────
-      if (method === 'POST' && pathname === '/api/prolibu/create-object') {
-        if (!apiKey) return fail(400, 'No apiKey available');
-        const body = await readBody();
-        const result = spawnCLIWithFile(['cob', 'create', '--domain', domain], body);
-        if (result.ok) {
-          return ok({ ok: true, message: 'Custom object created', output: result.output });
-        } else {
-          return fail(500, result.error || 'Failed to create custom object');
-        }
-      }
-
       // ── Prolibu schema service endpoints ────────────────
       // List all Prolibu entities
       if (method === 'GET' && pathname === '/api/prolibu/entities') {
@@ -705,7 +775,7 @@ async function startUIServer({ domain, apiKey, crm }) {
           await schemaService.refreshSpec();
           prolibuSpec = schemaService._spec;
           const entities = await schemaService.listEntities();
-          return ok({ ok: true, entityCount: entities.length });
+          return ok({ ok: true, entityCount: entities.length, spec: prolibuSpec });
         } catch (e) { return fail(500, e.message); }
       }
 
@@ -726,12 +796,8 @@ async function startUIServer({ domain, apiKey, crm }) {
           try {
             const { data: schemaData } = yamlLoader.loadSchema(domain, CRM);
             for (const [key, def] of Object.entries(schemaData?.entities || {})) {
-              // Must have targetModel and fieldMappings
-              const hasMapping = def.targetModel && def.fieldMappings && Object.keys(def.fieldMappings).length > 0;
-              // Must be enabled (not explicitly disabled)
-              const isEnabled = def.enabled !== false;
-
-              if (hasMapping && isEnabled) {
+              // Show all entities that have a target model defined (schema uses 'target', legacy uses 'targetModel')
+              if (def.target || def.targetModel) {
                 entitySet.add(key);
               }
             }
@@ -744,13 +810,15 @@ async function startUIServer({ domain, apiKey, crm }) {
           }
 
           // Detect entity conflicts (e.g. lineitems + opportunities with joins)
+          // Only warn when both conflicting entities are actually placed in the flow.
           const warnings = [];
           try {
             const { data: schemaCheck } = yamlLoader.loadSchema(domain, CRM);
+            const flowEntities = new Set((flow || []).flatMap(s => s.entities || []));
             const oppDef = schemaCheck?.entities?.opportunities;
             const liDef = schemaCheck?.entities?.lineitems;
             const quoteDef = schemaCheck?.entities?.quotes;
-            if (oppDef?.enabled !== false && liDef?.enabled !== false) {
+            if (flowEntities.has('opportunities') && flowEntities.has('lineitems') && oppDef && liDef) {
               const hasLineItemJoin = (oppDef?.join || []).some(j => j.as === 'lineItems');
               if (hasLineItemJoin) {
                 warnings.push({
@@ -760,7 +828,7 @@ async function startUIServer({ domain, apiKey, crm }) {
                 });
               }
             }
-            if (oppDef?.enabled !== false && quoteDef?.enabled !== false) {
+            if (flowEntities.has('opportunities') && flowEntities.has('quotes') && oppDef && quoteDef) {
               const hasQuoteJoin = (oppDef?.join || []).some(j => j.as === 'quote');
               if (hasQuoteJoin) {
                 warnings.push({
@@ -772,17 +840,62 @@ async function startUIServer({ domain, apiKey, crm }) {
             }
           } catch { /* no schema — skip warnings */ }
 
+          // Build dependency map: { [entityKey]: [depEntityKey, ...] } using discovery relationships
+          const dependencies = {};
+          try {
+            const { data: schemaData2 } = yamlLoader.loadSchema(domain, CRM);
+            const discovery = credentialStore.loadDiscovery(domain, CRM);
+            if (discovery?.objects && schemaData2?.entities) {
+              // Build reverse map: SF source name → entity key (e.g. "Account" → "accounts")
+              const sfToEntityKey = {};
+              for (const [key, def] of Object.entries(schemaData2.entities)) {
+                if (def.source) sfToEntityKey[def.source] = key;
+              }
+
+              // Resolve deps for a SF object: returns ordered array of entity keys
+              function resolveDeps(sfName, discObjs, sfMap, visited = new Set()) {
+                if (visited.has(sfName)) return [];
+                visited.add(sfName);
+                const obj = discObjs[sfName];
+                if (!obj?.relationships) return [];
+                const deps = [];
+                for (const rel of obj.relationships) {
+                  const refTo = rel.referenceTo;
+                  if (refTo && sfMap[refTo] && refTo !== sfName) {
+                    const subDeps = resolveDeps(refTo, discObjs, sfMap, visited);
+                    for (const d of subDeps) {
+                      if (!deps.includes(d)) deps.push(d);
+                    }
+                    const depKey = sfMap[refTo];
+                    if (!deps.includes(depKey)) deps.push(depKey);
+                  }
+                }
+                return deps;
+              }
+
+              for (const [key, def] of Object.entries(schemaData2.entities)) {
+                if (def.source && entitySet.has(key)) {
+                  const deps = resolveDeps(def.source, discovery.objects, sfToEntityKey);
+                  // Only include deps that are themselves available entities
+                  const filteredDeps = deps.filter(d => entitySet.has(d) && d !== key);
+                  if (filteredDeps.length > 0) dependencies[key] = filteredDeps;
+                }
+              }
+            }
+          } catch { /* no discovery or schema — skip */ }
+
           return ok({
             flow,
             order: pipeline.order || [],
             availableEntities: [...entitySet],
             warnings,
+            dependencies,
             batchSize: pipeline.batchSize || 200,
             concurrency: pipeline.concurrency || 1,
             onError: pipeline.onError || 'skip',
           });
         } catch (e) {
-          return ok({ flow: null, order: [], availableEntities: [], batchSize: 200, concurrency: 1, onError: 'skip' });
+          return ok({ flow: null, order: [], availableEntities: [], dependencies: {}, batchSize: 200, concurrency: 1, onError: 'skip' });
         }
       }
 
@@ -877,11 +990,12 @@ async function startUIServer({ domain, apiKey, crm }) {
           const args = ['migrate', CRM, 'run', '--phase', 'migrate', '--domain', domain, '--entity', entityArg];
           if (dryRun) args.push('--dry-run');
 
-          spawnCLI(
+          activeMigrationProc = spawnCLI(
             args,
             broadcastSSE,
             'log',
             (success, error) => {
+              activeMigrationProc = null;
               if (success) {
                 broadcastSSE({ type: 'done', data: 'Migration completed' });
               } else {
@@ -892,6 +1006,23 @@ async function startUIServer({ domain, apiKey, crm }) {
           );
         });
         return;
+      }
+
+      // ── Cancel running migration ────────────────────────
+      if (method === 'POST' && pathname === '/api/migrate/cancel') {
+        if (!activeMigrationProc) {
+          return ok({ ok: false, message: 'No migration running' });
+        }
+        try {
+          // Kill the process tree (negative PID kills the process group)
+          process.kill(-activeMigrationProc.pid, 'SIGTERM');
+        } catch {
+          try { activeMigrationProc.kill('SIGTERM'); } catch { /* already dead */ }
+        }
+        activeMigrationProc = null;
+        broadcastSSE({ type: 'log', data: '⛔ Migración cancelada por el usuario' });
+        broadcastSSE({ type: 'done', data: 'Migration cancelled' });
+        return ok({ ok: true, message: 'Migration cancelled' });
       }
 
       // ── SSE stream for real-time logs ───────────────────
@@ -911,9 +1042,39 @@ async function startUIServer({ domain, apiKey, crm }) {
       // ── Graceful shutdown ───────────────────────────────
       // ── Objects CLI bridge ──────────────────────────────
       // GET  /api/objects/state   — inventory of local objects/ folder
+      // POST /api/objects/save    — save Cob + CustomField JSONs to disk
       // POST /api/objects/pull    — runs `objects pull` (Prolibu → disk)
       // POST /api/objects/push    — runs `objects push` (disk → Prolibu)
       // POST /api/objects/scaffold — runs scaffold phase (prolibu_setup.json → disk)
+
+      if (method === 'POST' && pathname === '/api/objects/save') {
+        const body = await readBody();
+        const { cob, customField } = body;
+        if (!cob?.modelName) return fail(400, 'cob.modelName is required');
+
+        const objectsDir = path.join(process.cwd(), 'accounts', domain, 'objects');
+        const cobDir = path.join(objectsDir, 'Cob');
+        const cfDir = path.join(objectsDir, 'CustomField');
+
+        try {
+          fs.mkdirSync(cobDir, { recursive: true });
+          fs.mkdirSync(cfDir, { recursive: true });
+
+          const cobPath = path.join(cobDir, `${cob.modelName}.json`);
+          fs.writeFileSync(cobPath, JSON.stringify(cob, null, 2));
+          console.log(`📄 COB saved: ${cobPath}`);
+
+          if (customField) {
+            const cfPath = path.join(cfDir, `${cob.modelName}.json`);
+            fs.writeFileSync(cfPath, JSON.stringify(customField, null, 2));
+            console.log(`📄 CustomField saved: ${cfPath}`);
+          }
+
+          return ok({ ok: true, modelName: cob.modelName });
+        } catch (e) {
+          return fail(500, e.message);
+        }
+      }
 
       if (method === 'GET' && pathname === '/api/objects/state') {
         const objectsDir = path.join(process.cwd(), 'accounts', domain, 'objects');
@@ -990,6 +1151,38 @@ async function startUIServer({ domain, apiKey, crm }) {
                 'objects-log',
                 (cfSuccess, cfError) => {
                   broadcastSSE({ type: 'objects-done', data: { action: 'push', ok: cfSuccess, error: cfError } });
+                }
+              );
+            }
+          );
+        });
+        return;
+      }
+
+      // Push a single model (cob sync --model X + customfield push --model X)
+      if (method === 'POST' && pathname === '/api/objects/push-model') {
+        if (!apiKey) return fail(400, 'No apiKey available');
+        const body = await readBody();
+        const modelName = body.modelName;
+        if (!modelName) return fail(400, 'modelName is required');
+        ok({ ok: true, message: `Push ${modelName} iniciado` });
+
+        setImmediate(() => {
+          spawnCLI(
+            ['cob', 'sync', '--domain', domain, '--model', modelName],
+            broadcastSSE,
+            'objects-log',
+            (cobSuccess, cobError) => {
+              if (!cobSuccess) {
+                broadcastSSE({ type: 'objects-done', data: { action: 'push-model', ok: false, error: cobError, modelName } });
+                return;
+              }
+              spawnCLI(
+                ['customfield', 'push', '--domain', domain, '--model', modelName],
+                broadcastSSE,
+                'objects-log',
+                (cfSuccess, cfError) => {
+                  broadcastSSE({ type: 'objects-done', data: { action: 'push-model', ok: cfSuccess, error: cfError, modelName } });
                 }
               );
             }

@@ -7,6 +7,7 @@ import {
   pushObjects,
   scaffoldObjects,
   scaffoldFromDiscovery,
+  subscribeMigrationLogs,
 } from "../api";
 import { showToast } from "../components/Toast";
 
@@ -31,7 +32,7 @@ export default function Objects() {
   const [force, setForce] = useState(false);
   const [scaffoldWarnings, setScaffoldWarnings] = useState([]);
   const logEndRef = useRef(null);
-  const esRef = useRef(null);
+  const closeRef = useRef(null);
 
   // Discovery panel state
   const [discSearch, setDiscSearch] = useState("");
@@ -56,9 +57,9 @@ export default function Objects() {
   useEffect(() => {
     loadState();
     return () => {
-      if (esRef.current) {
-        esRef.current.close();
-        esRef.current = null;
+      if (closeRef.current) {
+        closeRef.current();
+        closeRef.current = null;
       }
     };
   }, [loadState]);
@@ -71,41 +72,33 @@ export default function Objects() {
   /* ── subscribe to SSE while an operation is running ────── */
   const startSSE = useCallback(
     (action) => {
-      if (esRef.current) {
-        esRef.current.close();
+      if (closeRef.current) {
+        closeRef.current();
       }
       setLogs([]);
       setRunning(action);
 
-      const es = new EventSource("/api/migrate/stream");
-      esRef.current = es;
-
-      es.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data);
+      const close = subscribeMigrationLogs(
+        (msg) => {
           if (msg.type === "objects-log") {
             setLogs((prev) => [...prev, msg.data]);
           } else if (msg.type === "objects-done") {
             setRunning(null);
-            es.close();
-            esRef.current = null;
+            closeRef.current = null;
             if (msg.data?.ok) {
               showToast(`✅ ${action} completado`);
-              loadState(); // refresh state after operation
+              loadState();
             } else {
               showToast(`❌ ${action} falló: ${msg.data?.error || ""}`, true);
             }
           }
-        } catch {
-          /* ignore */
-        }
-      };
-
-      es.onerror = () => {
-        setRunning(null);
-        es.close();
-        esRef.current = null;
-      };
+        },
+        () => {
+          setRunning(null);
+          closeRef.current = null;
+        },
+      );
+      closeRef.current = close;
     },
     [loadState],
   );

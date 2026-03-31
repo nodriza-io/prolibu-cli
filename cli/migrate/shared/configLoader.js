@@ -152,7 +152,9 @@ function validateMappings(data, filePath) {
 function validatePipelines(data, filePath) {
     if (!data) throw new ConfigError('pipelines.json not found', filePath);
     if (!data.pipeline) throw new ConfigError('pipelines.json must have a "pipeline" section', filePath);
-    if (!Array.isArray(data.pipeline.order) || !data.pipeline.order.length) {
+    // order can be empty when flow steps are defined (flow is the source of truth)
+    const hasFlow = Array.isArray(data.pipeline.flow) && data.pipeline.flow.length > 0;
+    if (!Array.isArray(data.pipeline.order) || (!data.pipeline.order.length && !hasFlow)) {
         throw new ConfigError('pipeline.order must be a non-empty array', filePath);
     }
     // Check for duplicates in order
@@ -355,7 +357,7 @@ function saveMappings(domain, crm, fieldMaps, schema) {
 function buildTransformer(entityDef) {
     const { fieldMappings, staticFields, transforms: transformRules, joinedFieldMappings } = entityDef;
 
-    return function configTransformer(crmRecord) {
+    return function configTransformer(crmRecord, context = {}) {
         const result = {};
 
         // 1. Apply field mappings (primary source)
@@ -370,6 +372,12 @@ function buildTransformer(entityDef) {
             // Skip record if required field is missing
             if (mapping.required && (value === null || value === undefined || value === '')) {
                 return null;
+            }
+
+            // Resolve ref fields: swap SF ID for Prolibu _id via idMap
+            if (mapping.ref && value) {
+                const refMap = context?.idMap?.[mapping.ref] || {};
+                value = refMap[value] ?? null;
             }
 
             result[mapping.to] = value;

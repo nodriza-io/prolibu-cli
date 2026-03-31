@@ -43,18 +43,6 @@ export function fetchStatus() {
     return request('/api/status');
 }
 
-// ── Credentials ─────────────────────────────────────────────
-
-export function fetchCredentials() {
-    return request('/api/credentials');
-}
-
-export function saveCredentials(credentials) {
-    return request('/api/credentials', {
-        method: 'POST',
-        body: JSON.stringify(credentials),
-    });
-}
 
 // ── Phases ──────────────────────────────────────────────────
 
@@ -67,17 +55,24 @@ export function runDiscover(opts = {}) {
 
 // ── Config ───────────────────────────────────────────────────
 
+export function toggleSchemaEntity(entityKey, enabled) {
+    return request('/api/schema/toggle-entity', {
+        method: 'POST',
+        body: JSON.stringify({ entityKey, enabled }),
+    });
+}
+
+export function addSchemaEntity({ source, target, entityKey }) {
+    return request('/api/schema/add-entity', {
+        method: 'POST',
+        body: JSON.stringify({ source, target, entityKey }),
+    });
+}
+
 export function saveConfig(cfg) {
     return request('/api/save-config', {
         method: 'POST',
         body: JSON.stringify(cfg),
-    });
-}
-
-export function saveSetup(setup) {
-    return request('/api/save-setup', {
-        method: 'POST',
-        body: JSON.stringify(setup),
     });
 }
 
@@ -95,19 +90,6 @@ export function createProlibuField(body) {
         method: 'POST',
         body: JSON.stringify(body),
     });
-}
-
-export function createProlibuObject(body) {
-    return request('/api/prolibu/create-object', {
-        method: 'POST',
-        body: JSON.stringify(body),
-    });
-}
-
-// ── Pipelines ───────────────────────────────────────────────
-
-export function fetchPipelines() {
-    return request('/api/pipelines');
 }
 
 // ── Flow Editor ─────────────────────────────────────────────
@@ -130,6 +112,10 @@ export function startMigration({ entities, dryRun }) {
         method: 'POST',
         body: JSON.stringify({ entities, dryRun }),
     });
+}
+
+export function cancelMigration() {
+    return request('/api/migrate/cancel', { method: 'POST' });
 }
 
 /**
@@ -168,23 +154,6 @@ export function subscribeMigrationLogs(onMessage, onError) {
 
 export function closeServer() {
     return request('/api/done', { method: 'POST' });
-}
-
-// ── YAML Config ─────────────────────────────────────────────
-
-export function fetchYamlStatus() {
-    return request('/api/yaml/status');
-}
-
-export function fetchYamlFile(filename) {
-    return request(`/api/yaml/file/${filename}`);
-}
-
-export function saveYamlFile(filename, content) {
-    return request(`/api/yaml/file/${filename}`, {
-        method: 'POST',
-        body: JSON.stringify({ content }),
-    });
 }
 
 export function fetchYamlConfig() {
@@ -229,6 +198,14 @@ export function fetchObjectsState() {
     return request('/api/objects/state');
 }
 
+/** Save Cob + CustomField JSONs to disk (local only, no push). */
+export function saveObjectFiles({ cob, customField }) {
+    return request('/api/objects/save', {
+        method: 'POST',
+        body: JSON.stringify({ cob, customField }),
+    });
+}
+
 /** Pull Cobs and CustomFields from Prolibu → local disk. Starts async, use SSE for progress. */
 export function pullObjects() {
     return request('/api/objects/pull', { method: 'POST' });
@@ -237,6 +214,14 @@ export function pullObjects() {
 /** Push local Cobs and CustomFields → Prolibu. Starts async, use SSE for progress. */
 export function pushObjects() {
     return request('/api/objects/push', { method: 'POST' });
+}
+
+/** Push a single model (Cob + CustomField) → Prolibu. Starts async, use SSE for progress. */
+export function pushObjectModel(modelName) {
+    return request('/api/objects/push-model', {
+        method: 'POST',
+        body: JSON.stringify({ modelName }),
+    });
 }
 
 /** Generate local objects/ files from prolibu_setup.json. Starts async, use SSE for progress. */

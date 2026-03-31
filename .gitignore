@@ -5,3 +5,5 @@ node_modules/
 accounts/
 .env
 .DS_Store
+cli/migrate/ui/review-ui/dist/
+cli/migrate/ui/review-ui/dist/

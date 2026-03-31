@@ -79,15 +79,42 @@ async function migrate({
         // Resolve pipeline (domain override or single-step base fallback)
         const pipeline = PipelineRunner.resolvePipeline(domain, 'salesforce', resolvedKey, baseTransformer);
 
+        // ── Validate SELECT fields against discovery ──────────────────
+        // Remove fields from defaultSelect that don't actually exist in this Salesforce org.
+        let validatedSelect = definition.defaultSelect;
+        const discovery = credentialStore.loadDiscovery(domain, 'salesforce');
+        if (discovery && definition.defaultSelect) {
+            const discObj = discovery.objects?.[definition.sobject];
+            if (discObj?.fieldDetails) {
+                const knownFields = new Set(discObj.fieldDetails.map(f => f.name));
+                const requestedFields = definition.defaultSelect.split(',').map(f => f.trim()).filter(Boolean);
+                const valid = [];
+                const removed = [];
+                for (const field of requestedFields) {
+                    // Allow relationship traversals (e.g. Account.Name)
+                    const baseField = field.split('.')[0];
+                    if (knownFields.has(baseField)) {
+                        valid.push(field);
+                    } else {
+                        removed.push(field);
+                    }
+                }
+                if (removed.length > 0) {
+                    console.log(`   ⚠️  Campos no encontrados en ${definition.sobject}, removidos del SELECT: ${removed.join(', ')}`);
+                    validatedSelect = valid.join(', ');
+                }
+            }
+        }
+
         // Fetch records from Salesforce
         let records;
         if (cfg?.filter) {
-            const soql = `SELECT ${definition.defaultSelect} FROM ${definition.sobject} WHERE ${cfg.filter} LIMIT ${batchSize}`;
+            const soql = `SELECT ${validatedSelect} FROM ${definition.sobject} WHERE ${cfg.filter} LIMIT ${batchSize}`;
             const result = await adapter.api.find(definition.sobject, soql);
             records = result?.data || [];
         } else {
             records = await adapter.fetchAll(definition.sobject, {
-                select: definition.defaultSelect,
+                select: validatedSelect,
                 limit: batchSize,
             });
         }
@@ -107,8 +134,19 @@ async function migrate({
             await resolveJoins(adapter, records, definition.join);
         }
 
+        // ── Build idMap: resolve SF IDs → Prolibu _ids for ref fields ──
+        const idMap = await buildIdMap(writer.api, definition.fieldMappings || [], records);
+
+        // ── Build pipeline context ──────────────────────────────────────────────
+        const pipelineContext = { idMap, api: writer.api };
+
+        // ── Run pipeline.prepare (batch-level hook, runs once before the loop) ──
+        if (typeof pipeline.prepare === 'function') {
+            await pipeline.prepare(records, pipelineContext);
+        }
+
         // Run records through the pipeline (all steps, with before/after hooks)
-        const transformed = await PipelineRunner.runPipeline(pipeline, records);
+        const transformed = await PipelineRunner.runPipeline(pipeline, records, pipelineContext);
 
         // Log transformed data
         fs.writeFileSync(
@@ -145,6 +183,66 @@ async function migrate({
         const createdMsg = result.created > 0 ? `, ➕ ${result.created} created` : '';
         console.log(`   ✅ ${result.migrated} migrated${createdMsg}${updatedMsg}, ⏭️ ${result.skipped} skipped, ❌ ${result.errors.length} errors`);
     }
+}
+
+// ─── idMap helper ─────────────────────────────────────────────
+
+/**
+ * Build a map of { refModel: { sfId: prolibuId } } for all fields with a `ref`.
+ * Queries Prolibu in chunks of 200 using $in on externalId.
+ *
+ * @param {object}   api           - ProlibuApi instance
+ * @param {object[]} fieldMappings - Entity field mappings (may include { from, to, ref })
+ * @param {object[]} records       - SF records to migrate (used to extract unique SF IDs)
+ * @returns {Promise<object>}      - { [refModel]: { [sfId]: prolibuId } }
+ */
+async function buildIdMap(api, fieldMappings, records) {
+    const idMap = {};
+    const refFields = fieldMappings.filter(m => m.ref && m.from);
+    if (!refFields.length || !records.length) return idMap;
+
+    // Group by refModel — collect unique SF IDs per model
+    const byModel = {};
+    for (const mapping of refFields) {
+        const model = mapping.ref;
+        if (!byModel[model]) byModel[model] = new Set();
+        for (const rec of records) {
+            const val = rec[mapping.from];
+            if (val) byModel[model].add(val);
+        }
+    }
+
+    // For each refModel, fetch Prolibu records in chunks
+    const CHUNK_SIZE = 200;
+    for (const [model, sfIdSet] of Object.entries(byModel)) {
+        const sfIds = [...sfIdSet];
+        idMap[model] = {};
+        let resolved = 0;
+
+        for (let i = 0; i < sfIds.length; i += CHUNK_SIZE) {
+            const chunk = sfIds.slice(i, i + CHUNK_SIZE);
+            try {
+                const res = await api.find(model, {
+                    select: '_id externalId',
+                    xquery: JSON.stringify({ externalId: { $in: chunk } }),
+                    limit: CHUNK_SIZE,
+                });
+                const rows = res?.data || res || [];
+                for (const row of rows) {
+                    if (row.externalId && row._id) {
+                        idMap[model][row.externalId] = row._id;
+                        resolved++;
+                    }
+                }
+            } catch (err) {
+                console.warn(`   ⚠️  idMap[${model}]: error fetching chunk — ${err.message}`);
+            }
+        }
+
+        console.log(`   🔗 idMap[${model}]: ${resolved}/${sfIds.length} resolved`);
+    }
+
+    return idMap;
 }
 
 // ─── Join helpers ──────────────────────────────────────────────

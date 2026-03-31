@@ -48,7 +48,7 @@ function resolvePipeline(domain, crm, entityKey, baseTransformer) {
             }
             return step;
         });
-        return { steps: hydratedSteps };
+        return { steps: hydratedSteps, prepare: pipeline.prepare };
     }
 
     // No pipeline override — wrap base transformer as single-step pipeline
@@ -68,9 +68,10 @@ function resolvePipeline(domain, crm, entityKey, baseTransformer) {
  *
  * @param {{ steps: object[] }} pipeline
  * @param {object[]} records
+ * @param {object} [context={}] - Extra context passed to each step (e.g. { idMap })
  * @returns {Promise<object[]>}
  */
-async function runPipeline(pipeline, records) {
+async function runPipeline(pipeline, records, context = {}) {
     const results = [];
 
     for (const record of records) {
@@ -79,17 +80,17 @@ async function runPipeline(pipeline, records) {
         for (const step of pipeline.steps) {
             // before: mutate input before transform
             if (typeof step.before === 'function') {
-                current = await step.before(current);
+                current = await step.before(current, context);
             }
 
             // transform: map to new shape (pass-through if not defined)
             if (typeof step.transform === 'function') {
-                current = await step.transform(current);
+                current = await step.transform(current, context);
             }
 
             // after: enrich the result after transform
             if (typeof step.after === 'function') {
-                current = await step.after(current);
+                current = await step.after(current, context);
             }
         }
 

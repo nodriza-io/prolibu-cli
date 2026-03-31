@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useEffect } from "react";
-import { fetchState, fetchPipelines } from "./api";
+import { fetchState } from "./api";
 
 const MigrationContext = createContext(null);
 
@@ -22,6 +22,9 @@ const initialState = {
 
   // Config being built (live)
   cfg: { entities: {}, customObjects: {}, batchSize: 200 },
+
+  // Schema entities (source of truth for enabled)
+  schemaEntities: {},
 
   // Setup being built (live)
   setup: { customObjects: [], customFields: [] },
@@ -56,6 +59,7 @@ function reducer(state, action) {
         hasCredentials: action.payload.hasCredentials || false,
         hasDiscovery: action.payload.hasDiscovery || !!action.payload.discovery,
         hasConfig: action.payload.hasConfig || false,
+        schemaEntities: action.payload.schemaEntities || {},
         cfg: {
           entities: {},
           customObjects: {},
@@ -94,6 +98,38 @@ function reducer(state, action) {
         },
       };
     }
+
+    case "SET_SCHEMA_ENTITY_ENABLED": {
+      const { entityKey, enabled } = action.payload;
+      return {
+        ...state,
+        schemaEntities: {
+          ...state.schemaEntities,
+          [entityKey]: {
+            ...state.schemaEntities[entityKey],
+            enabled,
+          },
+        },
+      };
+    }
+
+    case "ADD_SCHEMA_ENTITY": {
+      const { source, entityKey, entity, sfToProlibuEntry } = action.payload;
+      return {
+        ...state,
+        sfToProlibu: {
+          ...state.sfToProlibu,
+          [source]: sfToProlibuEntry,
+        },
+        schemaEntities: {
+          ...state.schemaEntities,
+          [entityKey]: entity,
+        },
+      };
+    }
+
+    case "SET_PROLIBU_SPEC":
+      return { ...state, prolibuSpec: action.payload };
 
     case "SET_SETUP":
       return { ...state, setup: action.payload };
@@ -154,15 +190,6 @@ export function MigrationProvider({ children }) {
       .then((data) => dispatch({ type: "INIT", payload: data }))
       .catch((err) => dispatch({ type: "INIT_ERROR", payload: err.message }));
   }, []);
-
-  // Load pipelines after state is ready
-  useEffect(() => {
-    if (!state.loading && state.domain) {
-      fetchPipelines()
-        .then((data) => dispatch({ type: "SET_PIPELINES", payload: data }))
-        .catch(() => {}); // non-critical
-    }
-  }, [state.loading, state.domain]);
 
   return (
     <MigrationContext.Provider value={{ state, dispatch }}>

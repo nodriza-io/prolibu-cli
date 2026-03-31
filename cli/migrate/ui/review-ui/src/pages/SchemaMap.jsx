@@ -1,60 +1,27 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useMigration } from "../store";
 import {
   createProlibuField,
-  saveSetup as apiSaveSetup,
+  saveObjectFiles,
+  pushObjectModel,
+  subscribeObjectsLogs,
+  refreshProlibuSchema,
+  saveConfig as apiSaveConfig,
   saveMappings as apiSaveMappings,
   startMigration,
+  cancelMigration,
   subscribeMigrationLogs,
+  toggleSchemaEntity,
+  addSchemaEntity,
 } from "../api";
 import { showToast } from "../components/Toast";
-
-/* ── helpers (ported from legacy SPA) ────────────────────── */
-
-function prolibuEntitySchema(entityName, prolibuSpec) {
-  if (!entityName || !prolibuSpec) return null;
-  const sc = prolibuSpec?.components?.schemas || {};
-  const low = entityName.toLowerCase();
-  return (
-    sc[entityName] ||
-    sc[entityName.charAt(0).toUpperCase() + entityName.slice(1)] ||
-    Object.entries(sc).find(([k]) => k.toLowerCase() === low)?.[1] ||
-    null
-  );
-}
-
-function matchField(sfName, prolibuProps) {
-  if (!prolibuProps) return null;
-  const clean = sfName.toLowerCase().replace(/__c$/, "").replace(/_/g, "");
-  return (
-    Object.keys(prolibuProps).find((k) => {
-      const kc = k.toLowerCase().replace(/_/g, "");
-      return kc === clean || kc.includes(clean) || clean.includes(kc);
-    }) || null
-  );
-}
-
-function mapType(sfType) {
-  const m = {
-    string: "text",
-    textarea: "textarea",
-    double: "number",
-    integer: "integer",
-    currency: "currency",
-    boolean: "boolean",
-    date: "date",
-    datetime: "datetime",
-    id: "id",
-    reference: "relation",
-    picklist: "select",
-    multipicklist: "multiselect",
-    email: "email",
-    phone: "phone",
-    url: "url",
-  };
-  return m[sfType] || "text";
-}
+import {
+  prolibuEntitySchema,
+  matchField,
+  mapType,
+  buildCobFromSFFields,
+} from "../utils/schema";
 
 const CUSTOM_FIELD_TYPES = [
   "text",
@@ -77,11 +44,21 @@ const CUSTOM_FIELD_TYPES = [
 
 export default function SchemaMap() {
   const { state, dispatch } = useMigration();
-  const navigate = useNavigate();
   const { crm } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
-  const [selectedObj, setSelectedObj] = useState(null);
+  const selectedObj = searchParams.get("obj") || null;
+  const setSelectedObj = (name) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (name) next.set("obj", name);
+        else next.delete("obj");
+        return next;
+      },
+      { replace: true },
+    );
 
   /* ── field mapping state ───────────────────────────── */
   const [fieldMaps, setFieldMaps] = useState({});
@@ -103,10 +80,10 @@ export default function SchemaMap() {
 
   /* ── migration state ───────────────────────────── */
   const [migrateModal, setMigrateModal] = useState(false);
-  const [migrateDryRun, setMigrateDryRun] = useState(true);
   const [migrating, setMigrating] = useState(false);
   const [migrateLogs, setMigrateLogs] = useState([]);
   const [migrateResult, setMigrateResult] = useState(null);
+  const [migrateProgress, setMigrateProgress] = useState(null);
   const sseRef = useRef(null);
   const logEndRef = useRef(null);
 
@@ -114,6 +91,8 @@ export default function SchemaMap() {
     discovery,
     sfToProlibu,
     prolibuSpec,
+    cfg,
+    schemaEntities,
     fieldMapping: knownFieldMapping,
   } = state;
   const sfMap = sfToProlibu || {};
@@ -150,6 +129,248 @@ export default function SchemaMap() {
 
     return [...models].sort((a, b) => a.localeCompare(b));
   }, [prolibuSpec, sfMap]);
+
+  /* ── schema entity toggle (absorbed from ConfigBuilder) ── */
+  const targetToSchemaKey = useMemo(() => {
+    const m = {};
+    for (const [k, v] of Object.entries(schemaEntities || {})) {
+      if (v.target) m[v.target] = k;
+    }
+    return m;
+  }, [schemaEntities]);
+
+  const isEntityEnabled = useCallback(
+    (prolibuTarget) => {
+      const sk = targetToSchemaKey[prolibuTarget];
+      if (!sk) return false;
+      return schemaEntities[sk]?.enabled !== false;
+    },
+    [schemaEntities, targetToSchemaKey],
+  );
+
+  const handleToggleEntity = useCallback(
+    (sfName, enabled) => {
+      const m = sfMap[sfName];
+      if (!m) return;
+      const sk = targetToSchemaKey[m.prolibu];
+      if (!sk) return;
+      toggleSchemaEntity(sk, enabled).catch(() => {});
+      dispatch({
+        type: "SET_SCHEMA_ENTITY_ENABLED",
+        payload: { entityKey: sk, enabled },
+      });
+    },
+    [sfMap, targetToSchemaKey, dispatch],
+  );
+
+  /* ── config mutations (absorbed from ConfigBuilder) ───── */
+  const updateEntityCfg = useCallback(
+    (sfName, field, value) => {
+      const m = sfMap[sfName];
+      if (!m) return;
+      const key = m.prolibu;
+      const prev = cfg.entities[key] || { sobject: sfName };
+      dispatch({
+        type: "SET_ENTITY_CFG",
+        payload: { key, value: { ...prev, [field]: value } },
+      });
+    },
+    [sfMap, cfg, dispatch],
+  );
+
+  const handleSaveConfig = useCallback(async () => {
+    try {
+      const d = await apiSaveConfig(cfg);
+      if (d.ok) showToast(`✅ config.json guardado`);
+      else showToast(`❌ ${d.error}`, true);
+    } catch (e) {
+      showToast(`❌ ${e.message}`, true);
+    }
+  }, [cfg]);
+
+  /* ── assign unmapped object to Prolibu entity ───────── */
+  const [assignTarget, setAssignTarget] = useState("");
+  const [assigning, setAssigning] = useState(false);
+  const [entityMissing, setEntityMissing] = useState({}); // { sfName: targetName }
+  const [creatingCob, setCreatingCob] = useState(false);
+
+  // Pre-fill assign input with SF object name when selecting an unmapped object
+  useEffect(() => {
+    if (!selectedObj) return;
+    const m = sfMap[selectedObj];
+    if (!m) {
+      setAssignTarget(selectedObj.replace(/__c$/, ""));
+    } else {
+      setAssignTarget("");
+    }
+  }, [selectedObj, sfMap]);
+
+  const entityExistsInProlibu = useCallback(
+    (t) => {
+      const schemas = prolibuSpec?.components?.schemas || {};
+      const paths = prolibuSpec?.paths || {};
+      return (
+        !!schemas[t] ||
+        !!schemas[t.charAt(0).toUpperCase() + t.slice(1)] ||
+        !!paths[`/v2/${t}/`]
+      );
+    },
+    [prolibuSpec],
+  );
+
+  const handleAssignEntity = useCallback(
+    async (sfName, target) => {
+      if (!target) return;
+      const t = target.trim().toLowerCase();
+      const entityKey = t.endsWith("s") ? t : `${t}s`;
+      setAssigning(true);
+      try {
+        const res = await addSchemaEntity({
+          source: sfName,
+          target: t,
+          entityKey,
+        });
+        if (res.ok) {
+          dispatch({
+            type: "ADD_SCHEMA_ENTITY",
+            payload: {
+              source: sfName,
+              entityKey: res.entityKey,
+              entity: res.entity,
+              sfToProlibuEntry: res.sfToProlibuEntry,
+            },
+          });
+          setAssignTarget("");
+
+          const obj = discovery?.objects?.[sfName];
+          const fields = obj?.fieldDetails || [];
+
+          // Pre-fill 1:1 field mappings BEFORE any await (prevents auto-init effect overwrite)
+          // and persist them immediately to mappings.json
+          if (fields.length) {
+            const SKIP = new Set([
+              "Id",
+              "IsDeleted",
+              "CreatedDate",
+              "CreatedById",
+              "LastModifiedDate",
+              "LastModifiedById",
+              "SystemModstamp",
+              "LastActivityDate",
+              "LastViewedDate",
+              "LastReferencedDate",
+              "OwnerId",
+            ]);
+            const initial = {};
+            for (const f of fields) {
+              initial[f.name] = SKIP.has(f.name) ? "" : f.name;
+            }
+            setFieldMaps((prev) => ({ ...prev, [sfName]: initial }));
+            apiSaveMappings({ fieldMaps: { [sfName]: initial } }).catch(
+              () => {},
+            );
+          }
+
+          if (entityExistsInProlibu(t)) {
+            showToast(`✅ ${sfName} → ${t} asignado`);
+          } else {
+            // Save Cob + CustomField JSONs to disk immediately
+            // Use sfName directly — already PascalCase (e.g. BackgroundOperation)
+            const modelName = sfName.replace(/__c$/, "");
+            if (fields.length) {
+              const { cob, customField } = buildCobFromSFFields(
+                modelName,
+                fields,
+              );
+              try {
+                await saveObjectFiles({ cob, customField });
+                showToast(
+                  `✅ ${sfName} → ${t} asignado — JSONs guardados en disco`,
+                );
+              } catch {
+                showToast(`⚠️ Asignado pero error guardando JSONs`, true);
+              }
+            }
+            setEntityMissing((prev) => ({ ...prev, [sfName]: t }));
+          }
+        }
+      } catch (e) {
+        showToast(`❌ ${e.message}`, true);
+      } finally {
+        setAssigning(false);
+      }
+    },
+    [dispatch, entityExistsInProlibu, discovery],
+  );
+
+  const cobSseRef = useRef(null);
+  const [cobPushLogs, setCobPushLogs] = useState([]);
+
+  const handlePublishCob = useCallback(
+    async (sfName) => {
+      const m = sfMap[sfName];
+      if (!m) return;
+      const modelName = m.prolibu.charAt(0).toUpperCase() + m.prolibu.slice(1);
+      setCreatingCob(true);
+      setCobPushLogs([]);
+      try {
+        // Push single model via bash: cob sync --model X + customfield push --model X
+        const pushRes = await pushObjectModel(modelName);
+        if (!pushRes.ok) {
+          showToast(`❌ ${pushRes.error || "Error al iniciar push"}`, true);
+          setCreatingCob(false);
+          return;
+        }
+
+        const close = subscribeObjectsLogs(
+          (msg) => {
+            if (msg.type === "objects-log") {
+              setCobPushLogs((p) => [...p, msg.data]);
+            } else if (msg.type === "objects-done") {
+              if (msg.data?.ok) {
+                showToast(`✅ "${modelName}" publicado en Prolibu`);
+                setEntityMissing((prev) => {
+                  const next = { ...prev };
+                  delete next[sfName];
+                  return next;
+                });
+                // Refresh prolibuSpec so the new entity's schema is available
+                refreshProlibuSchema()
+                  .then((r) => {
+                    if (r.spec) {
+                      dispatch({ type: "SET_PROLIBU_SPEC", payload: r.spec });
+                    }
+                  })
+                  .catch(() => {});
+              } else {
+                showToast(`❌ ${msg.data?.error || "Error en push"}`, true);
+              }
+              setCreatingCob(false);
+              cobSseRef.current = null;
+            }
+          },
+          () => {
+            setCreatingCob(false);
+          },
+        );
+        cobSseRef.current = close;
+      } catch (e) {
+        showToast(`❌ ${e.message}`, true);
+        setCreatingCob(false);
+      }
+    },
+    [sfMap],
+  );
+
+  // Cleanup COB SSE on unmount
+  useEffect(() => {
+    return () => {
+      if (cobSseRef.current) {
+        cobSseRef.current();
+        cobSseRef.current = null;
+      }
+    };
+  }, []);
 
   /* ── auto-init mappings on object select ────────────── */
   useEffect(() => {
@@ -266,38 +487,6 @@ export default function SchemaMap() {
     }
   }, [selectedObj, creatingFor, newField, sfMap]);
 
-  /* ── build & save setup from mappings ───────────────── */
-  const handleSaveSetup = useCallback(async () => {
-    const setup = { customObjects: [], customFields: [] };
-    for (const [sfObjName, maps] of Object.entries(fieldMaps)) {
-      const m = sfMap[sfObjName];
-      if (!m) continue;
-      const sc = prolibuEntitySchema(m.prolibu, prolibuSpec);
-      const props = sc?.properties || {};
-      const obj = discovery?.objects?.[sfObjName];
-      for (const [sfField, pField] of Object.entries(maps)) {
-        if (!pField) continue;
-        if (props[pField]) continue; // standard field, no setup needed
-        const fd = (obj?.fieldDetails || []).find((f) => f.name === sfField);
-        const created = createdFields[sfObjName]?.[pField];
-        setup.customFields.push({
-          prolibuEntity: m.prolibu,
-          apiName: pField,
-          label: created?.label || fd?.label || pField,
-          type: created?.type || mapType(fd?.type || "string"),
-          sourceSField: sfField,
-        });
-      }
-    }
-    try {
-      const d = await apiSaveSetup(setup);
-      if (d.ok) showToast(`✅ prolibu_setup.json guardado → ${d.path}`);
-      else showToast(`❌ ${d.error}`, true);
-    } catch (e) {
-      showToast(`❌ ${e.message}`, true);
-    }
-  }, [fieldMaps, sfMap, prolibuSpec, discovery, createdFields]);
-
   /* ── save field mappings to mappings.json ────────────── */
   const handleSaveMappings = useCallback(async () => {
     try {
@@ -331,7 +520,7 @@ export default function SchemaMap() {
   const openMigrateModal = useCallback(() => {
     setMigrateLogs([]);
     setMigrateResult(null);
-    setMigrateDryRun(true);
+    setMigrateProgress(null);
     setMigrating(false);
     setMigrateModal(true);
   }, []);
@@ -341,9 +530,12 @@ export default function SchemaMap() {
       sseRef.current();
       sseRef.current = null;
     }
+    if (migrating) {
+      cancelMigration().catch(() => {});
+    }
     setMigrateModal(false);
     setMigrating(false);
-  }, []);
+  }, [migrating]);
 
   const handleMigrate = useCallback(async () => {
     if (!selectedObj) return;
@@ -354,11 +546,12 @@ export default function SchemaMap() {
     setMigrating(true);
     setMigrateLogs([]);
     setMigrateResult(null);
+    setMigrateProgress(null);
 
     try {
       const res = await startMigration({
         entities: [entityKey],
-        dryRun: migrateDryRun,
+        dryRun: false,
       });
       if (!res.ok) {
         showToast(`❌ ${res.error || "Error al iniciar migración"}`, true);
@@ -369,16 +562,31 @@ export default function SchemaMap() {
       const close = subscribeMigrationLogs(
         (msg) => {
           if (msg.type === "log") {
+            // Parse the CLI summary line:
+            // "   ✅ 147 migrated, 🔄 147 updated, ➕ 0 created, ⏭️ 13 skipped, ❌ 13 errors"
+            const summaryMatch = msg.data?.match(/✅\s*(\d+)\s*migrated/);
+            if (summaryMatch) {
+              const migratedN = parseInt(summaryMatch[1]);
+              const createdM = msg.data.match(/➕\s*(\d+)/);
+              const updatedM = msg.data.match(/🔄\s*(\d+)/);
+              const skippedM = msg.data.match(/⏭️\s*(\d+)/);
+              const errorsM = msg.data.match(/❌\s*(\d+)/);
+              setMigrateResult({
+                entity: sfMap[selectedObj]?.prolibu,
+                migrated: migratedN,
+                created: createdM ? parseInt(createdM[1]) : 0,
+                updated: updatedM ? parseInt(updatedM[1]) : 0,
+                skipped: skippedM ? parseInt(skippedM[1]) : 0,
+                errors: errorsM ? parseInt(errorsM[1]) : 0,
+              });
+              // Still show the line in logs
+            }
             setMigrateLogs((prev) => [...prev, msg.data]);
           } else if (msg.type === "result") {
             setMigrateResult(msg.data);
           } else if (msg.type === "done") {
             setMigrating(false);
-            showToast(
-              migrateDryRun
-                ? "✅ Dry-run completado"
-                : "✅ Migración completada",
-            );
+            showToast("✅ Migración completada");
             sseRef.current = null;
           } else if (msg.type === "error") {
             setMigrateLogs((prev) => [...prev, `❌ ERROR: ${msg.data}`]);
@@ -393,7 +601,7 @@ export default function SchemaMap() {
       showToast(`❌ ${e.message}`, true);
       setMigrating(false);
     }
-  }, [selectedObj, sfMap, migrateDryRun]);
+  }, [selectedObj, sfMap]);
 
   // auto-scroll migration logs
   useEffect(() => {
@@ -434,77 +642,11 @@ export default function SchemaMap() {
     const byName = ([a], [b]) => a.localeCompare(b);
 
     return {
-      mapped: entries.filter(([n]) => !isC(n) && sfMap[n]).sort(byRec),
-      custom: entries.filter(([n]) => isC(n)).sort(byRec),
+      mapped: entries.filter(([n]) => sfMap[n]).sort(byRec),
+      custom: entries.filter(([n]) => isC(n) && !sfMap[n]).sort(byRec),
       unmapped: entries.filter(([n]) => !isC(n) && !sfMap[n]).sort(byName),
     };
   }, [discovery, sfMap, search, filter]);
-
-  /* ── add to config and navigate ─────────────────────── */
-  const addToConfig = useCallback(
-    (sfObjectName) => {
-      const obj = discovery.objects[sfObjectName];
-      const flds = (obj?.fieldDetails || []).map((f) => f.name);
-      const m = sfMap[sfObjectName];
-      const isC = sfObjectName.endsWith("__c");
-      const cfg = { ...state.cfg };
-
-      if (m) {
-        const key = m.prolibu;
-        if (!cfg.entities[key]) {
-          const top = flds.filter((f) => !f.endsWith("__c")).slice(0, 14);
-          cfg.entities = {
-            ...cfg.entities,
-            [key]: {
-              enabled: true,
-              sobject: sfObjectName,
-              select: top.join(", "),
-            },
-          };
-        } else {
-          cfg.entities = {
-            ...cfg.entities,
-            [key]: { ...cfg.entities[key], enabled: true },
-          };
-        }
-      } else if (isC) {
-        if (!cfg.customObjects[sfObjectName]) {
-          const top = flds
-            .filter(
-              (f) =>
-                ![
-                  "IsDeleted",
-                  "SystemModstamp",
-                  "LastModifiedById",
-                  "CreatedById",
-                ].includes(f),
-            )
-            .slice(0, 12);
-          const key = sfObjectName.toLowerCase().replace("__c", "");
-          cfg.customObjects = {
-            ...cfg.customObjects,
-            [sfObjectName]: {
-              enabled: true,
-              prolibuEntity: key,
-              select: top.join(", "),
-            },
-          };
-        } else {
-          cfg.customObjects = {
-            ...cfg.customObjects,
-            [sfObjectName]: {
-              ...cfg.customObjects[sfObjectName],
-              enabled: true,
-            },
-          };
-        }
-      }
-
-      dispatch({ type: "SET_CFG", payload: cfg });
-      navigate(`/${crm}/config`);
-    },
-    [state.cfg, sfMap, discovery, dispatch, navigate, crm],
-  );
 
   /* ── render group ───────────────────────────────────── */
   const renderGroup = (label, items) => {
@@ -523,6 +665,7 @@ export default function SchemaMap() {
           const sub = withCount
             ? `${(obj.records || 0).toLocaleString()} registros`
             : `${obj.fields || 0} campos`;
+          const enabled = m ? isEntityEnabled(m.prolibu) : false;
 
           return (
             <div
@@ -530,9 +673,34 @@ export default function SchemaMap() {
               className={`obj-row${selectedObj === name ? " sel" : ""}`}
               onClick={() => setSelectedObj(name)}
             >
-              <div>
-                <div className="obj-name">{name}</div>
-                <div className="obj-sub">{sub}</div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                {m && (
+                  <label
+                    className="toggle mini"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={enabled}
+                      onChange={(e) =>
+                        handleToggleEntity(name, e.target.checked)
+                      }
+                    />
+                    <span className="slider" />
+                  </label>
+                )}
+                <div style={{ minWidth: 0 }}>
+                  <div className="obj-name">{name}</div>
+                  <div className="obj-sub">{sub}</div>
+                </div>
               </div>
               <span className={`badge ${cls}`}>{lbl}</span>
             </div>
@@ -576,11 +744,17 @@ export default function SchemaMap() {
     const currentMaps = fieldMaps[selectedObj] || {};
     const extra = createdFields[selectedObj] || {};
 
-    // All available Prolibu fields = schema props + known YAML targets + dynamically created
+    // All available Prolibu fields = schema props + known YAML targets + current maps + dynamically created
     const allProlibuFields = (() => {
       const base = prolibuProps ? { ...prolibuProps } : {};
       // Add known mapping target fields that aren't already in the schema
       for (const toField of Object.values(known)) {
+        if (toField && !base[toField]) {
+          base[toField] = { type: "string", description: toField };
+        }
+      }
+      // Add currently-selected values so dropdowns render correctly even without Prolibu spec
+      for (const toField of Object.values(currentMaps)) {
         if (toField && !base[toField]) {
           base[toField] = { type: "string", description: toField };
         }
@@ -646,14 +820,17 @@ export default function SchemaMap() {
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
+            <button className="save-mapping-btn" onClick={handleSaveConfig}>
+              💾 Consulta SOQL
+            </button>
+            {showMapping && (
+              <button className="save-mapping-btn" onClick={handleSaveMappings}>
+                💾 Mappings
+              </button>
+            )}
             {m && (
               <button className="migrate-btn" onClick={openMigrateModal}>
                 🚀 Migrar
-              </button>
-            )}
-            {showMapping && (
-              <button className="save-mapping-btn" onClick={handleSaveMappings}>
-                💾 Guardar Mappings
               </button>
             )}
           </div>
@@ -730,18 +907,123 @@ export default function SchemaMap() {
           </div>
         )}
 
+        {m && entityMissing[selectedObj] && (
+          <div className="entity-missing-banner">
+            <div className="entity-missing-text">
+              ⚠️ La entidad <strong>"{entityMissing[selectedObj]}"</strong> no
+              existe en Prolibu. Los JSONs (Cob + CustomField) ya fueron
+              guardados en disco.
+            </div>
+            <button
+              className="create-cob-btn"
+              disabled={creatingCob}
+              onClick={() => handlePublishCob(selectedObj)}
+            >
+              {creatingCob ? "⏳ Publicando…" : "🚀 Publicar en Prolibu"}
+            </button>
+            {cobPushLogs.length > 0 && (
+              <div className="cob-push-logs">
+                {cobPushLogs.map((line, i) => (
+                  <div key={i} className="cob-push-log-line">
+                    {line}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {!m && isC && (
           <div className="warn-banner">
-            🔶 <strong>Custom Object</strong> — Sin mapeo predefinido. Usa el{" "}
-            <strong>Config Builder</strong> para asignarlo a una entidad
-            Prolibu.
+            <div>
+              🔶 <strong>Custom Object</strong> — Sin mapeo predefinido.
+            </div>
+            <div className="assign-row">
+              <input
+                type="text"
+                className="assign-input"
+                placeholder="Entidad Prolibu (ej: task)"
+                value={assignTarget}
+                onChange={(e) => setAssignTarget(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && assignTarget.trim()) {
+                    handleAssignEntity(selectedObj, assignTarget);
+                  }
+                }}
+              />
+              <button
+                className="assign-btn"
+                disabled={assigning || !assignTarget.trim()}
+                onClick={() => handleAssignEntity(selectedObj, assignTarget)}
+              >
+                {assigning ? "…" : "Asignar →"}
+              </button>
+            </div>
           </div>
         )}
 
         {!m && !isC && (
           <div className="info-banner">
-            ⚪ <strong>Sin mapeo por defecto</strong> — Este objeto estándar no
-            tiene equivalente predefinido en Prolibu.
+            <div>
+              ⚪ <strong>Sin mapeo por defecto</strong> — Este objeto estándar
+              no tiene equivalente predefinido en Prolibu.
+            </div>
+            <div className="assign-row">
+              <input
+                type="text"
+                className="assign-input"
+                placeholder="Entidad Prolibu (ej: task)"
+                value={assignTarget}
+                onChange={(e) => setAssignTarget(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && assignTarget.trim()) {
+                    handleAssignEntity(selectedObj, assignTarget);
+                  }
+                }}
+              />
+              <button
+                className="assign-btn"
+                disabled={assigning || !assignTarget.trim()}
+                onClick={() => handleAssignEntity(selectedObj, assignTarget)}
+              >
+                {assigning ? "…" : "Asignar →"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {m && (
+          <div className="entity-config-section">
+            <div className="fld">
+              <label>Campos para SELECT (separados por coma)</label>
+              <textarea
+                rows={2}
+                defaultValue={cfg.entities[m.prolibu]?.select || ""}
+                key={`sel-${selectedObj}`}
+                onBlur={(e) =>
+                  updateEntityCfg(selectedObj, "select", e.target.value)
+                }
+                placeholder="Id, Name, Email, …"
+              />
+            </div>
+            <div className="fld">
+              <label>Filtro SOQL adicional (sin &apos;WHERE&apos;)</label>
+              <input
+                type="text"
+                defaultValue={cfg.entities[m.prolibu]?.filter || ""}
+                key={`flt-${selectedObj}`}
+                onBlur={(e) =>
+                  updateEntityCfg(selectedObj, "filter", e.target.value)
+                }
+                placeholder="IsActive = true"
+              />
+            </div>
+            <div className="soql-preview">
+              SELECT {cfg.entities[m.prolibu]?.select || "*"} FROM {selectedObj}
+              {cfg.entities[m.prolibu]?.filter
+                ? ` WHERE ${cfg.entities[m.prolibu].filter}`
+                : ""}
+            </div>
           </div>
         )}
 
@@ -1266,10 +1548,7 @@ export default function SchemaMap() {
       {/* ── Migration modal ────────────────────── */}
       {migrateModal && (
         <>
-          <div
-            className="drawer-overlay"
-            onClick={migrating ? undefined : closeMigrateModal}
-          />
+          <div className="drawer-overlay" onClick={closeMigrateModal} />
           <div className="migrate-modal">
             <div className="migrate-modal-header">
               <div>
@@ -1278,11 +1557,7 @@ export default function SchemaMap() {
                   {selectedObj} → <strong>{sfMap[selectedObj]?.prolibu}</strong>
                 </div>
               </div>
-              <button
-                className="drawer-close"
-                onClick={closeMigrateModal}
-                disabled={migrating}
-              >
+              <button className="drawer-close" onClick={closeMigrateModal}>
                 ✕
               </button>
             </div>
@@ -1290,18 +1565,38 @@ export default function SchemaMap() {
             {!migrating && migrateLogs.length === 0 && (
               <div className="migrate-modal-body">
                 <div className="migrate-option">
-                  <label className="drawer-toggle">
-                    <input
-                      type="checkbox"
-                      checked={migrateDryRun}
-                      onChange={(e) => setMigrateDryRun(e.target.checked)}
-                    />
-                    <span>Dry Run</span>
-                  </label>
                   <span className="migrate-hint">
-                    {migrateDryRun
-                      ? "Simula la migración sin escribir datos en Prolibu"
-                      : "⚠️ Se escribirán datos reales en Prolibu"}
+                    ⚠️ Se escribirán datos reales en Prolibu
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Progress bar */}
+            {migrating && migrateProgress && (
+              <div className="migrate-progress">
+                <div className="migrate-progress-header">
+                  <span>
+                    {migrateProgress.current} / {migrateProgress.total}{" "}
+                    registros
+                  </span>
+                  <span>{migrateProgress.percent}%</span>
+                </div>
+                <div className="migrate-progress-bar">
+                  <div
+                    className="migrate-progress-fill"
+                    style={{ width: `${migrateProgress.percent}%` }}
+                  />
+                </div>
+                <div className="migrate-progress-stats">
+                  <span className="mp-stat created">
+                    ➕ {migrateProgress.created}
+                  </span>
+                  <span className="mp-stat updated">
+                    🔄 {migrateProgress.updated}
+                  </span>
+                  <span className="mp-stat errors">
+                    ❌ {migrateProgress.errors}
                   </span>
                 </div>
               </div>
@@ -1356,12 +1651,12 @@ export default function SchemaMap() {
             )}
 
             <div className="migrate-modal-footer">
-              <button
-                className="drawer-cancel"
-                onClick={closeMigrateModal}
-                disabled={migrating}
-              >
-                {migrateLogs.length > 0 && !migrating ? "Cerrar" : "Cancelar"}
+              <button className="drawer-cancel" onClick={closeMigrateModal}>
+                {migrating
+                  ? "⛔ Cancelar"
+                  : migrateLogs.length > 0
+                  ? "Cerrar"
+                  : "Cancelar"}
               </button>
               {(!migrateLogs.length || migrating) && (
                 <button
@@ -1369,11 +1664,7 @@ export default function SchemaMap() {
                   onClick={handleMigrate}
                   disabled={migrating}
                 >
-                  {migrating
-                    ? "⏳ Migrando…"
-                    : migrateDryRun
-                    ? "🧪 Ejecutar Dry Run"
-                    : "🚀 Ejecutar Migración"}
+                  {migrating ? "⏳ Migrando…" : "🚀 Ejecutar Migración"}
                 </button>
               )}
             </div>

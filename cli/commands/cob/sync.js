@@ -61,10 +61,18 @@ module.exports = async function syncCobs(flags) {
   // Build list of model names from COB files
   const models = cobFiles.map((f) => f.replace('.json', ''));
 
+  // If --model flag is passed, sync only that model
   // If --all flag is passed, skip the prompt and sync all
   let selectedModels = models;
 
-  if (!flags.all) {
+  if (flags.model || flags.modelName || flags.modelname) {
+    const target = flags.model || flags.modelName || flags.modelname;
+    if (!models.includes(target)) {
+      console.error(chalk.red(`❌ Model "${target}" not found in objects/Cob/. Available: ${models.join(', ')}`));
+      process.exit(1);
+    }
+    selectedModels = [target];
+  } else if (!flags.all) {
     // Ask: all or specific?
     const { syncMode } = await inquirer.default.prompt({
       type: 'list',

@@ -13,7 +13,18 @@ module.exports = async function pushCustomFields(flags) {
     process.exit(1);
   }
 
-  const files = fs.readdirSync(cfDir).filter((f) => f.endsWith('.json'));
+  let files = fs.readdirSync(cfDir).filter((f) => f.endsWith('.json'));
+
+  // If --model flag, only push that model's CustomField
+  const targetModel = flags.model || flags.modelName || flags.modelname;
+  if (targetModel) {
+    files = files.filter((f) => f.replace('.json', '') === targetModel);
+    if (files.length === 0) {
+      console.log(chalk.yellow(`No CustomField JSON found for model "${targetModel}".`));
+      return;
+    }
+  }
+
   if (files.length === 0) {
     console.log(chalk.yellow('No JSON files found in objects/CustomField/ folder.'));
     return;
@@ -24,7 +35,7 @@ module.exports = async function pushCustomFields(flags) {
   try {
     const result = await api.listCustomFields(domain, apiKey);
     existing = result.data || [];
-  } catch {}
+  } catch { }
 
   const existingMap = {};
   for (const cf of existing) {

@@ -63,7 +63,7 @@ class ProlibuWriter {
   constructor({ domain, apiKey, dryRun = false }) {
     this.domain = domain;
     this.dryRun = dryRun;
-    this.api = new ProlibuApi({ domain, apiKey });
+    this.api = new ProlibuApi({ domain, apiKey, avoidThrottle: true });
     this._schemaSetup = new SchemaSetup({ domain, apiKey, dryRun });
     this._openApiSpec = null; // Cache for OpenAPI specification
   }

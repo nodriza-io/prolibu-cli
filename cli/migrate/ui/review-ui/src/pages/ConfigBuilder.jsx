@@ -1,9 +1,42 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useMigration } from "../store";
-import { saveConfig as apiSaveConfig, saveSetup as apiSaveSetup } from "../api";
+import {
+  saveConfig as apiSaveConfig,
+  saveSetup as apiSaveSetup,
+  toggleSchemaEntity,
+} from "../api";
 import { showToast } from "../components/Toast";
 
 /* ── helpers ─────────────────────────────────────────────── */
+
+/**
+ * Resolve dependencies for a Salesforce object based on relationships.
+ * Returns an ordered array of SF object names that should be migrated first.
+ * Only includes objects that have a mapping in sfToProlibu.
+ */
+function resolveDependencies(sfName, objs, map, visited = new Set()) {
+  if (visited.has(sfName)) return []; // prevent cycles
+  visited.add(sfName);
+
+  const obj = objs[sfName];
+  if (!obj || !obj.relationships) return [];
+
+  const deps = [];
+  for (const rel of obj.relationships) {
+    const refTo = rel.referenceTo;
+    // Only include if the referenced object has a mapping in sfToProlibu
+    if (refTo && map[refTo] && refTo !== sfName) {
+      // Recursively get dependencies of this dependency
+      const subDeps = resolveDependencies(refTo, objs, map, visited);
+      for (const d of subDeps) {
+        if (!deps.includes(d)) deps.push(d);
+      }
+      if (!deps.includes(refTo)) deps.push(refTo);
+    }
+  }
+
+  return deps;
+}
 
 function prolibuEntitySchema(entityName, prolibuSpec) {
   if (!entityName || !prolibuSpec) return null;
@@ -49,10 +82,16 @@ function mapType(sfType) {
   return m[sfType] || "text";
 }
 
-function buildSetup(cfg, sfToProlibu, discovery, prolibuSpec) {
+function buildSetup(cfg, sfToProlibu, discovery, prolibuSpec, schemaEntities) {
   const setup = { customObjects: [], customFields: [] };
   const map = sfToProlibu || {};
   const objs = discovery?.objects || {};
+
+  // Build reverse lookup: prolibu target → schema key
+  const targetToKey = {};
+  for (const [k, v] of Object.entries(schemaEntities || {})) {
+    if (v.target) targetToKey[v.target] = k;
+  }
 
   // Custom objects that need to be created in Prolibu
   for (const [sfName, cc] of Object.entries(cfg.customObjects || {})) {
@@ -67,7 +106,11 @@ function buildSetup(cfg, sfToProlibu, discovery, prolibuSpec) {
 
   // Custom fields inside standard mapped entities that don't exist in Prolibu yet
   for (const [key, ec] of Object.entries(cfg.entities || {})) {
-    if (!ec.enabled || !ec.sobject) continue;
+    const schemaKey = targetToKey[key];
+    const entityEnabled = schemaKey
+      ? schemaEntities[schemaKey]?.enabled !== false
+      : false;
+    if (!entityEnabled || !ec.sobject) continue;
     const sfName = ec.sobject;
     const obj = objs[sfName];
     if (!obj) continue;
@@ -101,43 +144,126 @@ function buildSetup(cfg, sfToProlibu, discovery, prolibuSpec) {
 
 export default function ConfigBuilder() {
   const { state, dispatch } = useMigration();
-  const { discovery, sfToProlibu, prolibuSpec, cfg } = state;
+  const { discovery, sfToProlibu, prolibuSpec, cfg, schemaEntities } = state;
   const map = sfToProlibu || {};
   const objs = discovery?.objects || {};
   const withCount = discovery?.withCount;
 
   const [jsonTab, setJsonTab] = useState("config");
 
+  // Reverse lookup: prolibu target name → schema entity key
+  // e.g. "company" → "accounts", "contact" → "contacts"
+  const targetToSchemaKey = useMemo(() => {
+    const m = {};
+    for (const [k, v] of Object.entries(schemaEntities || {})) {
+      if (v.target) m[v.target] = k;
+    }
+    return m;
+  }, [schemaEntities]);
+
+  // Check if an entity is enabled (reads from schemaEntities)
+  const isEnabled = useCallback(
+    (prolibuTarget) => {
+      const schemaKey = targetToSchemaKey[prolibuTarget];
+      if (!schemaKey) return false;
+      return schemaEntities[schemaKey]?.enabled !== false;
+    },
+    [schemaEntities, targetToSchemaKey],
+  );
+
   /* ── derived setup ──────────────────────────────────── */
   const setup = useMemo(
-    () => buildSetup(cfg, sfToProlibu, discovery, prolibuSpec),
-    [cfg, sfToProlibu, discovery, prolibuSpec],
+    () => buildSetup(cfg, sfToProlibu, discovery, prolibuSpec, schemaEntities),
+    [cfg, sfToProlibu, discovery, prolibuSpec, schemaEntities],
   );
 
   /* ── mutations ──────────────────────────────────────── */
+
+  // Helper to enable a single entity
+  const enableEntity = useCallback(
+    (key, sfName) => {
+      if (isEnabled(key)) return; // already enabled
+
+      // Toggle in schema.json via API
+      const schemaKey = targetToSchemaKey[key];
+      if (schemaKey) {
+        toggleSchemaEntity(schemaKey, true).catch(() => {});
+        dispatch({
+          type: "SET_SCHEMA_ENTITY_ENABLED",
+          payload: { entityKey: schemaKey, enabled: true },
+        });
+      }
+
+      const obj = objs[sfName] || {};
+      const flds = (obj.fieldDetails || [])
+        .filter((f) => !f.custom)
+        .map((f) => f.name)
+        .slice(0, 14);
+
+      if (!cfg.entities[key]) {
+        dispatch({
+          type: "SET_ENTITY_CFG",
+          payload: {
+            key,
+            value: { sobject: sfName, select: flds.join(", ") },
+          },
+        });
+      }
+    },
+    [cfg, objs, dispatch, isEnabled, targetToSchemaKey],
+  );
+
   const toggleEnt = useCallback(
     (key, sfName, enabled) => {
-      if (!cfg.entities[key]) {
+      // Toggle in schema.json via API
+      const schemaKey = targetToSchemaKey[key];
+      if (schemaKey) {
+        toggleSchemaEntity(schemaKey, enabled).catch(() => {});
+        dispatch({
+          type: "SET_SCHEMA_ENTITY_ENABLED",
+          payload: { entityKey: schemaKey, enabled },
+        });
+      }
+
+      if (enabled) {
+        // When enabling, also enable dependencies
+        const deps = resolveDependencies(sfName, objs, map);
+        const addedDeps = [];
+
+        for (const depSfName of deps) {
+          const depMapping = map[depSfName];
+          if (depMapping) {
+            const depKey = depMapping.prolibu;
+            if (!isEnabled(depKey)) {
+              enableEntity(depKey, depSfName);
+              addedDeps.push(depKey);
+            }
+          }
+        }
+
+        // Enable the requested entity config
         const obj = objs[sfName] || {};
         const flds = (obj.fieldDetails || [])
           .filter((f) => !f.custom)
           .map((f) => f.name)
           .slice(0, 14);
-        dispatch({
-          type: "SET_ENTITY_CFG",
-          payload: {
-            key,
-            value: { enabled, sobject: sfName, select: flds.join(", ") },
-          },
-        });
-      } else {
-        dispatch({
-          type: "SET_ENTITY_CFG",
-          payload: { key, value: { ...cfg.entities[key], enabled } },
-        });
+        if (!cfg.entities[key]) {
+          dispatch({
+            type: "SET_ENTITY_CFG",
+            payload: {
+              key,
+              value: { sobject: sfName, select: flds.join(", ") },
+            },
+          });
+        }
+
+        // Show toast if dependencies were added
+        if (addedDeps.length > 0) {
+          showToast(`🔗 Se agregaron dependencias: ${addedDeps.join(", ")}`);
+        }
       }
     },
-    [cfg, objs, dispatch],
+    [cfg, objs, map, dispatch, enableEntity, isEnabled, targetToSchemaKey],
   );
 
   const updEnt = useCallback(
@@ -236,7 +362,7 @@ export default function ConfigBuilder() {
             const m = map[sfName];
             const key = m.prolibu;
             const ec = cfg.entities[key] || {};
-            const enabled = ec.enabled === true;
+            const enabled = isEnabled(key);
             const select = ec.select || "";
             const filterVal = ec.filter || "";
             const rec = withCount

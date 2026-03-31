@@ -5,7 +5,7 @@ import { showToast } from "../components/Toast";
 
 export default function Execution() {
   const { state, dispatch } = useMigration();
-  const { cfg, execution } = state;
+  const { cfg, execution, schemaEntities } = state;
   const [dryRun, setDryRun] = useState(true);
   const [selected, setSelected] = useState({});
   const [running, setRunning] = useState(false);
@@ -13,9 +13,20 @@ export default function Execution() {
   const sseRef = useRef(null);
 
   /* ── gather available entities from config ──────────── */
+  // Build reverse lookup: prolibu target → schema key
+  const targetToKey = {};
+  for (const [k, v] of Object.entries(schemaEntities || {})) {
+    if (v.target) targetToKey[v.target] = k;
+  }
+
   const enabledEntities = [];
   for (const [key, ec] of Object.entries(cfg.entities || {})) {
-    if (ec.enabled) enabledEntities.push({ key, label: key, type: "standard" });
+    const schemaKey = targetToKey[key];
+    const entityEnabled = schemaKey
+      ? schemaEntities[schemaKey]?.enabled !== false
+      : false;
+    if (entityEnabled)
+      enabledEntities.push({ key, label: key, type: "standard" });
   }
   for (const [sfName, cc] of Object.entries(cfg.customObjects || {})) {
     if (cc.enabled)
