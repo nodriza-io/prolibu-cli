@@ -362,6 +362,25 @@ Each tour can have optional metadata in `_config.json`:
 
 ---
 
+## Working with Migrations
+
+Import and migrate CRM data into Prolibu using an interactive browser-based UI.
+
+### Launch the migration UI
+
+```bash
+./prolibu migrate --ui --domain stg.prolibu.com --crm salesforce
+```
+
+**Options:**
+
+- `--domain` — Target Prolibu domain (required)
+- `--crm` — CRM adapter to use. Available: `salesforce`. Optional — can be selected in the browser if omitted.
+
+Starts a local server at `http://localhost:3721` and opens the migration review UI.
+
+---
+
 ## Backward Compatibility
 
 For users migrating from Script Builder CLI, the old commands still work:

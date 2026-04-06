@@ -7,7 +7,8 @@ const ACCOUNTS_DIR = path.join(process.cwd(), 'accounts');
 const ADAPTERS_DIR = path.join(__dirname, '..', 'adapters');
 const GLOBAL_TEMPLATES_DIR = path.join(__dirname, '..', 'templates');
 
-const CONFIG_FILES = ['schema.json', 'mappings.json', 'pipelines.json', 'transforms.json'];
+const CONFIG_FILES = ['schema.json', 'pipelines.json', 'transforms.json'];
+const EDITABLE_FILES = [...CONFIG_FILES, 'overrides.json', 'mappings.json'];
 
 // ─── Path helpers ──────────────────────────────────────────────
 
@@ -75,12 +76,95 @@ function loadSchema(domain, crm) {
     return { data, source: resolved.path, isTemplate: resolved.isTemplate };
 }
 
+// ─── Vendor-map helpers ────────────────────────────────────────
+
 /**
- * Load mappings.json for a domain/crm.
- * @returns {{ data: object, source: string, isTemplate: boolean }}
+ * Load the CRM adapter's fieldMapping.js and convert it to the engine
+ * mappings format: { entities: { entityKey: { fields: [{from,to,ref?}] } } }
+ * Returns null if no fieldMapping.js exists for this CRM.
  */
-function loadMappings(domain, crm) {
+function loadVendorMapping(crm, schemaEntities) {
+    let fieldMapping;
+    try {
+        fieldMapping = require(path.join(ADAPTERS_DIR, crm, 'fieldMapping'));
+    } catch (_) {
+        return null;
+    }
+    const entities = {};
+    for (const [key, entity] of Object.entries(schemaEntities || {})) {
+        const sfMap = fieldMapping[entity.source];
+        if (!sfMap) continue;
+        const fields = [];
+        for (const [from, to] of Object.entries(sfMap)) {
+            if (!to) continue;
+            if (typeof to === 'string') {
+                fields.push({ from, to });
+            } else if (typeof to === 'object' && to.to) {
+                fields.push({ from, to: to.to, ...(to.ref ? { ref: to.ref } : {}) });
+            }
+        }
+        entities[key] = { fields };
+    }
+    return { entities };
+}
+
+/**
+ * Load overrides.json from the domain dir. Returns null if it doesn't exist.
+ */
+function loadOverrides(domain, crm) {
+    const p = path.join(domainDir(domain, crm), 'overrides.json');
+    return fs.existsSync(p) ? readConfig(p) : null;
+}
+
+/**
+ * Merge a vendor base mapping with user overrides.
+ * overrides.entities[key].remove — SF field names to drop from base
+ * overrides.entities[key].fields — fields to add or replace in base
+ * overrides.entities[key].static — merged on top of base static fields
+ */
+function mergeWithOverrides(base, overrides) {
+    if (!overrides) return base;
+    const result = { entities: {} };
+    for (const [key, baseEntity] of Object.entries(base.entities)) {
+        const override = overrides.entities?.[key];
+        if (!override) { result.entities[key] = baseEntity; continue; }
+        const byFrom = {};
+        for (const f of (baseEntity.fields || [])) byFrom[f.from] = { ...f };
+        for (const r of (override.remove || [])) delete byFrom[r];
+        for (const f of (override.fields || [])) byFrom[f.from] = f;
+        result.entities[key] = {
+            fields: Object.values(byFrom),
+            static: { ...(baseEntity.static || {}), ...(override.static || {}) },
+        };
+    }
+    // Add entities that only exist in overrides
+    for (const [key, override] of Object.entries(overrides.entities || {})) {
+        if (!result.entities[key]) result.entities[key] = override;
+    }
+    return result;
+}
+
+/**
+ * Load mappings for a domain/crm.
+ * Priority: vendor fieldMapping.js + overrides.json > domain mappings.json > template mappings.json
+ * @param {object} [schemaEntities] - Already-loaded schema entities (avoids double read)
+ * @returns {{ data: object, source: string|null, isTemplate: boolean }}
+ */
+function loadMappings(domain, crm, schemaEntities) {
+    if (!schemaEntities) {
+        try { schemaEntities = loadSchema(domain, crm).data.entities; } catch (_) { schemaEntities = {}; }
+    }
+    const vendorBase = loadVendorMapping(crm, schemaEntities);
+    if (vendorBase) {
+        const overrides = loadOverrides(domain, crm);
+        const merged = mergeWithOverrides(vendorBase, overrides);
+        const overridesPath = path.join(domainDir(domain, crm), 'overrides.json');
+        const hasOverrides = fs.existsSync(overridesPath);
+        return { data: merged, source: hasOverrides ? overridesPath : null, isTemplate: !hasOverrides };
+    }
+    // Fallback: domain or template mappings.json (backward compat)
     const resolved = resolveConfigPath(domain, crm, 'mappings.json');
+    if (!resolved.path) return { data: { entities: {} }, source: null, isTemplate: true };
     const data = readConfig(resolved.path);
     validateMappings(data, resolved.path);
     return { data, source: resolved.path, isTemplate: resolved.isTemplate };
@@ -112,9 +196,10 @@ function loadTransforms(domain, crm) {
  * @returns {{ schema, mappings, pipelines, transforms }}
  */
 function loadAll(domain, crm) {
+    const schema = loadSchema(domain, crm);
     return {
-        schema: loadSchema(domain, crm),
-        mappings: loadMappings(domain, crm),
+        schema,
+        mappings: loadMappings(domain, crm, schema.data.entities),
         pipelines: loadPipelines(domain, crm),
         transforms: loadTransforms(domain, crm),
     };
@@ -219,7 +304,7 @@ function buildEngineConfig(domain, crm) {
         entityDefinitions[key] = {
             sobject: schemaEntity.source,
             prolibuModel: schemaEntity.target,
-            idField: schemaEntity.idField || 'externalId',
+            idField: schemaEntity.idField || 'refId',
             enabled: schemaEntity.enabled !== false,
             defaultSelect: select,
             filters: schemaEntity.filters || null,
@@ -292,55 +377,74 @@ function buildEngineConfig(domain, crm) {
  *
  * @param {string} domain
  * @param {string} crm
- * @param {object} fieldMaps - Keyed by SF object name, e.g. { "Account": { "Id": "externalId", "Name": "companyName" } }
- *                             Fields can also be objects: { "Id": { to: "externalId", ref: "User" } }
+ * @param {object} fieldMaps - Keyed by SF object name, e.g. { "Account": { "Id": "refId", "Name": "companyName" } }
+ *                             Fields can also be objects: { "Id": { to: "refId", ref: "User" } }
  * @param {object} schema - schema.json data (to resolve SF object → entity key)
  * @returns {string} Path where mappings were saved
  */
 function saveMappings(domain, crm, fieldMaps, schema) {
-    // Load existing mappings (from domain or template)
-    const existing = loadMappings(domain, crm);
-    const mappingsData = { ...existing.data };
-    if (!mappingsData.entities) mappingsData.entities = {};
-
-    // Build a reverse map: SF object name → entity key from schema
     const sourceToKey = {};
     for (const [key, def] of Object.entries(schema?.entities || {})) {
         sourceToKey[def.source] = key;
     }
 
-    // Merge each SF object's field map into the mappings
+    const vendorBase = loadVendorMapping(crm, schema?.entities || {});
+
+    if (vendorBase) {
+        // Compute diff against vendor base and save only overrides
+        const overridesData = { entities: {} };
+        for (const [sfObjectName, fieldMap] of Object.entries(fieldMaps)) {
+            const entityKey = sourceToKey[sfObjectName];
+            if (!entityKey) continue;
+
+            const baseFields = vendorBase.entities[entityKey]?.fields || [];
+            const baseByFrom = {};
+            for (const f of baseFields) baseByFrom[f.from] = f.to;
+
+            const diffFields = [];
+            const remove = [];
+
+            // Fields in base but missing from user → mark as removed
+            for (const f of baseFields) {
+                if (!(f.from in fieldMap)) remove.push(f.from);
+            }
+            // Fields in user that differ from base (or are new) → override
+            for (const [from, toVal] of Object.entries(fieldMap)) {
+                if (!toVal) continue;
+                const fieldDef = typeof toVal === 'object' && toVal.to
+                    ? { from, to: toVal.to, ...(toVal.ref ? { ref: toVal.ref } : {}) }
+                    : { from, to: toVal };
+                if (baseByFrom[from] !== fieldDef.to) diffFields.push(fieldDef);
+            }
+
+            if (diffFields.length || remove.length) {
+                overridesData.entities[entityKey] = {
+                    ...(diffFields.length ? { fields: diffFields } : {}),
+                    ...(remove.length ? { remove } : {}),
+                };
+            }
+        }
+        const targetPath = path.join(domainDir(domain, crm), 'overrides.json');
+        writeConfig(targetPath, overridesData);
+        return targetPath;
+    }
+
+    // Backward compat: no vendor base → save full mapping to mappings.json
+    const mappingsData = { entities: {} };
     for (const [sfObjectName, fieldMap] of Object.entries(fieldMaps)) {
         const entityKey = sourceToKey[sfObjectName];
         if (!entityKey) continue;
-
-        // Convert { "Id": "externalId", "OwnerId": { to: "assignee", ref: "User" } }
-        // → [{ from: "Id", to: "externalId" }, { from: "OwnerId", to: "assignee", ref: "User" }, ...]
         const fields = [];
         for (const [from, toVal] of Object.entries(fieldMap)) {
             if (!toVal) continue;
             if (typeof toVal === 'object' && toVal.to) {
-                // Field with reference: { to: "assignee", ref: "User" }
-                fields.push({
-                    from,
-                    to: toVal.to,
-                    ...(toVal.ref ? { ref: toVal.ref } : {}),
-                });
+                fields.push({ from, to: toVal.to, ...(toVal.ref ? { ref: toVal.ref } : {}) });
             } else {
-                // Simple field: "externalId"
                 fields.push({ from, to: toVal });
             }
         }
-
-        // Preserve existing static fields and other properties
-        const existingEntity = mappingsData.entities[entityKey] || {};
-        mappingsData.entities[entityKey] = {
-            ...existingEntity,
-            fields,
-        };
+        mappingsData.entities[entityKey] = { fields };
     }
-
-    // Write to domain-specific path
     const targetPath = path.join(domainDir(domain, crm), 'mappings.json');
     writeConfig(targetPath, mappingsData);
     return targetPath;
@@ -569,8 +673,8 @@ function getRawConfig(domain, crm, filename) {
  * Validates that the content is valid JSON before writing.
  */
 function saveRawConfig(domain, crm, filename, content) {
-    if (!CONFIG_FILES.includes(filename)) {
-        throw new ConfigError(`Unknown config file: ${filename}. Expected one of: ${CONFIG_FILES.join(', ')}`);
+    if (!EDITABLE_FILES.includes(filename)) {
+        throw new ConfigError(`Unknown config file: ${filename}. Expected one of: ${EDITABLE_FILES.join(', ')}`);
     }
     try {
         JSON.parse(content);
@@ -611,6 +715,11 @@ module.exports = {
     // Engine bridge
     buildEngineConfig,
     buildTransformer,
+
+    // Vendor-map helpers
+    loadVendorMapping,
+    loadOverrides,
+    mergeWithOverrides,
 
     // Mappings persistence
     saveMappings,

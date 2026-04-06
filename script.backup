@@ -1,4 +1,0 @@
-#!/bin/bash
-
-# CLI wrapper for script-builder
-node index.js "$@"

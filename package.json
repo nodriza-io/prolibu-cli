@@ -58,6 +58,7 @@
     "test:script": "jest test/script.test.js",
     "test:site": "jest test/site.test.js",
     "test:plugin": "jest test/plugin.test.js",
+    "test:migrate": "jest test/migrate.test.js",
     "test:account": "jest test/account.test.js",
     "test:customfield": "jest test/customfield.test.js",
     "test:cob": "jest test/cob.test.js",

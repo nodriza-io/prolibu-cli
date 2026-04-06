@@ -1,7 +1,6 @@
 'use strict';
 
 const http = require('http');
-const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -9,7 +8,8 @@ const { spawn, spawnSync } = require('child_process');
 const credentialStore = require('../shared/credentialStore');
 const migrationLogger = require('../shared/migrationLogger');
 const yamlLoader = require('../shared/configLoader');
-const ProlibuSchemaService = require('../shared/ProlibuSchemaService');
+const ProlibuApi = require('../../../lib/vendors/prolibu/ProlibuApi');
+const ProlibuSchemaService = require('../../../lib/vendors/prolibu/ProlibuSchemaService');
 
 // ─── Constants ────────────────────────────────────────────────
 
@@ -167,55 +167,7 @@ function discoverCRMs(domain) {
     });
 }
 
-// ─── Prolibu API helpers ──────────────────────────────────────
 
-function prolibuGet(domain, apiKey, urlPath) {
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: domain,
-      path: `/v2/${urlPath}`,
-      headers: { 'x-api-key': apiKey, Accept: 'application/json' },
-    };
-    const req = https.get(options, (res) => {
-      let data = '';
-      res.on('data', (c) => (data += c));
-      res.on('end', () => {
-        try { resolve(JSON.parse(data)); }
-        catch (e) { reject(new Error(`Bad JSON from ${urlPath}: ${e.message}`)); }
-      });
-    });
-    req.on('error', reject);
-    req.setTimeout(15000, () => { req.destroy(new Error('Request timeout')); });
-  });
-}
-
-function prolibuPost(domain, apiKey, urlPath, body) {
-  return new Promise((resolve, reject) => {
-    const payload = JSON.stringify(body);
-    const options = {
-      hostname: domain,
-      path: `/v2/${urlPath}`,
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload),
-        Accept: 'application/json',
-      },
-    };
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (c) => (data += c));
-      res.on('end', () => {
-        try { resolve(JSON.parse(data)); }
-        catch { resolve({ raw: data, status: res.statusCode }); }
-      });
-    });
-    req.on('error', reject);
-    req.write(payload);
-    req.end();
-  });
-}
 
 // ─── Main ─────────────────────────────────────────────────────
 
@@ -443,7 +395,7 @@ async function startUIServer({ domain, apiKey, crm }) {
         try {
           // Simple test: fetch user profile to verify API key and connectivity
           await Promise.race([
-            prolibuGet(domain, apiKey, 'user/me'),
+            new ProlibuApi({ domain, apiKey }).find('user/me'),
             new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), CONNECTION_CHECK_TIMEOUT)),
           ]);
           return ok({ connected: true, domain, lastChecked: new Date().toISOString() });
@@ -884,10 +836,20 @@ async function startUIServer({ domain, apiKey, crm }) {
             }
           } catch { /* no discovery or schema — skip */ }
 
+          // Addable entities: in fieldMapping but not yet in schema
+          const addableEntities = Object.keys(crmMeta.fieldMapping || {})
+            .map((source) => {
+              const meta = crmMeta.entityMapping?.[source];
+              if (!meta?.entityKey) return null;
+              return { entityKey: meta.entityKey, source, target: meta.prolibu, label: meta.notes || source };
+            })
+            .filter((e) => e && !entitySet.has(e.entityKey));
+
           return ok({
             flow,
             order: pipeline.order || [],
             availableEntities: [...entitySet],
+            addableEntities,
             warnings,
             dependencies,
             batchSize: pipeline.batchSize || 200,

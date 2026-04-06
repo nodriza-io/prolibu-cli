@@ -5,6 +5,8 @@ import {
   saveFlow,
   startMigration,
   subscribeMigrationLogs,
+  cancelMigration,
+  addSchemaEntity,
 } from "../api";
 import { showToast } from "../components/Toast";
 
@@ -20,6 +22,8 @@ export default function FlowEditor() {
   const [dragItem, setDragItem] = useState(null); // { entity, fromStep }
   const [dropTarget, setDropTarget] = useState(null); // step index or 'pool'
   const [editingStep, setEditingStep] = useState(null);
+  const [addableEntities, setAddableEntities] = useState([]);
+  const [addingEntity, setAddingEntity] = useState(false);
   const editRef = useRef(null);
 
   // Execution states
@@ -40,6 +44,9 @@ export default function FlowEditor() {
         // Set available entities from server (schema + config + transformers)
         if (data.availableEntities?.length) {
           setAllEntities(data.availableEntities);
+        }
+        if (data.addableEntities?.length) {
+          setAddableEntities(data.addableEntities);
         }
         if (data.warnings?.length) {
           setWarnings(data.warnings);
@@ -197,6 +204,21 @@ export default function FlowEditor() {
       logsEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [logs]);
+
+  // Cancel running migration
+  const handleCancel = async () => {
+    try {
+      await cancelMigration();
+      setLogs((prev) => [
+        ...prev,
+        { time: new Date(), text: "⛔ Migración cancelada por el usuario." },
+      ]);
+    } catch (err) {
+      showToast(`Error al cancelar: ${err.message}`, true);
+    } finally {
+      setRunning(false);
+    }
+  };
 
   // Execute migration flow
   const handleExecute = async () => {
@@ -410,6 +432,13 @@ export default function FlowEditor() {
             )}
           </button>
           <button
+            className="btn btn-danger flow-cancel-btn"
+            onClick={handleCancel}
+            disabled={!running}
+          >
+            ⛔ Cancelar
+          </button>
+          <button
             className="btn btn-success flow-execute-btn"
             onClick={handleExecute}
             disabled={
@@ -451,6 +480,44 @@ export default function FlowEditor() {
         <div className="flow-pool-label">
           Entidades disponibles
           <span className="flow-pool-count">{poolEntities.length}</span>
+          {addableEntities.length > 0 && (
+            <div className="flow-pool-add">
+              {addingEntity ? (
+                <select
+                  autoFocus
+                  className="flow-pool-add-select"
+                  defaultValue=""
+                  onBlur={() => setAddingEntity(false)}
+                  onChange={async (e) => {
+                    const chosen = addableEntities.find((a) => a.entityKey === e.target.value);
+                    if (!chosen) return;
+                    setAddingEntity(false);
+                    try {
+                      await addSchemaEntity({ source: chosen.source, target: chosen.target, entityKey: chosen.entityKey });
+                      setAllEntities((prev) => [...prev, chosen.entityKey]);
+                      setAddableEntities((prev) => prev.filter((a) => a.entityKey !== chosen.entityKey));
+                    } catch (err) {
+                      showToast(`Error al agregar entidad: ${err.message}`, true);
+                    }
+                  }}
+                >
+                  <option value="" disabled>Selecciona entidad…</option>
+                  {addableEntities.map((a) => (
+                    <option key={a.entityKey} value={a.entityKey}>
+                      {a.source} → {a.target}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <button
+                  className="btn btn-sm flow-pool-add-btn"
+                  onClick={() => setAddingEntity(true)}
+                >
+                  + Agregar entidad
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div className="flow-pool-chips">
           {poolEntities.length === 0 && (

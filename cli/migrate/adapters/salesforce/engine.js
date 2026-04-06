@@ -45,21 +45,21 @@ const ENTITY_DEFINITIONS = {
   contacts: {
     sobject: 'Contact',
     prolibuModel: 'Contact',
-    idField: 'externalId',
+    idField: 'refId',
     baseTransformer: () => require('./transformers/contacts'),
     defaultSelect: 'Id, FirstName, LastName, Email, Phone, MobilePhone, Title, Account.Name',
   },
   products: {
     sobject: 'Product2',
     prolibuModel: 'Product',
-    idField: 'externalId',
+    idField: 'refId',
     baseTransformer: () => require('./transformers/products'),
     defaultSelect: 'Id, Name, Description, ProductCode, IsActive',
   },
   accounts: {
     sobject: 'Account',
     prolibuModel: 'Company',
-    idField: 'externalId',
+    idField: 'refId',
     baseTransformer: () => require('./transformers/accounts'),
     defaultSelect: 'Id, Name, Industry, Phone, Website, BillingCity, BillingCountry',
   },
@@ -144,7 +144,7 @@ async function run({ domain, apiKey, entities, phases: phaseFilter, from, to, dr
 
   // Resolve config from YAML (with fallback to hardcoded definitions)
   const resolved = resolveConfig(domain);
-  const { entityDefinitions, entityOrder, batchSize } = resolved;
+  const { entityDefinitions, entityOrder, batchSize, concurrency } = resolved;
 
   // Resolve which phases to run
   let phasesToRun = PHASES;
@@ -198,6 +198,7 @@ async function run({ domain, apiKey, entities, phases: phaseFilter, from, to, dr
     log,
     entityDefinitions,
     batchSize,
+    concurrency,
     dryRun,
     withCount,
     force,

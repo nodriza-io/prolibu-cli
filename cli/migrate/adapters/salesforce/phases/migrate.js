@@ -1,6 +1,7 @@
 const credentialStore = require('../../../shared/credentialStore');
 const logger = require('../../../shared/migrationLogger');
 const PipelineRunner = require('../../../shared/PipelineRunner');
+const IdMapStore = require('../../../shared/IdMapStore');
 const fs = require('fs');
 const path = require('path');
 
@@ -32,6 +33,7 @@ async function migrate({
     log,
     entityDefinitions,
     batchSize,
+    concurrency,
     onProgress,
     onEntityResult,
 }) {
@@ -135,7 +137,17 @@ async function migrate({
         }
 
         // ── Build idMap: resolve SF IDs → Prolibu _ids for ref fields ──
-        const idMap = await buildIdMap(writer.api, definition.fieldMappings || [], records);
+        // Load (or create) the IdMapStore for this entity's own model
+        const idStore = new IdMapStore({
+            domain,
+            crm: 'salesforce',
+            model: definition.prolibuModel,
+        }).load();
+        if (idStore.size > 0) {
+            console.log(`   📦 IdMapStore loaded: ${idStore.size} cached mappings for ${definition.prolibuModel}`);
+        }
+
+        const idMap = await buildIdMap(writer.api, definition.fieldMappings || [], records, domain);
 
         // ── Build pipeline context ──────────────────────────────────────────────
         const pipelineContext = { idMap, api: writer.api };
@@ -175,6 +187,8 @@ async function migrate({
         const result = await writer.writeBatch(definition.prolibuModel, validRecords, {
             idField: definition.idField,
             onProgress: entityProgress,
+            idStore,
+            concurrency,
         });
 
         logger.recordEntityResult(log, resolvedKey, result);
@@ -189,14 +203,16 @@ async function migrate({
 
 /**
  * Build a map of { refModel: { sfId: prolibuId } } for all fields with a `ref`.
- * Queries Prolibu in chunks of 200 using $in on externalId.
+ * Queries Prolibu in chunks of 200 using $in on refId.
+ * Pre-populates from persisted IdMapStore files to minimize API calls.
  *
  * @param {object}   api           - ProlibuApi instance
  * @param {object[]} fieldMappings - Entity field mappings (may include { from, to, ref })
  * @param {object[]} records       - SF records to migrate (used to extract unique SF IDs)
+ * @param {string}   domain        - Prolibu domain (for IdMapStore file path)
  * @returns {Promise<object>}      - { [refModel]: { [sfId]: prolibuId } }
  */
-async function buildIdMap(api, fieldMappings, records) {
+async function buildIdMap(api, fieldMappings, records, domain) {
     const idMap = {};
     const refFields = fieldMappings.filter(m => m.ref && m.from);
     if (!refFields.length || !records.length) return idMap;
@@ -212,25 +228,39 @@ async function buildIdMap(api, fieldMappings, records) {
         }
     }
 
-    // For each refModel, fetch Prolibu records in chunks
+    // For each refModel, load cached mappings then fetch only what's missing
     const CHUNK_SIZE = 200;
     for (const [model, sfIdSet] of Object.entries(byModel)) {
         const sfIds = [...sfIdSet];
         idMap[model] = {};
-        let resolved = 0;
 
-        for (let i = 0; i < sfIds.length; i += CHUNK_SIZE) {
-            const chunk = sfIds.slice(i, i + CHUNK_SIZE);
+        // Load any already-known mappings from the persisted IdMapStore
+        const store = new IdMapStore({ domain, crm: 'salesforce', model }).load();
+        let cachedCount = 0;
+        for (const sfId of sfIds) {
+            const cached = store.get(sfId);
+            if (cached) {
+                idMap[model][sfId] = cached;
+                cachedCount++;
+            }
+        }
+
+        const toFetch = store.missing(sfIds);
+        let resolved = cachedCount;
+
+        for (let i = 0; i < toFetch.length; i += CHUNK_SIZE) {
+            const chunk = toFetch.slice(i, i + CHUNK_SIZE);
             try {
                 const res = await api.find(model, {
-                    select: '_id externalId',
-                    xquery: JSON.stringify({ externalId: { $in: chunk } }),
+                    select: '_id refId',
+                    xquery: { refId: { $in: chunk } },
                     limit: CHUNK_SIZE,
                 });
                 const rows = res?.data || res || [];
                 for (const row of rows) {
-                    if (row.externalId && row._id) {
-                        idMap[model][row.externalId] = row._id;
+                    if (row.refId && row._id) {
+                        idMap[model][row.refId] = row._id;
+                        store.set(row.refId, row._id);
                         resolved++;
                     }
                 }
@@ -239,7 +269,11 @@ async function buildIdMap(api, fieldMappings, records) {
             }
         }
 
-        console.log(`   🔗 idMap[${model}]: ${resolved}/${sfIds.length} resolved`);
+        // Persist any newly fetched mappings back to disk
+        if (store.isDirty) store.save();
+
+        const cacheMsg = cachedCount > 0 ? ` (${cachedCount} from cache)` : '';
+        console.log(`   🔗 idMap[${model}]: ${resolved}/${sfIds.length} resolved${cacheMsg}`);
     }
 
     return idMap;

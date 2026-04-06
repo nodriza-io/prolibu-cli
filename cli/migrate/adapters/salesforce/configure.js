@@ -49,28 +49,38 @@ module.exports = async function configureSalesforce(flags) {
   // 3. Salesforce credentials
   const existing = credentialStore.getCredentials(domain, 'salesforce') || {};
 
-  const { instanceUrl } = await inquirer.default.prompt({
-    type: 'input',
-    name: 'instanceUrl',
-    message: 'Salesforce instance URL (e.g. https://yourorg.salesforce.com):',
-    default: existing.instanceUrl || flags['instance-url'] || '',
-    validate: input => input ? true : 'Instance URL is required.',
-  });
+  let instanceUrl = existing.instanceUrl || flags['instance-url'] || '';
+  if (!instanceUrl) {
+    const res = await inquirer.default.prompt({
+      type: 'input',
+      name: 'instanceUrl',
+      message: 'Salesforce instance URL (e.g. https://yourorg.salesforce.com):',
+      validate: input => input ? true : 'Instance URL is required.',
+    });
+    instanceUrl = res.instanceUrl;
+  }
 
-  const { clientKey } = await inquirer.default.prompt({
-    type: 'input',
-    name: 'clientKey',
-    message: 'Salesforce Connected App Client Key (Consumer Key):',
-    default: existing.clientKey || flags['client-key'] || '',
-    validate: input => input ? true : 'Client Key is required.',
-  });
+  let clientKey = existing.clientKey || flags['client-key'] || '';
+  if (!clientKey) {
+    const res = await inquirer.default.prompt({
+      type: 'input',
+      name: 'clientKey',
+      message: 'Salesforce Connected App Client Key (Consumer Key):',
+      validate: input => input ? true : 'Client Key is required.',
+    });
+    clientKey = res.clientKey;
+  }
 
-  const { clientSecret } = await inquirer.default.prompt({
-    type: 'password',
-    name: 'clientSecret',
-    message: 'Salesforce Connected App Client Secret:',
-    validate: input => input ? true : 'Client Secret is required.',
-  });
+  let clientSecret = existing.clientSecret || flags['client-secret'] || '';
+  if (!clientSecret) {
+    const res = await inquirer.default.prompt({
+      type: 'password',
+      name: 'clientSecret',
+      message: 'Salesforce Connected App Client Secret:',
+      validate: input => input ? true : 'Client Secret is required.',
+    });
+    clientSecret = res.clientSecret;
+  }
 
   credentialStore.saveCredentials(domain, 'salesforce', { instanceUrl, clientKey, clientSecret });
   console.log(`✅ Salesforce credentials saved for "${domain}"`);
@@ -99,7 +109,7 @@ module.exports = async function configureSalesforce(flags) {
 
   console.log('');
   console.log('💡 To customize the migration (disable entities, adjust mappings, etc.):');
-  console.log(`   prolibu migrate ui --domain ${domain} --crm salesforce`);
+  console.log(`   prolibu migrate --ui --domain ${domain} --crm salesforce`);
   console.log(`   Or edit files directly in accounts/${domain}/migrations/salesforce/`);
   console.log('');
   console.log(`🚀 Ready to migrate. Run:`);

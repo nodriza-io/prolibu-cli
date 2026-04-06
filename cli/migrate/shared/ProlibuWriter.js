@@ -2,7 +2,11 @@ const path = require('path');
 const fs = require('fs');
 const cliProgress = require('cli-progress');
 const ProlibuApi = require('../../../lib/vendors/prolibu/ProlibuApi');
-const SchemaSetup = require('./SchemaSetup');
+const SchemaSetup = require('../../../lib/vendors/prolibu/SchemaSetup');
+const sleep = require('../../../lib/utils/sleep');
+const { withRetry } = require('./RetryClient');
+
+const CONCURRENT_BATCH_SIZE = 50;
 
 // Fields that are internal/meta and should never be validated against the schema
 const META_FIELDS = new Set([
@@ -70,18 +74,21 @@ class ProlibuWriter {
 
   /**
    * Write a batch of records to a Prolibu model.
-   * Uses findOneOrCreate when an externalId field is provided (update if exists, create if not), 
+   * Uses upsert by refId when idField is provided (update if exists, create if not),
    * otherwise plain create.
    *
-   * @param {string} model         - Prolibu model name (e.g. 'Contact', 'Product')
-   * @param {object[]} records     - Array of transformed records ready to write
-   * @param {object} [options]
-   * @param {string} [options.idField] - Field in the record used as external unique key
-   * @param {Function} [options.onProgress] - Callback(progressData) called after each record
+   * @param {string}     model           - Prolibu model name (e.g. 'Contact', 'Product')
+   * @param {object[]}   records         - Array of transformed records ready to write
+   * @param {object}     [options]
+   * @param {string}     [options.idField]    - Field in the record holding the source system ID
+   * @param {Function}   [options.onProgress] - Callback(progressData) called after each record
+   * @param {IdMapStore} [options.idStore]    - Persistent map to save sourceId→prolibuId after each write
+   * @param {number}     [options.batchDelay=0] - Delay in ms between concurrent batches (default 0)
+   * @param {number}     [options.concurrency]   - Max concurrent requests per batch (overrides CONCURRENT_BATCH_SIZE)
    *
    * @returns {Promise<{ migrated: number, updated: number, created: number, skipped: number, errors: string[] }>}
    */
-  async writeBatch(model, records, { idField, onProgress } = {}) {
+  async writeBatch(model, records, { idField, onProgress, idStore, batchDelay = 0, concurrency } = {}) {
     const result = { migrated: 0, updated: 0, created: 0, skipped: 0, errors: [] };
 
     // Log target domain for first record batch
@@ -189,60 +196,99 @@ class ProlibuWriter {
     const total = records.length;
     let processed = 0;
 
-    for (const record of records) {
-      // Skip null/undefined records (transformer might return null for filtered records)
+    /**
+     * Process a single record and mutate `result` in place.
+     */
+    const processOne = async (record) => {
       if (!record || typeof record !== 'object') {
         result.skipped++;
-        processed++;
-        if (bar) bar.increment(1, { created: result.created, updated: result.updated, errors: result.errors.length });
-        if (onProgress) onProgress({ processed, total, ...result });
-        continue;
+        return;
       }
 
       if (this.dryRun) {
         result.migrated++;
-        processed++;
-        if (bar) bar.increment(1, { created: result.created, updated: result.updated, errors: result.errors.length });
-        if (onProgress) onProgress({ processed, total, ...result });
-        continue;
+        return;
       }
 
+      const sourceId = idField ? record[idField] : null;
       try {
-        // Expand dot-notation keys to nested objects before sending to API
         const expanded = expandDotNotation(record);
 
-        if (idField && record[idField]) {
-          // Use findOneOrCreate: update if exists, create if not
-          const { created } = await this.api.findOneOrCreate(
-            model,
-            record[idField],
-            { field: idField },
-            expanded
-          );
+        if (idField && sourceId) {
+          const { created, prolibuId } = await this._upsertRecord(model, sourceId, expanded);
           if (created) {
             result.created++;
           } else {
             result.updated++;
           }
+          if (idStore && prolibuId) idStore.set(sourceId, prolibuId);
         } else {
-          await this.api.create(model, expanded);
+          await withRetry(() => this.api.create(model, expanded));
           result.created++;
         }
         result.migrated++;
       } catch (err) {
         const msg = err?.response?.data?.message || err.message || String(err);
-        const recordId = record && record[idField] ? record[idField] : '?';
-        result.errors.push(`[${recordId}] ${msg}`);
+        result.errors.push(`[${sourceId ?? '?'}] ${msg}`);
         result.skipped++;
       }
-      processed++;
-      if (bar) bar.increment(1, { created: result.created, updated: result.updated, errors: result.errors.length });
+    };
+
+    // Process in concurrent batches; size is caller-supplied or the module default
+    const batchSize = (Number.isInteger(concurrency) && concurrency > 0) ? concurrency : CONCURRENT_BATCH_SIZE;
+    for (let i = 0; i < records.length; i += batchSize) {
+      const chunk = records.slice(i, i + batchSize);
+
+      await Promise.allSettled(chunk.map(record => processOne(record)));
+
+      processed += chunk.length;
+
+      // Flush idStore to disk after every concurrent batch
+      if (idStore && idStore.isDirty) {
+        idStore.save();
+      }
+
+      if (bar) bar.update(processed, { created: result.created, updated: result.updated, errors: result.errors.length });
       if (onProgress) onProgress({ processed, total, ...result });
+      if (batchDelay > 0) await sleep(batchDelay);
     }
+
+    // Final flush of any remaining idMap entries
+    if (idStore && idStore.isDirty) idStore.save();
 
     if (bar) bar.stop();
 
     return result;
+  }
+
+  /**
+   * Migration-specific upsert: search by refId, update if found, create if not.
+   * Always queries Prolibu using the canonical `refId` field with minimal payload.
+   * Wraps each API call with exponential-backoff retry (429 / 5xx).
+   *
+   * @param {string} model     - Prolibu model name
+   * @param {string} sourceId  - Source-system ID (value stored in refId)
+   * @param {object} data      - Record data to create/update (must include refId on create)
+   * @returns {Promise<{ created: boolean, prolibuId: string }>}
+   */
+  async _upsertRecord(model, sourceId, data) {
+    const results = await withRetry(() =>
+      this.api.find(model, {
+        xquery: { refId: sourceId },
+        select: '_id refId',
+        limit: 1,
+      })
+    );
+    const rows = Array.isArray(results) ? results : (results?.data || []);
+    if (rows.length > 0) {
+      const prolibuId = rows[0]._id;
+      // Strip refId from PATCH body — the record already has it and it should not be re-sent
+      const { refId: _stripped, ...updateData } = data;
+      await withRetry(() => this.api.update(model, prolibuId, updateData));
+      return { created: false, prolibuId };
+    }
+    const record = await withRetry(() => this.api.create(model, data));
+    return { created: true, prolibuId: record?._id };
   }
 
   // ── Schema setup convenience methods ────────────────────────

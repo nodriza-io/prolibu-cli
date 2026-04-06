@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useMigration } from "../store";
-import { startMigration, subscribeMigrationLogs } from "../api";
+import { startMigration, subscribeMigrationLogs, cancelMigration } from "../api";
 import { showToast } from "../components/Toast";
 
 export default function Execution() {
@@ -122,6 +122,20 @@ export default function Execution() {
     }
   }, [selected, dryRun, dispatch]);
 
+  /* ── cancel migration ─────────────────────────────── */
+  const handleCancel = useCallback(async () => {
+    try {
+      await cancelMigration();
+    } catch { /* server may already be dead */ }
+    if (sseRef.current) {
+      sseRef.current.close();
+      sseRef.current = null;
+    }
+    setRunning(false);
+    dispatch({ type: "SET_EXECUTION", payload: { running: false } });
+    dispatch({ type: "APPEND_LOG", payload: "⛔ Migración cancelada por el usuario." });
+  }, [dispatch]);
+
   const selCount = Object.values(selected).filter(Boolean).length;
   const logs = execution.logs || [];
   const results = execution.results || {};
@@ -192,6 +206,10 @@ export default function Execution() {
               ) : (
                 `🚀 Migrar (${selCount} entidades)`
               )}
+            </button>
+
+            <button className="cancel-btn" onClick={handleCancel} disabled={!running}>
+              ⛔ Cancelar
             </button>
           </div>
         </div>

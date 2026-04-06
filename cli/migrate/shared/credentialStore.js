@@ -140,13 +140,24 @@ function hasPipelineOverride(domain, crm, entity) {
 
 /**
  * Load pipeline for a domain/entity (returns null if none).
+ * Resolution order:
+ *   1. Domain-level:   accounts/<domain>/migrations/<crm>/pipelines/<entity>.js
+ *   2. Adapter-level:  cli/migrate/adapters/<crm>/pipelines/<entity>.js
+ *   3. null (PipelineRunner falls back to single-step wrapping baseTransformer)
+ *
  * Cache-busted so edits take effect without restarting.
  */
 function loadPipeline(domain, crm, entity) {
   const filePath = path.join(getPipelinesPath(domain, crm), `${entity}.js`);
-  if (!fs.existsSync(filePath)) return null;
-  delete require.cache[require.resolve(filePath)];
-  return require(filePath);
+  if (fs.existsSync(filePath)) {
+    delete require.cache[require.resolve(filePath)];
+    return require(filePath);
+  }
+  // Fall back to adapter-level default pipeline
+  const adapterPath = path.join(__dirname, '..', 'adapters', crm, 'pipelines', `${entity}.js`);
+  if (!fs.existsSync(adapterPath)) return null;
+  delete require.cache[require.resolve(adapterPath)];
+  return require(adapterPath);
 }
 
 /**

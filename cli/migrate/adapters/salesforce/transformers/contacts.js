@@ -10,7 +10,7 @@
  */
 function transformContact(sfRecord) {
   return {
-    externalId: sfRecord.Id,
+    refId: sfRecord.Id,
     firstName: sfRecord.FirstName || '',
     lastName: sfRecord.LastName || '',
     email: sfRecord.Email || '',

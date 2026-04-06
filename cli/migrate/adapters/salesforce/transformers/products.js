@@ -6,7 +6,7 @@
  */
 function transformProduct(sfRecord) {
   return {
-    externalId: sfRecord.Id,
+    refId: sfRecord.Id,
     name: sfRecord.Name || '',
     description: sfRecord.Description || '',
     productCode: sfRecord.ProductCode || '',

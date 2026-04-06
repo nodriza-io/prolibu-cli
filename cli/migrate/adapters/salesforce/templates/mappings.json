@@ -12,68 +12,8 @@
           "required": true
         },
         {
-          "from": "Website",
-          "to": "website"
-        },
-        {
-          "from": "AccountNumber",
-          "to": "companyCode"
-        },
-        {
-          "from": "Phone",
-          "to": "primaryPhone"
-        },
-        {
-          "from": "Fax",
-          "to": "phones.fax"
-        },
-        {
-          "from": "BillingStreet",
-          "to": "address.street"
-        },
-        {
-          "from": "BillingCity",
-          "to": "address.city"
-        },
-        {
-          "from": "BillingState",
-          "to": "address.state"
-        },
-        {
-          "from": "BillingPostalCode",
-          "to": "address.zip"
-        },
-        {
-          "from": "BillingCountry",
-          "to": "address.country"
-        },
-        {
-          "from": "Industry",
-          "to": "industry"
-        },
-        {
-          "from": "NumberOfEmployees",
-          "to": "numberOfEmployees"
-        },
-        {
           "from": "OwnerId",
           "to": "assignee"
-        },
-        {
-          "from": "Description",
-          "to": "customFields.description"
-        },
-        {
-          "from": "Type",
-          "to": "customFields.accountType"
-        },
-        {
-          "from": "AnnualRevenue",
-          "to": "customFields.annualRevenue"
-        },
-        {
-          "from": "Rating",
-          "to": "customFields.rating"
         }
       ],
       "static": {
@@ -102,68 +42,12 @@
           "default": ""
         },
         {
-          "from": "Title",
-          "to": "jobTitle"
-        },
-        {
-          "from": "Phone",
-          "to": "phones.work"
-        },
-        {
-          "from": "MobilePhone",
-          "to": "mobile"
-        },
-        {
           "from": "AccountId",
           "to": "company"
         },
         {
           "from": "OwnerId",
           "to": "assignee"
-        },
-        {
-          "from": "MailingStreet",
-          "to": "address.street"
-        },
-        {
-          "from": "MailingCity",
-          "to": "address.city"
-        },
-        {
-          "from": "MailingState",
-          "to": "address.state"
-        },
-        {
-          "from": "MailingPostalCode",
-          "to": "address.zip"
-        },
-        {
-          "from": "MailingCountry",
-          "to": "address.country"
-        },
-        {
-          "from": "LinkedIn",
-          "to": "socialNetworks.linkedin"
-        },
-        {
-          "from": "Twitter",
-          "to": "socialNetworks.twitter"
-        },
-        {
-          "from": "Department",
-          "to": "customFields.department"
-        },
-        {
-          "from": "Description",
-          "to": "customFields.description"
-        },
-        {
-          "from": "Birthdate",
-          "to": "customFields.birthdate"
-        },
-        {
-          "from": "LeadSource",
-          "to": "source"
         }
       ],
       "static": {
@@ -192,72 +76,8 @@
           "default": ""
         },
         {
-          "from": "Title",
-          "to": "jobTitle"
-        },
-        {
-          "from": "Phone",
-          "to": "phones.work"
-        },
-        {
-          "from": "MobilePhone",
-          "to": "mobile"
-        },
-        {
-          "from": "Company",
-          "to": "companyName"
-        },
-        {
           "from": "OwnerId",
           "to": "assignee"
-        },
-        {
-          "from": "Street",
-          "to": "address.street"
-        },
-        {
-          "from": "City",
-          "to": "address.city"
-        },
-        {
-          "from": "State",
-          "to": "address.state"
-        },
-        {
-          "from": "PostalCode",
-          "to": "address.zip"
-        },
-        {
-          "from": "Country",
-          "to": "address.country"
-        },
-        {
-          "from": "LeadSource",
-          "to": "source"
-        },
-        {
-          "from": "Status",
-          "to": "stage"
-        },
-        {
-          "from": "Industry",
-          "to": "customFields.industry"
-        },
-        {
-          "from": "Description",
-          "to": "customFields.description"
-        },
-        {
-          "from": "Website",
-          "to": "customFields.website"
-        },
-        {
-          "from": "AnnualRevenue",
-          "to": "customFields.annualRevenue"
-        },
-        {
-          "from": "NumberOfEmployees",
-          "to": "customFields.numberOfEmployees"
         }
       ],
       "static": {
@@ -277,20 +97,8 @@
           "required": true
         },
         {
-          "from": "CloseDate",
-          "to": "closeDate"
-        },
-        {
           "from": "StageName",
           "to": "stage"
-        },
-        {
-          "from": "Amount",
-          "to": "customFields.amount"
-        },
-        {
-          "from": "Probability",
-          "to": "customFields.probability"
         },
         {
           "from": "OwnerId",
@@ -298,127 +106,15 @@
         },
         {
           "from": "AccountId",
-          "to": "customFields.accountId"
+          "to": "company"
         },
         {
           "from": "ContactId",
           "to": "contact"
-        },
-        {
-          "from": "Description",
-          "to": "observations"
-        },
-        {
-          "from": "Type",
-          "to": "customFields.opportunityType"
-        },
-        {
-          "from": "LeadSource",
-          "to": "customFields.leadSource"
-        },
-        {
-          "from": "NextStep",
-          "to": "customFields.nextStep"
-        },
-        {
-          "from": "ForecastCategoryName",
-          "to": "customFields.forecastCategory"
-        },
-        {
-          "from": "CampaignId",
-          "to": "customFields.campaignId"
         }
       ],
-      "joinedFields": {
-        "quote": [
-          {
-            "from": "Id",
-            "to": "proposal.quote.externalId"
-          },
-          {
-            "from": "Name",
-            "to": "proposal.quote.quoteName"
-          },
-          {
-            "from": "QuoteNumber",
-            "to": "proposal.quote.quoteCode"
-          },
-          {
-            "from": "Status",
-            "to": "proposal.quote.status"
-          },
-          {
-            "from": "ExpirationDate",
-            "to": "proposal.expirationDate"
-          },
-          {
-            "from": "Discount",
-            "to": "proposal.quote.discountRate"
-          },
-          {
-            "from": "Tax",
-            "to": "proposal.quote.taxRate"
-          },
-          {
-            "from": "ShippingHandling",
-            "to": "proposal.quote.shippingHandling"
-          },
-          {
-            "from": "Description",
-            "to": "proposal.quote.quoteDescription"
-          },
-          {
-            "from": "CurrencyIsoCode",
-            "to": "proposal.quote.quoteCurrency",
-            "default": "USD"
-          }
-        ],
-        "lineItems": [
-          {
-            "from": "Id",
-            "to": "externalId"
-          },
-          {
-            "from": "Product2.Name",
-            "to": "productName"
-          },
-          {
-            "from": "Product2.ProductCode",
-            "to": "productCode"
-          },
-          {
-            "from": "Quantity",
-            "to": "quantity"
-          },
-          {
-            "from": "UnitPrice",
-            "to": "price"
-          },
-          {
-            "from": "Discount",
-            "to": "discountRate"
-          },
-          {
-            "from": "Description",
-            "to": "description"
-          },
-          {
-            "from": "Product2Id",
-            "to": "product"
-          },
-          {
-            "from": "ServiceDate",
-            "to": "startDate"
-          },
-          {
-            "from": "CurrencyIsoCode",
-            "to": "currency"
-          }
-        ]
-      },
       "static": {
-        "source": "salesforce",
-        "proposal.enabled": true
+        "source": "salesforce"
       }
     },
     "quotes": {
@@ -949,132 +645,20 @@
         "source": "salesforce"
       }
     },
-    "users": {
+    "stages": {
       "fields": [
         {
           "from": "Id",
           "to": "externalId"
         },
         {
-          "from": "FirstName",
-          "to": "firstName"
-        },
-        {
-          "from": "LastName",
-          "to": "lastName",
+          "from": "MasterLabel",
+          "to": "stageName",
           "required": true
         },
         {
-          "from": "Email",
-          "to": "email",
-          "required": true
-        },
-        {
-          "from": "Username",
-          "to": "customFields.username"
-        },
-        {
-          "from": "Title",
-          "to": "jobTitle"
-        },
-        {
-          "from": "Phone",
-          "to": "phone"
-        },
-        {
-          "from": "MobilePhone",
-          "to": "mobile"
-        },
-        {
-          "from": "CompanyName",
-          "to": "company"
-        },
-        {
-          "from": "Department",
-          "to": "customFields.department"
-        },
-        {
-          "from": "IsActive",
-          "to": "status"
-        },
-        {
-          "from": "ProfileId",
-          "to": "customFields.profileId"
-        },
-        {
-          "from": "UserRoleId",
-          "to": "customFields.userRoleId"
-        },
-        {
-          "from": "Street",
-          "to": "address.street"
-        },
-        {
-          "from": "City",
-          "to": "address.city"
-        },
-        {
-          "from": "State",
-          "to": "address.state"
-        },
-        {
-          "from": "PostalCode",
-          "to": "address.zip"
-        },
-        {
-          "from": "Country",
-          "to": "address.country"
-        }
-      ],
-      "static": {
-        "source": "salesforce"
-      }
-    },
-    "invoices": {
-      "fields": [
-        {
-          "from": "Id",
-          "to": "externalId"
-        },
-        {
-          "from": "InvoiceNumber",
-          "to": "invoiceNumber"
-        },
-        {
-          "from": "Description",
-          "to": "title"
-        },
-        {
-          "from": "Status",
-          "to": "stage"
-        },
-        {
-          "from": "InvoiceDate",
-          "to": "issueDate"
-        },
-        {
-          "from": "DueDate",
-          "to": "dueDate"
-        },
-        {
-          "from": "TotalAmount",
-          "to": "customFields.totalAmount"
-        },
-        {
-          "from": "Balance",
-          "to": "customFields.balance"
-        },
-        {
-          "from": "AccountId",
-          "to": "customFields.accountId"
-        },
-        {
-          "from": "ContactId",
-          "to": "contact"
-        },
-        {
-          "from": "OwnerId",
-          "to": "assignee"
+          "from": "ApiName",
+          "to": "stageCode"
         }
       ],
       "static": {
@@ -1082,4 +666,138 @@
       }
     }
   }
+}
+    "REMOVE_BELOW": {
+  "fields": [
+    {
+      "from": "Id",
+      "to": "externalId"
+    },
+    {
+      "from": "FirstName",
+      "to": "firstName"
+    },
+    {
+      "from": "LastName",
+      "to": "lastName",
+      "required": true
+    },
+    {
+      "from": "Email",
+      "to": "email",
+      "required": true
+    },
+    {
+      "from": "Username",
+      "to": "customFields.username"
+    },
+    {
+      "from": "Title",
+      "to": "jobTitle"
+    },
+    {
+      "from": "Phone",
+      "to": "phone"
+    },
+    {
+      "from": "MobilePhone",
+      "to": "mobile"
+    },
+    {
+      "from": "CompanyName",
+      "to": "company"
+    },
+    {
+      "from": "Department",
+      "to": "customFields.department"
+    },
+    {
+      "from": "IsActive",
+      "to": "status"
+    },
+    {
+      "from": "ProfileId",
+      "to": "customFields.profileId"
+    },
+    {
+      "from": "UserRoleId",
+      "to": "customFields.userRoleId"
+    },
+    {
+      "from": "Street",
+      "to": "address.street"
+    },
+    {
+      "from": "City",
+      "to": "address.city"
+    },
+    {
+      "from": "State",
+      "to": "address.state"
+    },
+    {
+      "from": "PostalCode",
+      "to": "address.zip"
+    },
+    {
+      "from": "Country",
+      "to": "address.country"
+    }
+  ],
+  "static": {
+    "source": "salesforce"
+  }
+},
+"invoices": {
+  "fields": [
+    {
+      "from": "Id",
+      "to": "externalId"
+    },
+    {
+      "from": "InvoiceNumber",
+      "to": "invoiceNumber"
+    },
+    {
+      "from": "Description",
+      "to": "title"
+    },
+    {
+      "from": "Status",
+      "to": "stage"
+    },
+    {
+      "from": "InvoiceDate",
+      "to": "issueDate"
+    },
+    {
+      "from": "DueDate",
+      "to": "dueDate"
+    },
+    {
+      "from": "TotalAmount",
+      "to": "customFields.totalAmount"
+    },
+    {
+      "from": "Balance",
+      "to": "customFields.balance"
+    },
+    {
+      "from": "AccountId",
+      "to": "customFields.accountId"
+    },
+    {
+      "from": "ContactId",
+      "to": "contact"
+    },
+    {
+      "from": "OwnerId",
+      "to": "assignee"
+    }
+  ],
+  "static": {
+    "source": "salesforce"
+  }
+}
+}
 }

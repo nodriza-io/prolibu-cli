@@ -18,111 +18,16 @@
       "enabled": true,
       "idField": "externalId"
     },
+    "stages": {
+      "source": "OpportunityStage",
+      "target": "stage",
+      "enabled": true,
+      "idField": "externalId"
+    },
     "opportunities": {
       "source": "Opportunity",
       "target": "deal",
       "enabled": true,
-      "idField": "externalId",
-      "join": [
-        {
-          "source": "Quote",
-          "foreignKey": "OpportunityId",
-          "strategy": "latest",
-          "as": "quote",
-          "select": "Id, Name, QuoteNumber, Status, ExpirationDate, GrandTotal, Discount, Tax, ShippingHandling, Description, CurrencyIsoCode"
-        },
-        {
-          "source": "QuoteLineItem",
-          "foreignKey": "QuoteId",
-          "parentJoin": "quote",
-          "strategy": "all",
-          "as": "lineItems",
-          "select": "Id, Quantity, UnitPrice, TotalPrice, Discount, Description, Product2Id, Product2.Name, Product2.ProductCode, PricebookEntryId, ServiceDate, CurrencyIsoCode"
-        }
-      ]
-    },
-    "quotes": {
-      "source": "Quote",
-      "target": "quote",
-      "enabled": false,
-      "idField": "externalId"
-    },
-    "contracts": {
-      "source": "Contract",
-      "target": "contract",
-      "enabled": false,
-      "idField": "externalId"
-    },
-    "cases": {
-      "source": "Case",
-      "target": "ticket",
-      "enabled": false,
-      "idField": "externalId"
-    },
-    "products": {
-      "source": "Product2",
-      "target": "product",
-      "enabled": true,
-      "idField": "externalId"
-    },
-    "pricebooks": {
-      "source": "Pricebook2",
-      "target": "pricebook",
-      "enabled": false,
-      "idField": "externalId"
-    },
-    "pricebookentries": {
-      "source": "PricebookEntry",
-      "target": "pricebookentry",
-      "enabled": false,
-      "idField": "externalId"
-    },
-    "lineitems": {
-      "source": "OpportunityLineItem",
-      "target": "lineitem",
-      "enabled": false,
-      "idField": "externalId"
-    },
-    "tasks": {
-      "source": "Task",
-      "target": "task",
-      "enabled": false,
-      "idField": "externalId"
-    },
-    "events": {
-      "source": "Event",
-      "target": "meeting",
-      "enabled": false,
-      "idField": "externalId"
-    },
-    "notes": {
-      "source": "Note",
-      "target": "note",
-      "enabled": false,
-      "idField": "externalId"
-    },
-    "calls": {
-      "source": "Call",
-      "target": "call",
-      "enabled": false,
-      "idField": "externalId"
-    },
-    "campaigns": {
-      "source": "Campaign",
-      "target": "campaign",
-      "enabled": false,
-      "idField": "externalId"
-    },
-    "users": {
-      "source": "User",
-      "target": "user",
-      "enabled": false,
-      "idField": "externalId"
-    },
-    "invoices": {
-      "source": "Invoice",
-      "target": "invoice",
-      "enabled": false,
       "idField": "externalId"
     }
   }

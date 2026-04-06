@@ -513,7 +513,6 @@ The adapter does NOT automatically handle API limit exceeded errors (different f
 - [SOQL Reference](https://developer.salesforce.com/docs/atlas.en-us.soql_sosl.meta/soql_sosl/)
 - [Salesforce Object Reference](https://developer.salesforce.com/docs/atlas.en-us.object_reference.meta/object_reference/)
 - [Outbound API Adapter Guide](../../../accounts/dev10.prolibu.com/hook-integrations/OUTBOUND_API_ADAPTER_GUIDE.md)
-- [Examples](./examples.js)
 
 ---
 

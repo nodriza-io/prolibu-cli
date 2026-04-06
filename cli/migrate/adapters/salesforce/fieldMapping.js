@@ -1,6 +1,43 @@
 'use strict';
 
 /**
+ * Convert a vendor map (Prolibu→SF direction) to migrate format (SF→Prolibu).
+ *
+ * Inverts the key-value pairs from the vendor map, skipping non-string values
+ * (transforms, reverseTransforms, etc.), then applies overrides:
+ *   - add: { SFField: prolibuField }  — additional mappings
+ *   - remove: ['SFField', ...]        — fields to exclude
+ *
+ * @param {object} vendorMap  - e.g. CompanyMap: { companyName: 'Name', ... }
+ * @param {object} [overrides]
+ * @param {object} [overrides.add]    - Extra SF→Prolibu mappings to include
+ * @param {string[]} [overrides.remove] - SF field names to exclude
+ * @returns {object} SF→Prolibu mapping: { Name: 'companyName', ... }
+ */
+function toMigrateFormat(vendorMap, { add = {}, remove = [] } = {}) {
+    const result = {};
+    for (const [prolibuField, sfField] of Object.entries(vendorMap)) {
+        // Skip non-string entries (transforms, reverseTransforms, etc.)
+        if (typeof sfField !== 'string') continue;
+        result[sfField] = prolibuField;
+    }
+    // Apply removals
+    for (const key of remove) {
+        delete result[key];
+    }
+    // Apply additions (additions take priority)
+    Object.assign(result, add);
+    return result;
+}
+
+// ─── Vendor maps ───────────────────────────────────────────────
+const CompanyMap = require('../../../../lib/vendors/salesforce/maps/CompanyMap');
+const ContactMap = require('../../../../lib/vendors/salesforce/maps/ContactMap');
+const DealMap = require('../../../../lib/vendors/salesforce/maps/DealMap');
+const StageMap = require('../../../../lib/vendors/salesforce/maps/StageMap');
+const UserMap = require('../../../../lib/vendors/salesforce/maps/UserMap');
+
+/**
  * Known Salesforce → Prolibu field mappings.
  *
  * Each key is a Salesforce SObject name (matching the entityMapping in metadata.js).
@@ -18,71 +55,65 @@
 const fieldMapping = {
 
     /* ────────────────────────────────────────────────────────────
-     * Account → company
+     * Account → company  (derived from CompanyMap)
      * ──────────────────────────────────────────────────────────── */
-    Account: {
-        // Identity
-        Name: 'companyName',
-        Website: 'website',
-        AccountNumber: 'companyCode',
-        // Contact info
-        Phone: 'primaryPhone',
-        Fax: 'phones.fax',
-        // Billing address
-        BillingStreet: 'address.street',
-        BillingCity: 'address.city',
-        BillingState: 'address.state',
-        BillingPostalCode: 'address.zip',
-        BillingCountry: 'address.country',
-        // Shipping address (map to same address — user can adjust)
-        ShippingStreet: null,
-        ShippingCity: null,
-        ShippingState: null,
-        ShippingPostalCode: null,
-        ShippingCountry: null,
-        // Classification
-        Industry: 'industry',
-        NumberOfEmployees: 'numberOfEmployees',
-        // Owner
-        OwnerId: 'assignee',
-        Description: 'customFields.description',
-        Type: 'customFields.accountType',
-        AnnualRevenue: 'customFields.annualRevenue',
-        Rating: 'customFields.rating',
-    },
+    Account: toMigrateFormat(CompanyMap, {
+        remove: [
+            'BillingLatitude', 'BillingLongitude', 'CurrencyIsoCode', 'Tradestyle',
+        ],
+        add: {
+            Id: 'refId',
+            // Vendor map uses postalCode; Prolibu model uses zip
+            BillingPostalCode: 'address.zip',
+            AccountNumber: 'companyCode',
+            Fax: 'phones.fax',
+            // Shipping address — explicitly skipped
+            ShippingStreet: null,
+            ShippingCity: null,
+            ShippingState: null,
+            ShippingPostalCode: null,
+            ShippingCountry: null,
+            // Classification
+            Industry: 'industry',
+            NumberOfEmployees: 'numberOfEmployees',
+            // Extra fields to custom
+            Description: 'customFields.description',
+            Type: 'customFields.accountType',
+            AnnualRevenue: 'customFields.annualRevenue',
+            Rating: 'customFields.rating',
+            OwnerId: { to: 'assignee', ref: 'User' },
+        },
+    }),
 
     /* ────────────────────────────────────────────────────────────
-     * Contact → contact
+     * Contact → contact  (derived from ContactMap)
      * ──────────────────────────────────────────────────────────── */
-    Contact: {
-        FirstName: 'firstName',
-        LastName: 'lastName',
-        Email: 'email',
-        Title: 'jobTitle',
-        Phone: 'phones.work',
-        MobilePhone: 'mobile',
-        AccountId: 'company',
-        OwnerId: 'assignee',
-        // Mailing address
-        MailingStreet: 'address.street',
-        MailingCity: 'address.city',
-        MailingState: 'address.state',
-        MailingPostalCode: 'address.zip',
-        MailingCountry: 'address.country',
-        // Social
-        LinkedIn: 'socialNetworks.linkedin',
-        Twitter: 'socialNetworks.twitter',
-        // Extra
-        Department: 'customFields.department',
-        Description: 'customFields.description',
-        Birthdate: 'customFields.birthdate',
-        LeadSource: 'source',
-    },
+    Contact: toMigrateFormat(ContactMap, {
+        remove: [
+            'MailingLatitude', 'MailingLongitude',
+        ],
+        add: {
+            Id: 'refId',
+            MailingPostalCode: 'address.zip',
+            Phone: 'phones.work',
+            AccountId: 'company',
+            // Social
+            LinkedIn: 'socialNetworks.linkedin',
+            Twitter: 'socialNetworks.twitter',
+            // Extra
+            Department: 'customFields.department',
+            Description: 'customFields.description',
+            Birthdate: 'customFields.birthdate',
+            LeadSource: 'source',
+            OwnerId: { to: 'assignee', ref: 'User' },
+        },
+    }),
 
     /* ────────────────────────────────────────────────────────────
      * Lead → contact  (tagged as lead)
      * ──────────────────────────────────────────────────────────── */
     Lead: {
+        Id: 'refId',
         FirstName: 'firstName',
         LastName: 'lastName',
         Email: 'email',
@@ -90,7 +121,7 @@ const fieldMapping = {
         Phone: 'phones.work',
         MobilePhone: 'mobile',
         Company: 'companyName',
-        OwnerId: 'assignee',
+        OwnerId: { to: 'assignee', ref: 'User' },
         Street: 'address.street',
         City: 'address.city',
         State: 'address.state',
@@ -106,24 +137,55 @@ const fieldMapping = {
     },
 
     /* ────────────────────────────────────────────────────────────
-     * Opportunity → deal
+     * Opportunity → deal  (derived from DealMap)
      * ──────────────────────────────────────────────────────────── */
-    Opportunity: {
-        Name: 'dealName',
-        CloseDate: 'closeDate',
-        StageName: 'stage',
-        Amount: 'customFields.amount',
-        Probability: 'customFields.probability',
-        OwnerId: 'assignee',
-        AccountId: 'customFields.accountId',
-        ContactId: 'contact',
-        Description: 'observations',
-        Type: 'customFields.opportunityType',
-        LeadSource: 'customFields.leadSource',
-        NextStep: 'customFields.nextStep',
-        ForecastCategoryName: 'customFields.forecastCategory',
-        CampaignId: 'customFields.campaignId',
-    },
+    Opportunity: toMigrateFormat(DealMap, {
+        remove: [
+            'CurrencyIsoCode',
+        ],
+        add: {
+            Id: 'refId',
+            Amount: 'customFields.amount',
+            Probability: 'customFields.probability',
+            AccountId: 'company',
+            Description: 'observations',
+            Type: 'customFields.opportunityType',
+            LeadSource: 'customFields.leadSource',
+            NextStep: 'customFields.nextStep',
+            ForecastCategoryName: 'customFields.forecastCategory',
+            CampaignId: 'customFields.campaignId',
+            OwnerId: { to: 'assignee', ref: 'User' },
+        },
+    }),
+
+    /* ────────────────────────────────────────────────────────────
+     * OpportunityStage → stage  (derived from StageMap)
+     * ──────────────────────────────────────────────────────────── */
+    OpportunityStage: toMigrateFormat(StageMap, {
+        add: {
+            Id: 'refId',
+            IsWon: 'customFields.isWon',
+            ForecastCategoryName: 'customFields.forecastCategory',
+            DefaultProbability: 'customFields.defaultProbability',
+        },
+    }),
+
+    /* ────────────────────────────────────────────────────────────
+     * User → user  (derived from UserMap)
+     * Used to resolve assignee references and optionally sync reps.
+     * In most migrations Users already exist in Prolibu; the engine
+     * matches by email.  IsActive/status is transformed via UserMap.
+     * ──────────────────────────────────────────────────────────── */
+    User: toMigrateFormat(UserMap, {
+        add: {
+            Id: 'refId',
+            IsActive: 'status',              // bool → 'Active'/'Deactivated' (transform in UserMap)
+            Department: 'customFields.department',
+            UserRoleId: 'customFields.userRoleId',
+            ManagerId: 'customFields.managerId',
+            Username: 'customFields.sfUsername',
+        },
+    }),
 
     /* ────────────────────────────────────────────────────────────
      * Quote → quote
@@ -170,7 +232,7 @@ const fieldMapping = {
         Origin: 'channel',
         ContactId: 'requester.contact',
         AccountId: 'customFields.accountId',
-        OwnerId: 'assignee',
+        OwnerId: { to: 'assignee', ref: 'User' },
         ClosedDate: 'customFields.closedDate',
         Reason: 'customFields.reason',
     },
@@ -233,7 +295,7 @@ const fieldMapping = {
         Status: 'stage',
         Priority: 'priority',
         ActivityDate: 'dates.dueAt',
-        OwnerId: 'assignee',
+        OwnerId: { to: 'assignee', ref: 'User' },
         WhoId: 'customFields.contactId',
         WhatId: 'customFields.relatedToId',
         ReminderDateTime: 'customFields.reminderDateTime',
@@ -249,7 +311,7 @@ const fieldMapping = {
         StartDateTime: 'dates.startAt',
         EndDateTime: 'dates.endAt',
         Location: 'attendance.address',
-        OwnerId: 'assignee',
+        OwnerId: { to: 'assignee', ref: 'User' },
         WhoId: 'customFields.contactId',
         WhatId: 'customFields.relatedToId',
         IsAllDayEvent: 'customFields.isAllDayEvent',
@@ -273,7 +335,7 @@ const fieldMapping = {
         Subject: 'summary',
         Description: 'summaryText',
         CallType: 'direction',
-        OwnerId: 'assignee',
+        OwnerId: { to: 'assignee', ref: 'User' },
         WhoId: 'contact',
         WhatId: 'origin.docId',
     },
@@ -330,7 +392,7 @@ const fieldMapping = {
         Balance: 'customFields.balance',
         AccountId: 'customFields.accountId',
         ContactId: 'contact',
-        OwnerId: 'assignee',
+        OwnerId: { to: 'assignee', ref: 'User' },
     },
 };
 

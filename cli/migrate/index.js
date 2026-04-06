@@ -26,9 +26,10 @@ module.exports = async function migrateHandler(command, flags, args) {
 
   const availableCRMs = discoverCRMs();
 
-  if (!crm) {
+  if (!crm && !flags.ui) {
     console.log('Usage: prolibu migrate <crm> <command> [options]');
-    console.log('       prolibu migrate ui [options]');
+    console.log('       prolibu migrate configure [options]');
+    console.log('       prolibu migrate --ui [options]');
     console.log('');
     console.log('CRMs:');
     for (const c of availableCRMs) {
@@ -40,25 +41,59 @@ module.exports = async function migrateHandler(command, flags, args) {
       console.log('  (none found — add a CRM folder with metadata.js)');
     }
     console.log('');
-    console.log('Dashboard:');
-    console.log('  ui           Start the migration dashboard (interactive web UI)');
+    console.log('Commands:');
+    console.log('  configure    Set up source CRM credentials (guided wizard)');
+    console.log('');
+    console.log('Flags:');
+    console.log('  --ui         Start the migration dashboard (interactive web UI)');
     console.log('');
     console.log('Examples:');
-    console.log('  prolibu migrate ui --domain dev10.prolibu.com');
+    console.log('  prolibu migrate --ui --domain dev10.prolibu.com');
     if (availableCRMs.length) {
       const ex = availableCRMs[0];
-      console.log(`  prolibu migrate ui --domain dev10.prolibu.com --crm ${ex}`);
-      console.log(`  prolibu migrate ${ex} configure --domain dev10.prolibu.com`);
+      console.log(`  prolibu migrate configure --domain dev10.prolibu.com`);
+      console.log(`  prolibu migrate configure --crm ${ex} --domain dev10.prolibu.com`);
       console.log(`  prolibu migrate ${ex} run --domain dev10.prolibu.com --entity all`);
       console.log(`  prolibu migrate ${ex} status --domain dev10.prolibu.com`);
     }
     return;
   }
 
-  // ── Top-level "ui" command (CRM-agnostic dashboard) ──────
-  if (crm === 'ui') {
+  // ── Top-level "ui" flag (CRM-agnostic dashboard) ──────────
+  if (flags.ui) {
     const startUI = require('../commands/migrate/ui');
     await startUI(flags);
+    return;
+  }
+
+  // ── configure — guided wizard with CRM selector ─────────
+  if (crm === 'configure') {
+    let selectedCRM = flags.crm;
+    if (!selectedCRM) {
+      const inquirer = await import('inquirer');
+      const choices = availableCRMs.map(c => {
+        let label = c;
+        try { label = require(`./adapters/${c}/metadata`).label || c; } catch { }
+        return { name: label, value: c };
+      });
+      const { picked } = await inquirer.default.prompt({
+        type: 'list',
+        name: 'picked',
+        message: 'Which CRM are you migrating FROM?',
+        choices,
+      });
+      selectedCRM = picked;
+    }
+    const configureCRM = require(`./adapters/${selectedCRM}/configure`);
+    await configureCRM(flags);
+    return;
+  }
+
+  // ── Intercept '<crm> configure' → unified configure flow ─
+  if (subcommand === 'configure') {
+    flags.crm = flags.crm || crm;
+    const configureCRM = require(`./adapters/${flags.crm}/configure`);
+    await configureCRM(flags);
     return;
   }
 

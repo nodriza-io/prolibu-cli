@@ -23,6 +23,9 @@ function parseFlags(argv) {
       'instance-url',
       'client-key',
       'client-secret',
+      'crm',
+      'source-domain',
+      'source-api-key',
       'modelName',
       'id'
     ],
@@ -32,6 +35,7 @@ function parseFlags(argv) {
       'no-git',
       // migrate flags
       'dry-run',
+      'ui',
     ],
     alias: {
       domain: 'd',

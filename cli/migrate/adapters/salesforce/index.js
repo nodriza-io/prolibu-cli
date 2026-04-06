@@ -18,7 +18,7 @@ module.exports = async function salesforceHandler(command, flags, args) {
     console.log('  --force     Overwrite existing scaffold files');
     console.log('');
     console.log('Dashboard (CRM-agnostic):');
-    console.log('  prolibu migrate ui --domain <domain>');
+    console.log('  prolibu migrate --ui --domain <domain>');
     console.log('');
     console.log('Options:');
     console.log('  --domain <domain>          Prolibu domain (e.g. stg.prolibu.com)');
@@ -65,7 +65,7 @@ module.exports = async function salesforceHandler(command, flags, args) {
   } else {
     console.error(`❌ Unknown command: ${command}`);
     console.log('Available commands: configure, run, status, apex-to-js');
-    console.log('For the migration dashboard: prolibu migrate ui --domain <domain>');
+    console.log('For the migration dashboard: prolibu migrate --ui --domain <domain>');
     process.exit(1);
   }
 };

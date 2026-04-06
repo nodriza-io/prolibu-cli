@@ -6,7 +6,7 @@
  */
 function transformAccount(sfRecord) {
   return {
-    externalId: sfRecord.Id,
+    refId: sfRecord.Id,
     name: sfRecord.Name || '',
     industry: sfRecord.Industry || '',
     phone: sfRecord.Phone || '',
