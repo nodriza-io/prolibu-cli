@@ -96,10 +96,10 @@ const fieldMapping = {
             Id: 'refId',
             MailingPostalCode: 'address.zip',
             Phone: 'phones.work',
-            AccountId: 'company',
-            // Social
-            LinkedIn: 'socialNetworks.linkedin',
-            Twitter: 'socialNetworks.twitter',
+            AccountId: { to: 'company', ref: 'company' },
+            // Social (not standard SF fields — uncomment if org has them)
+            // LinkedIn: 'socialNetworks.linkedin',
+            // Twitter: 'socialNetworks.twitter',
             // Extra
             Department: 'customFields.department',
             Description: 'customFields.description',
@@ -145,15 +145,9 @@ const fieldMapping = {
         ],
         add: {
             Id: 'refId',
-            Amount: 'customFields.amount',
-            Probability: 'customFields.probability',
-            AccountId: 'company',
+            AccountId: { to: 'company', ref: 'company' },
+            ContactId: { to: 'contact', ref: 'contact' },
             Description: 'observations',
-            Type: 'customFields.opportunityType',
-            LeadSource: 'customFields.leadSource',
-            NextStep: 'customFields.nextStep',
-            ForecastCategoryName: 'customFields.forecastCategory',
-            CampaignId: 'customFields.campaignId',
             OwnerId: { to: 'assignee', ref: 'User' },
         },
     }),
@@ -169,6 +163,17 @@ const fieldMapping = {
             DefaultProbability: 'customFields.defaultProbability',
         },
     }),
+
+    /* ────────────────────────────────────────────────────────────
+     * LeadStatus → stage  (lead pipeline stages)
+     * ──────────────────────────────────────────────────────────── */
+    LeadStatus: {
+        Id: 'refId',
+        MasterLabel: 'stageName',
+        ApiName: 'stageCode',
+        SortOrder: 'index',
+        IsConverted: 'endFlowStage',
+    },
 
     /* ────────────────────────────────────────────────────────────
      * User → user  (derived from UserMap)
@@ -241,6 +246,7 @@ const fieldMapping = {
      * Product2 → product
      * ──────────────────────────────────────────────────────────── */
     Product2: {
+        Id: 'refId',
         Name: 'productName',
         ProductCode: 'productCode',
         Description: 'description',
@@ -255,6 +261,7 @@ const fieldMapping = {
      * Pricebook2 → pricebook
      * ──────────────────────────────────────────────────────────── */
     Pricebook2: {
+        Id: 'refId',
         Name: 'pricebookName',
         Description: 'description',
         IsActive: 'active',
@@ -265,10 +272,11 @@ const fieldMapping = {
      * PricebookEntry → pricebookentry
      * ──────────────────────────────────────────────────────────── */
     PricebookEntry: {
+        Id: 'refId',
         UnitPrice: 'price',
         IsActive: 'active',
-        Product2Id: 'product',
-        Pricebook2Id: 'pricebook',
+        Product2Id: { to: 'product', ref: 'product' },
+        Pricebook2Id: { to: 'pricebook', ref: 'pricebook' },
         UseStandardPrice: 'customFields.useStandardPrice',
     },
 

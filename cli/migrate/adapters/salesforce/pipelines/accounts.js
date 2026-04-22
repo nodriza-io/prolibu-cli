@@ -22,20 +22,31 @@ module.exports = {
             name: 'normalizeFields',
             after: (record) => {
                 const origCountry = record['address.country'];
+                const origState = record['address.state'];
+                const origCity = record['address.city'];
+                const origStreet = record['address.street'];
+                const origPostalCode = record['address.zip'];
+
+                // Always preserve original Salesforce address values in customFields (open text)
+                if (origCountry) record['customFields.originalCountry'] = origCountry;
+                if (origState) record['customFields.originalState'] = origState;
+                if (origCity) record['customFields.originalCity'] = origCity;
+                if (origStreet) record['customFields.originalStreet'] = origStreet;
+                if (origPostalCode) record['customFields.originalPostalCode'] = origPostalCode;
 
                 // State first — needs the original full country name before remapping
-                if (record['address.state'] && origCountry) {
+                if (origState && origCountry) {
                     const stateCode = CompanyMap.transforms['address.state'](
-                        record['address.state'],
+                        origState,
                         { BillingCountry: origCountry }
                     );
                     if (stateCode !== undefined) record['address.state'] = stateCode;
                 }
 
-                // Country: full name → ISO code
+                // Country: full name → ISO code (undefined if not found)
                 if (origCountry) {
                     const countryCode = CompanyMap.transforms['address.country'](origCountry);
-                    if (countryCode !== undefined) record['address.country'] = countryCode;
+                    record['address.country'] = countryCode; // may be undefined
                 }
 
                 // Industry: nullify if not a valid Prolibu ObjectId (24-char hex)

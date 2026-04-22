@@ -6,7 +6,7 @@ const SchemaSetup = require('../../../lib/vendors/prolibu/SchemaSetup');
 const sleep = require('../../../lib/utils/sleep');
 const { withRetry } = require('./RetryClient');
 
-const CONCURRENT_BATCH_SIZE = 50;
+const CONCURRENT_BATCH_SIZE = 1;
 
 // Fields that are internal/meta and should never be validated against the schema
 const META_FIELDS = new Set([
@@ -53,6 +53,14 @@ function expandDotNotation(obj) {
 }
 
 /**
+ * Extract docs array from Prolibu API response.
+ * Handles both paginated responses ({ docs: [...] }) and raw arrays.
+ */
+function extractDocs(res) {
+  return Array.isArray(res) ? res : (res?.docs || res?.data || []);
+}
+
+/**
  * Batch writer for Prolibu that wraps ProlibuApi.
  * Handles findOneOrCreate logic (update if exists, create if not) and dry-run mode.
  * Also provides convenience methods for schema setup (custom fields & custom objects).
@@ -73,6 +81,23 @@ class ProlibuWriter {
   }
 
   /**
+   * Health check: hit /version to verify the Prolibu backend is reachable.
+   * Throws if the server is down or responds with a non-2xx status.
+   */
+  async healthCheck() {
+    try {
+      const res = await this.api.axios.get('/version', { timeout: 10000 });
+      return res.data;
+    } catch (err) {
+      const status = err?.response?.status;
+      const msg = status
+        ? `Prolibu health check failed: HTTP ${status}`
+        : `Prolibu health check failed: ${err.message}`;
+      throw new Error(msg);
+    }
+  }
+
+  /**
    * Write a batch of records to a Prolibu model.
    * Uses upsert by refId when idField is provided (update if exists, create if not),
    * otherwise plain create.
@@ -88,8 +113,8 @@ class ProlibuWriter {
    *
    * @returns {Promise<{ migrated: number, updated: number, created: number, skipped: number, errors: string[] }>}
    */
-  async writeBatch(model, records, { idField, onProgress, idStore, batchDelay = 0, concurrency } = {}) {
-    const result = { migrated: 0, updated: 0, created: 0, skipped: 0, errors: [] };
+  async writeBatch(model, records, { idField, onProgress, idStore, batchDelay = 0, concurrency, recordDelay = 0, maxRetries, cooldownMs = 30000, consecutiveErrorsBeforeCooldown = 3, errorThreshold = 0, prefetchOnly = false, altLookupField } = {}) {
+    const result = { migrated: 0, updated: 0, created: 0, skipped: 0, errors: [], resumed: 0 };
 
     // Log target domain for first record batch
     if (records.length > 0 && !this.dryRun) {
@@ -181,6 +206,35 @@ class ProlibuWriter {
       }
     }
 
+    // ── Auto-detect altLookupField from OpenAPI paths ────────
+    // If no altLookupField was provided, detect the model's unique code field
+    // from the OpenAPI spec path pattern: /v2/{model}/{codeField}
+    if (!altLookupField && idField && this._openApiSpec) {
+      const apiPaths = this._openApiSpec.paths || {};
+      const modelLower = model.toLowerCase();
+      for (const p of Object.keys(apiPaths)) {
+        const parts = p.replace(/^\//, '').split('/');
+        // Match /v2/{model}/{codeField}
+        if (parts.length === 3 && parts[0] === 'v2'
+          && parts[1].toLowerCase() === modelLower
+          && parts[2].startsWith('{') && parts[2].endsWith('}')) {
+          const candidate = parts[2].slice(1, -1);
+          // Skip generic _id or same as idField — not useful as alt lookup
+          if (candidate !== '_id' && candidate !== idField) {
+            // Only use if the field exists in the schema or in the record data
+            const sample = records.find(r => r && typeof r === 'object');
+            const inSchema = schemaAttrs && candidate in schemaAttrs;
+            const inRecord = sample && candidate in sample;
+            if (inSchema || inRecord) {
+              altLookupField = candidate;
+              console.log(`   🔑 Auto-detected altLookupField: "${altLookupField}" (from OpenAPI path)`);
+            }
+          }
+          break;
+        }
+      }
+    }
+
     const isCLI = !onProgress;
     let bar;
     if (isCLI) {
@@ -193,21 +247,141 @@ class ProlibuWriter {
       bar.start(records.length, 0, { created: 0, updated: 0, errors: 0 });
     }
 
+    // ── Resume: filter out records already in idStore ─────────
+    if (idField && idStore && idStore.size > 0) {
+      const before = records.length;
+      records = records.filter(r => {
+        const sourceId = r && r[idField];
+        return !sourceId || !idStore.get(sourceId);
+      });
+      const skippedByResume = before - records.length;
+      if (skippedByResume > 0) {
+        result.resumed = skippedByResume;
+        console.log(`   ⏩ Resumed: ${skippedByResume} records already migrated (idStore), ${records.length} remaining`);
+      }
+    }
+
     const total = records.length;
     let processed = 0;
+    let consecutiveErrors = 0;
+    const retryOpts = maxRetries ? { maxRetries } : {};
+
+    // ── Bulk prefetch: resolve all refIds upfront in chunks of 50 ──
+    const PREFETCH_CHUNK = 50;
+    const refIdCache = new Map(); // sourceId → prolibuId
+    if (idField && !this.dryRun) {
+      const allRefIds = records
+        .map(r => r && r[idField])
+        .filter(Boolean);
+      if (allRefIds.length > 0) {
+        console.log(`   🔍 Bulk lookup: ${allRefIds.length} refIds in chunks of ${PREFETCH_CHUNK}...`);
+        for (let i = 0; i < allRefIds.length; i += PREFETCH_CHUNK) {
+          const chunk = allRefIds.slice(i, i + PREFETCH_CHUNK);
+          try {
+            const res = await withRetry(() =>
+              this.api.find(model, {
+                xquery: { refId: { $in: chunk } },
+                select: '_id refId',
+                limit: PREFETCH_CHUNK,
+              }),
+              retryOpts,
+            );
+            const rows = extractDocs(res);
+            for (const row of rows) {
+              if (row.refId && row._id) refIdCache.set(row.refId, row._id);
+            }
+          } catch (err) {
+            console.warn(`   ⚠️  Bulk lookup chunk failed: ${err.message} — records in this chunk will use individual lookup`);
+          }
+          // Throttle between chunks to protect the backend
+          if (i + PREFETCH_CHUNK < allRefIds.length && recordDelay > 0) {
+            await sleep(recordDelay);
+          }
+        }
+        console.log(`   ✅ Bulk lookup: ${refIdCache.size}/${allRefIds.length} already exist in Prolibu`);
+
+        // ── Alt lookup: fallback to altLookupField for unresolved records ──
+        if (altLookupField && refIdCache.size < allRefIds.length) {
+          const unresolved = records.filter(r => {
+            const sid = r && r[idField];
+            return sid && !refIdCache.has(sid);
+          });
+          const altValues = unresolved
+            .map(r => r[altLookupField])
+            .filter(v => v != null && v !== '');
+          if (altValues.length > 0) {
+            console.log(`   🔍 Alt lookup by "${altLookupField}": ${altValues.length} unresolved records...`);
+            // Build value→sourceIds reverse map for matching (1:N — multiple source records can share the same alt value)
+            const valToSourceIds = new Map();
+            for (const r of unresolved) {
+              const v = r[altLookupField];
+              if (v != null && v !== '') {
+                const key = String(v);
+                if (!valToSourceIds.has(key)) valToSourceIds.set(key, []);
+                valToSourceIds.get(key).push(r[idField]);
+              }
+            }
+            // Deduplicate alt values for the query
+            const uniqueAltValues = [...new Set(altValues.map(String))];
+            for (let i = 0; i < uniqueAltValues.length; i += PREFETCH_CHUNK) {
+              const chunk = uniqueAltValues.slice(i, i + PREFETCH_CHUNK);
+              try {
+                const res = await withRetry(() =>
+                  this.api.find(model, {
+                    xquery: { [altLookupField]: { $in: chunk } },
+                    select: `_id ${altLookupField}`,
+                    limit: PREFETCH_CHUNK,
+                  }),
+                  retryOpts,
+                );
+                const rows = extractDocs(res);
+                for (const row of rows) {
+                  const altVal = row[altLookupField];
+                  if (altVal && row._id) {
+                    const sourceIds = valToSourceIds.get(String(altVal));
+                    if (sourceIds) {
+                      for (const sourceId of sourceIds) {
+                        refIdCache.set(sourceId, row._id);
+                      }
+                    }
+                  }
+                }
+              } catch (err) {
+                console.warn(`   ⚠️  Alt lookup chunk failed: ${err.message}`);
+              }
+              if (i + PREFETCH_CHUNK < altValues.length && recordDelay > 0) {
+                await sleep(recordDelay);
+              }
+            }
+            console.log(`   ✅ Alt lookup: ${refIdCache.size}/${allRefIds.length} total resolved after fallback`);
+          }
+        }
+      }
+    }
+
+    // ── Prefetch-only mode: stop here, return lookup results ──
+    if (prefetchOnly) {
+      if (bar) bar.stop();
+      const newCount = total - refIdCache.size;
+      console.log(`   📊 Prefetch summary: ${refIdCache.size} to update, ${newCount} to create, ${result.resumed} resumed`);
+      result.prefetch = { existing: refIdCache.size, new: newCount, total };
+      return result;
+    }
 
     /**
      * Process a single record and mutate `result` in place.
+     * Uses refIdCache to skip the per-record find — only 1 API call per record.
+     * Returns true if the record hit a server error (5xx), false otherwise.
      */
     const processOne = async (record) => {
       if (!record || typeof record !== 'object') {
         result.skipped++;
-        return;
+        return false;
       }
 
       if (this.dryRun) {
         result.migrated++;
-        return;
+        return false;
       }
 
       const sourceId = idField ? record[idField] : null;
@@ -215,7 +389,50 @@ class ProlibuWriter {
         const expanded = expandDotNotation(record);
 
         if (idField && sourceId) {
-          const { created, prolibuId } = await this._upsertRecord(model, sourceId, expanded);
+          const cachedProlibuId = refIdCache.get(sourceId);
+          let created, prolibuId;
+
+          if (cachedProlibuId) {
+            // Record exists — update directly (no find needed)
+            // Strip refId (identity) and altLookupField (might conflict with another record)
+            const { refId: _stripped, [altLookupField]: _altStripped, ...updateData } = expanded;
+            await withRetry(() => this.api.update(model, cachedProlibuId, updateData), retryOpts);
+            created = false;
+            prolibuId = cachedProlibuId;
+          } else {
+            // Record not in cache — create it
+            try {
+              const rec = await withRetry(() => this.api.create(model, expanded), retryOpts);
+              created = true;
+              prolibuId = rec?._id;
+            } catch (createErr) {
+              // If create failed with 400 "already exists" and we have an altLookupField,
+              // look up the existing record and retry as update
+              const createStatus = createErr?.response?.status ?? createErr?.statusCode;
+              const altVal = altLookupField && record[altLookupField];
+              if (createStatus === 400 && altVal) {
+                const existing = await this.api.find(model, {
+                  xquery: { [altLookupField]: altVal },
+                  select: '_id',
+                  limit: 1,
+                });
+                const rows = extractDocs(existing);
+                if (rows.length > 0 && rows[0]._id) {
+                  const existingId = rows[0]._id;
+                  const { refId: _stripped, [altLookupField]: _altStripped, ...updateData } = expanded;
+                  await withRetry(() => this.api.update(model, existingId, updateData), retryOpts);
+                  refIdCache.set(sourceId, existingId);
+                  created = false;
+                  prolibuId = existingId;
+                } else {
+                  throw createErr; // re-throw if lookup found nothing
+                }
+              } else {
+                throw createErr;
+              }
+            }
+          }
+
           if (created) {
             result.created++;
           } else {
@@ -223,23 +440,52 @@ class ProlibuWriter {
           }
           if (idStore && prolibuId) idStore.set(sourceId, prolibuId);
         } else {
-          await withRetry(() => this.api.create(model, expanded));
+          await withRetry(() => this.api.create(model, expanded), retryOpts);
           result.created++;
         }
         result.migrated++;
+        return false;
       } catch (err) {
         const msg = err?.response?.data?.message || err.message || String(err);
         result.errors.push(`[${sourceId ?? '?'}] ${msg}`);
         result.skipped++;
+        const status = err?.response?.status ?? err?.statusCode ?? err?.status;
+        return Number.isInteger(status) && status >= 500;
       }
     };
 
     // Process in concurrent batches; size is caller-supplied or the module default
     const batchSize = (Number.isInteger(concurrency) && concurrency > 0) ? concurrency : CONCURRENT_BATCH_SIZE;
     for (let i = 0; i < records.length; i += batchSize) {
+      // ── Circuit breaker: abort if error threshold exceeded ──
+      if (errorThreshold > 0 && result.errors.length >= errorThreshold) {
+        const remaining = records.length - i;
+        result.skipped += remaining;
+        console.log(`\n   🔴 Circuit breaker: ${result.errors.length} errors reached threshold (${errorThreshold}). Aborting ${remaining} remaining records.`);
+        break;
+      }
+
       const chunk = records.slice(i, i + batchSize);
 
-      await Promise.allSettled(chunk.map(record => processOne(record)));
+      if (batchSize === 1 && recordDelay > 0) {
+        // Sequential mode with per-record delay
+        for (const record of chunk) {
+          const wasServerError = await processOne(record);
+          if (wasServerError) {
+            consecutiveErrors++;
+            if (consecutiveErrors >= consecutiveErrorsBeforeCooldown) {
+              console.log(`\n   🧊 ${consecutiveErrors} consecutive server errors — cooling down ${cooldownMs / 1000}s...`);
+              await sleep(cooldownMs);
+              consecutiveErrors = 0;
+            }
+          } else {
+            consecutiveErrors = 0;
+          }
+          if (recordDelay > 0) await sleep(recordDelay);
+        }
+      } else {
+        await Promise.allSettled(chunk.map(record => processOne(record)));
+      }
 
       processed += chunk.length;
 
@@ -249,6 +495,12 @@ class ProlibuWriter {
       }
 
       if (bar) bar.update(processed, { created: result.created, updated: result.updated, errors: result.errors.length });
+
+      // Periodic log every 50 records (visible in log viewers that don't support \r)
+      if (processed % 50 === 0 || processed === total) {
+        console.log(`   📊 Progress: ${processed}/${total} (➕ ${result.created} created, 🔄 ${result.updated} updated, ❌ ${result.errors.length} errors)`);
+      }
+
       if (onProgress) onProgress({ processed, total, ...result });
       if (batchDelay > 0) await sleep(batchDelay);
     }
@@ -271,23 +523,24 @@ class ProlibuWriter {
    * @param {object} data      - Record data to create/update (must include refId on create)
    * @returns {Promise<{ created: boolean, prolibuId: string }>}
    */
-  async _upsertRecord(model, sourceId, data) {
+  async _upsertRecord(model, sourceId, data, retryOpts = {}) {
     const results = await withRetry(() =>
       this.api.find(model, {
         xquery: { refId: sourceId },
         select: '_id refId',
         limit: 1,
-      })
+      }),
+      retryOpts,
     );
     const rows = Array.isArray(results) ? results : (results?.data || []);
     if (rows.length > 0) {
       const prolibuId = rows[0]._id;
       // Strip refId from PATCH body — the record already has it and it should not be re-sent
       const { refId: _stripped, ...updateData } = data;
-      await withRetry(() => this.api.update(model, prolibuId, updateData));
+      await withRetry(() => this.api.update(model, prolibuId, updateData), retryOpts);
       return { created: false, prolibuId };
     }
-    const record = await withRetry(() => this.api.create(model, data));
+    const record = await withRetry(() => this.api.create(model, data), retryOpts);
     return { created: true, prolibuId: record?._id };
   }
 

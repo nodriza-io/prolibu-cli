@@ -373,7 +373,21 @@ async function startUIServer({ domain, apiKey, crm }) {
         if (!CRM) return ok({ connected: false, error: 'No CRM selected' });
         const creds = credentialStore.getCredentials(domain, CRM);
         if (!creds) return ok({ connected: false, error: 'No credentials configured', lastChecked: new Date().toISOString() });
-        if (!crmMeta.adapterModule) return ok({ connected: false, error: 'No adapter configured for this CRM', lastChecked: new Date().toISOString() });
+        if (!crmMeta.adapterModule) {
+          if (typeof crmMeta.testConnection !== 'function') {
+            return ok({ connected: false, error: 'No adapter configured for this CRM', lastChecked: new Date().toISOString() });
+          }
+          try {
+            await Promise.race([
+              crmMeta.testConnection(creds),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), CONNECTION_CHECK_TIMEOUT)),
+            ]);
+            return ok({ connected: true, crm: CRM, label: crmMeta.label, lastChecked: new Date().toISOString() });
+          } catch (e) {
+            console.log(`❌ CRM connection check failed: ${e.message}`);
+            return ok({ connected: false, crm: CRM, label: crmMeta.label, error: e.message, lastChecked: new Date().toISOString() });
+          }
+        }
         try {
           const AdapterClass = require(`../adapters/${CRM}/${crmMeta.adapterModule}`);
           const adapter = new AdapterClass(creds);
@@ -395,7 +409,7 @@ async function startUIServer({ domain, apiKey, crm }) {
         try {
           // Simple test: fetch user profile to verify API key and connectivity
           await Promise.race([
-            new ProlibuApi({ domain, apiKey }).find('user/me'),
+            new ProlibuApi({ domain, apiKey }).findOne('user', 'me'),
             new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), CONNECTION_CHECK_TIMEOUT)),
           ]);
           return ok({ connected: true, domain, lastChecked: new Date().toISOString() });

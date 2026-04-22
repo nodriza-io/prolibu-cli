@@ -34,8 +34,16 @@ async function migrate({
     entityDefinitions,
     batchSize,
     concurrency,
+    batchDelay,
+    recordDelay,
+    maxRetries,
+    cooldownMs,
+    consecutiveErrorsBeforeCooldown,
+    errorThreshold,
+    prefetchOnly,
     onProgress,
     onEntityResult,
+    force,
 }) {
     const domainConfig = credentialStore.getConfig(domain, 'salesforce') || {};
     const entityConfig = domainConfig.entities || {};
@@ -75,6 +83,9 @@ async function migrate({
 
         console.log(`📦 Migrating ${resolvedKey}...`);
 
+        // Capture baseline stats from previous runs so we can accumulate
+        const baseline = log.entities[resolvedKey] ? { ...log.entities[resolvedKey] } : null;
+
         // Resolve the base transformer for this entity
         const baseTransformer = definition.baseTransformer();
 
@@ -110,16 +121,33 @@ async function migrate({
 
         // Fetch records from Salesforce
         let records;
+        const fetchOpts = {
+            select: validatedSelect,
+            limit: batchSize,
+        };
+        // Apply entity-level filter (SOQL WHERE clause fragments)
         if (cfg?.filter) {
-            const soql = `SELECT ${validatedSelect} FROM ${definition.sobject} WHERE ${cfg.filter} LIMIT ${batchSize}`;
-            const result = await adapter.api.find(definition.sobject, soql);
-            records = result?.data || [];
-        } else {
-            records = await adapter.fetchAll(definition.sobject, {
-                select: validatedSelect,
-                limit: batchSize,
-            });
+            // Parse IN (...) filter like "Id IN ('a','b','c')"
+            const inMatch = cfg.filter.match(/^(\w+)\s+IN\s*\((.+)\)$/i);
+            if (inMatch) {
+                const [, field, rawVals] = inMatch;
+                const vals = rawVals.split(',').map(v => v.trim().replace(/^'|'$/g, ''));
+                fetchOpts[field] = { $in: vals };
+            } else {
+                // Parse simple comparison like "CreatedDate >= 2025-01-01T00:00:00Z"
+                const filterParts = cfg.filter.match(/^(\w+)\s*(>=?|<=?|!=|=)\s*(.+)$/);
+                if (filterParts) {
+                    const [, field, op, val] = filterParts;
+                    const opMap = { '>': '$gt', '<': '$lt', '>=': '$gt', '<=': '$lt', '!=': '$ne' };
+                    if (opMap[op]) {
+                        fetchOpts[field] = { [opMap[op]]: val.trim() };
+                    } else {
+                        fetchOpts[field] = val.trim();
+                    }
+                }
+            }
         }
+        records = await adapter.fetchAll(definition.sobject, fetchOpts);
         console.log(`   Fetched ${records.length} records from Salesforce`);
 
         // Log raw + transformed data to accounts/<domain>/migrations/salesforce/logs/
@@ -147,7 +175,7 @@ async function migrate({
             console.log(`   📦 IdMapStore loaded: ${idStore.size} cached mappings for ${definition.prolibuModel}`);
         }
 
-        const idMap = await buildIdMap(writer.api, definition.fieldMappings || [], records, domain);
+        const idMap = await buildIdMap(writer.api, definition.fieldMappings || [], records, domain, definition.joinedFieldMappings);
 
         // ── Build pipeline context ──────────────────────────────────────────────
         const pipelineContext = { idMap, api: writer.api };
@@ -180,18 +208,61 @@ async function migrate({
             console.log(`   ⚠️  ${skippedCount} record(s) skipped (null/invalid, likely missing required fields)`);
         }
 
-        // Write to Prolibu
-        const entityProgress = onProgress
-            ? (progress) => onProgress({ entity: resolvedKey, ...progress })
-            : undefined;
+        // ── Validate altLookupField is not null/empty ────────────────
+        if (definition.altLookupField && !force) {
+            const field = definition.altLookupField;
+            const nullRecords = validRecords.filter(r => r[field] == null || r[field] === '');
+            if (nullRecords.length > 0) {
+                const sampleIds = nullRecords.slice(0, 5).map(r => r.refId || r._id || '?').join(', ');
+                const msg =
+                    `\n❌ Migración abortada: ${nullRecords.length} registro(s) de "${resolvedKey}" tienen "${field}" vacío o nulo.\n` +
+                    `   Ejemplos: [${sampleIds}]\n\n` +
+                    `   El campo "${field}" es requerido por Prolibu. Para solucionarlo, agrega un valor por defecto\n` +
+                    `   en accounts/${domain}/migrations/salesforce/transforms.json:\n\n` +
+                    `   {\n` +
+                    `     "entities": {\n` +
+                    `       "${resolvedKey}": {\n` +
+                    `         "transforms": [\n` +
+                    `           { "type": "default", "field": "${field}", "value": "TU_VALOR_AQUI" }\n` +
+                    `         ]\n` +
+                    `       }\n` +
+                    `     }\n` +
+                    `   }\n`;
+                // Log to stdout (picked up by SSE in UI mode) and persist to migration log
+                console.log(msg);
+                logger.recordEntityResult(log, resolvedKey, logger.mergeWithBaseline(baseline, {
+                    migrated: 0, created: 0, updated: 0, skipped: validRecords.length,
+                    errors: [`Migración abortada: ${nullRecords.length} registro(s) con "${field}" vacío o nulo`],
+                }));
+                logger.finalizeLog(domain, 'salesforce', log);
+                // Hard-stop: flush stdout then exit
+                process.stdout.write('', () => process.exit(1));
+                return; // safety: in case stdout.write callback is delayed
+            }
+        }
+
+        // Write to Prolibu — flush log on every batch so errors are visible in real time
+        const entityProgress = (progress) => {
+            logger.recordEntityResult(log, resolvedKey, logger.mergeWithBaseline(baseline, progress));
+            logger.saveLog(domain, 'salesforce', log);
+            if (onProgress) onProgress({ entity: resolvedKey, ...progress });
+        };
         const result = await writer.writeBatch(definition.prolibuModel, validRecords, {
             idField: definition.idField,
             onProgress: entityProgress,
-            idStore,
+            idStore: force ? null : idStore,
             concurrency,
+            batchDelay,
+            recordDelay,
+            maxRetries,
+            cooldownMs,
+            consecutiveErrorsBeforeCooldown,
+            errorThreshold,
+            prefetchOnly,
+            altLookupField: definition.altLookupField,
         });
 
-        logger.recordEntityResult(log, resolvedKey, result);
+        logger.recordEntityResult(log, resolvedKey, logger.mergeWithBaseline(baseline, result));
         if (onEntityResult) onEntityResult(resolvedKey, result);
         const updatedMsg = result.updated > 0 ? `, 🔄 ${result.updated} updated` : '';
         const createdMsg = result.created > 0 ? `, ➕ ${result.created} created` : '';
@@ -212,10 +283,9 @@ async function migrate({
  * @param {string}   domain        - Prolibu domain (for IdMapStore file path)
  * @returns {Promise<object>}      - { [refModel]: { [sfId]: prolibuId } }
  */
-async function buildIdMap(api, fieldMappings, records, domain) {
+async function buildIdMap(api, fieldMappings, records, domain, joinedFieldMappings) {
     const idMap = {};
     const refFields = fieldMappings.filter(m => m.ref && m.from);
-    if (!refFields.length || !records.length) return idMap;
 
     // Group by refModel — collect unique SF IDs per model
     const byModel = {};
@@ -227,6 +297,28 @@ async function buildIdMap(api, fieldMappings, records, domain) {
             if (val) byModel[model].add(val);
         }
     }
+
+    // Also collect refs from joined field mappings (e.g. Product2Id in lineItems)
+    if (joinedFieldMappings) {
+        for (const aliasMappings of Object.values(joinedFieldMappings)) {
+            for (const mapping of aliasMappings.filter(m => m.ref && m.from)) {
+                const model = mapping.ref;
+                if (!byModel[model]) byModel[model] = new Set();
+                for (const rec of records) {
+                    if (!rec._joined) continue;
+                    for (const joinedVal of Object.values(rec._joined)) {
+                        const items = Array.isArray(joinedVal) ? joinedVal : [joinedVal];
+                        for (const item of items) {
+                            if (item && typeof item === 'object' && item[mapping.from])
+                                byModel[model].add(item[mapping.from]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (!Object.keys(byModel).length || !records.length) return idMap;
 
     // For each refModel, load cached mappings then fetch only what's missing
     const CHUNK_SIZE = 200;
@@ -365,7 +457,12 @@ async function resolveJoins(adapter, records, joins) {
  * Batches IDs into chunks to avoid SOQL length limits.
  */
 async function fetchJoinedRecords(adapter, join, parentIds) {
-    const select = join.select || 'FIELDS(STANDARD)';
+    let select = join.select || 'FIELDS(STANDARD)';
+    // Ensure the foreignKey is always in the SELECT (needed for groupBy)
+    const fk = join.foreignKey;
+    if (fk && !select.split(',').map(s => s.trim()).includes(fk)) {
+        select = `${fk}, ${select}`;
+    }
     const chunkSize = 200; // SF SOQL IN clause limit
     const allRecords = [];
 
@@ -393,7 +490,7 @@ async function fetchJoinedRecords(adapter, join, parentIds) {
  * @returns {object|object[]|null}
  */
 function pickByStrategy(records, strategy = 'latest') {
-    if (!records.length) return null;
+    if (!records.length) return strategy === 'all' ? [] : null;
 
     switch (strategy) {
         case 'all':

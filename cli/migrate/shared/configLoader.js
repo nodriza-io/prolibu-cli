@@ -135,6 +135,7 @@ function mergeWithOverrides(base, overrides) {
         result.entities[key] = {
             fields: Object.values(byFrom),
             static: { ...(baseEntity.static || {}), ...(override.static || {}) },
+            ...(override.joinedFields ? { joinedFields: override.joinedFields } : {}),
         };
     }
     // Add entities that only exist in overrides
@@ -305,6 +306,7 @@ function buildEngineConfig(domain, crm) {
             sobject: schemaEntity.source,
             prolibuModel: schemaEntity.target,
             idField: schemaEntity.idField || 'refId',
+            altLookupField: schemaEntity.altLookupField || null,
             enabled: schemaEntity.enabled !== false,
             defaultSelect: select,
             filters: schemaEntity.filters || null,
@@ -321,6 +323,13 @@ function buildEngineConfig(domain, crm) {
     const batchSize = pipelineConfig.batchSize || 200;
     const concurrency = pipelineConfig.concurrency || 1;
     const onError = pipelineConfig.onError || 'skip';
+    const batchDelay = pipelineConfig.batchDelay || 0;
+    const recordDelay = pipelineConfig.recordDelay || 0;
+    const maxRetries = pipelineConfig.maxRetries || 5;
+    const cooldownMs = pipelineConfig.cooldownMs || 30000;
+    const consecutiveErrorsBeforeCooldown = pipelineConfig.consecutiveErrorsBeforeCooldown || 3;
+    const errorThreshold = pipelineConfig.errorThreshold || 0;
+    const prefetchOnly = pipelineConfig.prefetchOnly === true;
 
     // Cross-validate: warn about entities in pipeline that don't exist in schema
     for (const name of entityOrder) {
@@ -359,6 +368,13 @@ function buildEngineConfig(domain, crm) {
         entityOrder,
         batchSize,
         concurrency,
+        batchDelay,
+        recordDelay,
+        maxRetries,
+        cooldownMs,
+        consecutiveErrorsBeforeCooldown,
+        errorThreshold,
+        prefetchOnly,
         onError,
         phases,
         sources: {
@@ -502,14 +518,21 @@ function buildTransformer(entityDef) {
                     const items = joinedData.map(item => {
                         const mapped = {};
                         for (const m of mappings) {
-                            mapped[m.to] = resolveField(item, m.from) ?? (m.default !== undefined ? m.default : null);
+                            let val = resolveField(item, m.from) ?? (m.default !== undefined ? m.default : null);
+                            if (m.ref && val) {
+                                val = context?.idMap?.[m.ref]?.[val] ?? null;
+                            }
+                            mapped[m.to] = val;
                         }
                         return mapped;
                     });
                     result[`_joinedArray:${alias}`] = items;
                 } else {
                     for (const m of mappings) {
-                        const value = resolveField(joinedData, m.from) ?? (m.default !== undefined ? m.default : null);
+                        let value = resolveField(joinedData, m.from) ?? (m.default !== undefined ? m.default : null);
+                        if (m.ref && value) {
+                            value = context?.idMap?.[m.ref]?.[value] ?? null;
+                        }
                         result[m.to] = value;
                     }
                 }

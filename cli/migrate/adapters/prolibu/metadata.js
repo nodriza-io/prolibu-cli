@@ -29,6 +29,19 @@ exports.entityMapping = {
 exports.adapterModule = null; // no external adapter needed — uses ProlibuApi directly
 
 /**
+ * Test connectivity to the source Prolibu account.
+ * Called by the migration UI when adapterModule is null.
+ */
+exports.testConnection = async function testConnection(creds) {
+  if (!creds?.sourceDomain || !creds?.sourceApiKey) {
+    throw new Error('Missing sourceDomain or sourceApiKey');
+  }
+  const ProlibuApi = require('../../../../lib/vendors/prolibu/ProlibuApi');
+  await new ProlibuApi({ domain: creds.sourceDomain, apiKey: creds.sourceApiKey })
+    .findOne('user', 'me');
+};
+
+/**
  * Credential keys required for this CRM (source Prolibu account).
  */
 exports.credentialFields = ['sourceDomain', 'sourceApiKey'];

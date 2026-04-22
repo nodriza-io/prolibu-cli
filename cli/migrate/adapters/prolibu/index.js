@@ -10,18 +10,22 @@ module.exports = async function prolibuHandler(command, flags) {
     console.log('  status      Show credentials and last discovery summary');
     console.log('');
     console.log('Migration phases (--phase <name>):');
-    console.log('  discover    Fetch source spec, entities, custom fields, and COBs');
+    console.log('  discover    Fetch custom objects, custom fields, and scripts from source');
+    console.log('  scaffold    Sync custom fields and custom objects to destination');
+    console.log('  migrate     Fetch records, transform, and write to destination');
     console.log('');
     console.log('Options:');
     console.log('  --domain <domain>          Destination Prolibu domain');
-    console.log('  --source-domain <domain>   Source Prolibu domain (configure only)');
     console.log('  --apikey <key>             Destination Prolibu API key');
-    console.log('  --count                    Include record counts in discovery (slower)');
+    console.log('  --entity <name|all>        Entity to migrate (default: all)');
+    console.log('  --dry-run                  Run without writing to destination');
+    console.log('  --force                    Re-migrate already-mapped records');
     console.log('');
     console.log('Examples:');
     console.log('  prolibu migrate prolibu configure --domain dest.prolibu.com');
     console.log('  prolibu migrate prolibu run --domain dest.prolibu.com --phase discover');
-    console.log('  prolibu migrate prolibu run --domain dest.prolibu.com --phase discover --count');
+    console.log('  prolibu migrate prolibu run --domain dest.prolibu.com --phase migrate --entity companies');
+    console.log('  prolibu migrate prolibu run --domain dest.prolibu.com --phase migrate --dry-run');
     console.log('  prolibu migrate prolibu status --domain dest.prolibu.com');
     return;
   }

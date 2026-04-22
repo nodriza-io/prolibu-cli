@@ -1,0 +1,58 @@
+{
+    "pipeline": {
+        "order": [
+            "stages",
+            "companies",
+            "contacts",
+            "products",
+            "pricebooks",
+            "pricebookentries",
+            "deals"
+        ],
+        "flow": [
+            {
+                "name": "Base data",
+                "entities": [
+                    "stages",
+                    "products",
+                    "pricebooks",
+                    "pricebookentries"
+                ]
+            },
+            {
+                "name": "People",
+                "entities": [
+                    "companies",
+                    "contacts"
+                ]
+            },
+            {
+                "name": "Deals",
+                "entities": [
+                    "deals"
+                ]
+            }
+        ],
+        "batchSize": 100,
+        "concurrency": 8,
+        "batchDelay": 1000,
+        "recordDelay": 500,
+        "maxRetries": 5,
+        "cooldownMs": 30000,
+        "consecutiveErrorsBeforeCooldown": 3,
+        "errorThreshold": 20,
+        "onError": "skip"
+    },
+    "phases": [
+        {
+            "key": "discover",
+            "label": "Discovery",
+            "description": "Fetch custom objects, custom fields, and scripts from source"
+        },
+        {
+            "key": "migrate",
+            "label": "Migration",
+            "description": "Execute data migration from source Prolibu to destination Prolibu"
+        }
+    ]
+}

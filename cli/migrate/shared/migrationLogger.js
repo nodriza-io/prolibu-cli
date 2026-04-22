@@ -20,7 +20,6 @@ function createLog() {
     completed: null,
     dryRun: false,
     entities: {},
-    errors: [],
   };
 }
 
@@ -64,7 +63,24 @@ function recordEntityResult(log, entity, { migrated = 0, created = 0, updated = 
     migrated, created, updated, skipped, errors,
     lastRun: new Date().toISOString(),
   };
-  log.errors.push(...errors.map(e => ({ entity, error: e })));
+}
+
+/**
+ * Merge current stats with a previously captured baseline.
+ * Use this to accumulate results across migration runs.
+ * @param {object|null} baseline - previous entity stats snapshot (captured before processing)
+ * @param {object} stats - current run stats
+ * @returns {object} merged stats
+ */
+function mergeWithBaseline(baseline, stats) {
+  if (!baseline) return stats;
+  return {
+    migrated: (baseline.migrated || 0) + (stats.migrated || 0),
+    created: (baseline.created || 0) + (stats.created || 0),
+    updated: (baseline.updated || 0) + (stats.updated || 0),
+    skipped: (baseline.skipped || 0) + (stats.skipped || 0),
+    errors: [...(baseline.errors || []), ...(stats.errors || [])],
+  };
 }
 
 /**
@@ -100,10 +116,13 @@ function printSummary(log) {
       console.log(`   ${entity}: ✅ ${stats.migrated} migrated${createdMsg}${updatedMsg}, ⏭️ ${stats.skipped} skipped, ❌ ${stats.errors.length} errors${lastRunMsg}`);
     }
   }
-  if (log.errors.length > 0) {
+  const allErrors = Object.entries(log.entities).flatMap(([entity, stats]) =>
+    (stats.errors || []).map(error => ({ entity, error }))
+  );
+  if (allErrors.length > 0) {
     console.log('');
     console.log('❌ Errors:');
-    log.errors.forEach(({ entity, error }) => {
+    allErrors.forEach(({ entity, error }) => {
       console.log(`   [${entity}] ${error}`);
     });
   }
@@ -117,6 +136,7 @@ module.exports = {
   saveLog,
   finalizeLog,
   recordEntityResult,
+  mergeWithBaseline,
   getLastEntityRun,
   printSummary,
 };

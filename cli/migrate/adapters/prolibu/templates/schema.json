@@ -1,0 +1,46 @@
+{
+  "entities": {
+    "stages": {
+      "source": "stage",
+      "target": "stage",
+      "enabled": true,
+      "idField": "refId"
+    },
+    "companies": {
+      "source": "company",
+      "target": "company",
+      "enabled": true,
+      "idField": "refId"
+    },
+    "contacts": {
+      "source": "contact",
+      "target": "contact",
+      "enabled": true,
+      "idField": "refId"
+    },
+    "products": {
+      "source": "product",
+      "target": "product",
+      "enabled": true,
+      "idField": "refId"
+    },
+    "pricebooks": {
+      "source": "pricebook",
+      "target": "pricebook",
+      "enabled": true,
+      "idField": "refId"
+    },
+    "pricebookentries": {
+      "source": "pricebookentry",
+      "target": "pricebookentry",
+      "enabled": true,
+      "idField": "refId"
+    },
+    "deals": {
+      "source": "deal",
+      "target": "deal",
+      "enabled": true,
+      "idField": "refId"
+    }
+  }
+}

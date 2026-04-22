@@ -43,7 +43,7 @@ class SalesforceAdapter {
 
   /**
    * Convenience: fetch ALL records across all pages.
-   * Re-fetches with increasing page numbers until empty.
+   * Uses cursor-based pagination (Id > lastId) to avoid Salesforce's 2000 OFFSET limit.
    *
    * @param {string} sobjectType
    * @param {object} options - Options object (not raw SOQL); limit per page defaults to 200
@@ -51,15 +51,25 @@ class SalesforceAdapter {
    */
   async fetchAll(sobjectType, options = {}) {
     const batchSize = options.limit || 200;
-    let page = 1;
     let allRecords = [];
+    let lastId = null;
+
+    // Ensure Id is in the select fields for cursor pagination
+    let select = options.select || 'Id';
+    if (!/\bId\b/i.test(select)) {
+      select = `Id, ${select}`;
+    }
 
     while (true) {
-      const batch = await this.fetch(sobjectType, { ...options, limit: batchSize, page });
+      const queryOpts = { ...options, select, limit: batchSize, sort: 'Id ASC', page: 1 };
+      if (lastId) {
+        queryOpts.Id = { $gt: lastId };
+      }
+      const batch = await this.fetch(sobjectType, queryOpts);
       if (!batch || batch.length === 0) break;
       allRecords = allRecords.concat(batch);
+      lastId = batch[batch.length - 1].Id;
       if (batch.length < batchSize) break; // last page
-      page++;
     }
 
     return allRecords;

@@ -1,0 +1,16 @@
+- llegar hasta la ventna de mapeo de datos
+- hacer mapeo de datos con agente de IA
+- geenrar visor de base de datos relacional
+- generar un formato propio de prolibu como estandar de mapeo de base de datos
+- generar el comando de create con repositorio
+- reutilizar vendor
+- reutilizar map de vendor
+- basarse en vendor para generar los maps
+- el create debe de ser igual que el de scripts
+- quitar run de las phases. correr directamente
+- cambiar el transform por map
+- crear la carpeta diccionady
+- pintar la db con las relaciones en workbench
+- los archivos privados siempre excluidos con el gitignore
+- revisar lideres en ETL
+- generar skill de maping

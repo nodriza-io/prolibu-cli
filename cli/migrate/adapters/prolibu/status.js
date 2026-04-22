@@ -41,14 +41,14 @@ module.exports = async function statusProlibu(flags) {
     return;
   }
 
-  const entityCount = Object.keys(discovery.entities || {}).length;
   const cfCount = (discovery.customFields || []).length;
   const cobCount = (discovery.customObjects || []).length;
+  const scriptCount = (discovery.scripts || []).length;
   const discoveredAt = new Date(discovery.discoveredAt).toLocaleString();
 
   console.log(`📋 Last discovery: ${discoveredAt}`);
-  console.log(`   Entities:       ${entityCount}`);
   console.log(`   Custom fields:  ${cfCount}`);
   console.log(`   Custom objects: ${cobCount}`);
+  console.log(`   Scripts:        ${scriptCount}`);
   console.log('');
 };

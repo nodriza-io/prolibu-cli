@@ -42,7 +42,12 @@ function resolvePipeline(domain, crm, entityKey, baseTransformer) {
 
     if (pipeline) {
         // Inject baseTransformer into any step named 'base'
-        const hydratedSteps = pipeline.steps.map((step) => {
+        const hasBase = pipeline.steps.some((s) => s.name === 'base');
+        const steps = hasBase
+            ? pipeline.steps
+            : [{ name: 'base' }, ...pipeline.steps];
+
+        const hydratedSteps = steps.map((step) => {
             if (step.name === 'base') {
                 return { ...step, transform: baseTransformer };
             }

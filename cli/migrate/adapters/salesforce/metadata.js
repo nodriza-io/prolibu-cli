@@ -18,30 +18,31 @@ exports.label = 'Salesforce';
  */
 exports.entityMapping = {
     // Core CRM objects
-    Account:             { entityKey: 'accounts',        prolibu: 'company',         notes: 'Companies / customers' },
-    Contact:             { entityKey: 'contacts',        prolibu: 'contact',         notes: 'People linked to companies' },
-    Lead:                { entityKey: 'leads',           prolibu: 'contact',         notes: 'Unqualified contacts — tag as lead' },
-    Opportunity:         { entityKey: 'opportunities',   prolibu: 'deal',            notes: 'Sales pipeline opportunities' },
-    OpportunityStage:    { entityKey: 'stages',          prolibu: 'stage',           notes: 'Pipeline stages' },
-    Quote:               { entityKey: 'quotes',          prolibu: 'quote',           notes: 'Commercial proposals' },
-    Contract:            { entityKey: 'contracts',       prolibu: 'contract',        notes: 'Signed agreements' },
-    Case:                { entityKey: 'cases',           prolibu: 'ticket',          notes: 'Support / service cases' },
+    Account: { entityKey: 'accounts', prolibu: 'company', notes: 'Companies / customers' },
+    Contact: { entityKey: 'contacts', prolibu: 'contact', notes: 'People linked to companies' },
+    Lead: { entityKey: 'leads', prolibu: 'contact', notes: 'Unqualified contacts — tag as lead' },
+    Opportunity: { entityKey: 'opportunities', prolibu: 'deal', notes: 'Sales pipeline opportunities' },
+    OpportunityStage: { entityKey: 'stages', prolibu: 'stage', notes: 'Pipeline stages' },
+    LeadStatus: { entityKey: 'leadStages', prolibu: 'stage', notes: 'Lead pipeline stages' },
+    Quote: { entityKey: 'quotes', prolibu: 'quote', notes: 'Commercial proposals' },
+    Contract: { entityKey: 'contracts', prolibu: 'contract', notes: 'Signed agreements' },
+    Case: { entityKey: 'cases', prolibu: 'ticket', notes: 'Support / service cases' },
     // Products & pricing
-    Product2:            { entityKey: 'products',        prolibu: 'product',         notes: 'Product catalog' },
-    Pricebook2:          { entityKey: 'pricebooks',      prolibu: 'pricebook',       notes: 'Price books' },
-    PricebookEntry:      { entityKey: 'pricebookentries',prolibu: 'pricebookentry',  notes: 'Price per product per pricebook' },
-    OpportunityLineItem: { entityKey: 'lineitems',       prolibu: 'lineitem',        notes: 'Line items in deals/quotes' },
+    Product2: { entityKey: 'products', prolibu: 'product', notes: 'Product catalog' },
+    Pricebook2: { entityKey: 'pricebooks', prolibu: 'pricebook', notes: 'Price books' },
+    PricebookEntry: { entityKey: 'pricebookentries', prolibu: 'pricebookentry', notes: 'Price per product per pricebook' },
+    OpportunityLineItem: { entityKey: 'lineitems', prolibu: 'lineitem', notes: 'Line items in deals/quotes' },
     // Activities
-    Task:                { entityKey: 'tasks',           prolibu: 'task',            notes: 'Tasks and to-dos' },
-    Event:               { entityKey: 'events',          prolibu: 'meeting',         notes: 'Calendar events / meetings' },
-    Note:                { entityKey: 'notes',           prolibu: 'note',            notes: 'Notes attached to records' },
-    Call:                { entityKey: 'calls',           prolibu: 'call',            notes: 'Call logs' },
+    Task: { entityKey: 'tasks', prolibu: 'task', notes: 'Tasks and to-dos' },
+    Event: { entityKey: 'events', prolibu: 'meeting', notes: 'Calendar events / meetings' },
+    Note: { entityKey: 'notes', prolibu: 'note', notes: 'Notes attached to records' },
+    Call: { entityKey: 'calls', prolibu: 'call', notes: 'Call logs' },
     // Marketing
-    Campaign:            { entityKey: 'campaigns',       prolibu: 'campaign',        notes: 'Marketing campaigns' },
+    Campaign: { entityKey: 'campaigns', prolibu: 'campaign', notes: 'Marketing campaigns' },
     // People & teams
-    User:                { entityKey: 'users',           prolibu: 'user',            notes: 'Internal users / reps' },
+    User: { entityKey: 'users', prolibu: 'user', notes: 'Internal users / reps' },
     // Invoicing
-    Invoice:             { entityKey: 'invoices',        prolibu: 'invoice',         notes: 'Invoices (if SF Billing active)' },
+    Invoice: { entityKey: 'invoices', prolibu: 'invoice', notes: 'Invoices (if SF Billing active)' },
 };
 
 /**

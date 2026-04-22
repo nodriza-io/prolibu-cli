@@ -60,6 +60,7 @@ const ENTITY_DEFINITIONS = {
     sobject: 'Account',
     prolibuModel: 'Company',
     idField: 'refId',
+    altLookupField: 'companyCode',
     baseTransformer: () => require('./transformers/accounts'),
     defaultSelect: 'Id, Name, Industry, Phone, Website, BillingCity, BillingCountry',
   },
@@ -115,6 +116,14 @@ function resolveConfig(domain) {
       entityDefinitions: ENTITY_DEFINITIONS,
       entityOrder: ENTITY_ORDER,
       batchSize: domainConfig.batchSize || 200,
+      concurrency: 1,
+      batchDelay: 0,
+      recordDelay: 0,
+      maxRetries: 5,
+      cooldownMs: 30000,
+      consecutiveErrorsBeforeCooldown: 3,
+      errorThreshold: 0,
+      prefetchOnly: false,
     };
   }
 }
@@ -144,7 +153,7 @@ async function run({ domain, apiKey, entities, phases: phaseFilter, from, to, dr
 
   // Resolve config from YAML (with fallback to hardcoded definitions)
   const resolved = resolveConfig(domain);
-  const { entityDefinitions, entityOrder, batchSize, concurrency } = resolved;
+  const { entityDefinitions, entityOrder, batchSize, concurrency, batchDelay, recordDelay, maxRetries, cooldownMs, consecutiveErrorsBeforeCooldown, errorThreshold, prefetchOnly } = resolved;
 
   // Resolve which phases to run
   let phasesToRun = PHASES;
@@ -167,7 +176,9 @@ async function run({ domain, apiKey, entities, phases: phaseFilter, from, to, dr
   let adapter;
   let writer;
 
-  const log = logger.createLog();
+  const log = logger.readLog(domain, 'salesforce') || logger.createLog();
+  log.started = new Date().toISOString();
+  log.completed = null;
   log.dryRun = dryRun;
 
   const needsSalesforce = phasesToRun.some((p) => ['discover', 'migrate'].includes(p.name));
@@ -187,6 +198,18 @@ async function run({ domain, apiKey, entities, phases: phaseFilter, from, to, dr
 
   if (needsWriter) {
     writer = new ProlibuWriter({ domain, apiKey, dryRun });
+
+    // ── Pre-flight health check ──────────────────────────────
+    if (!dryRun) {
+      console.log(`🏥 Health check: https://${domain}/version ...`);
+      try {
+        const version = await writer.healthCheck();
+        console.log(`✅ Prolibu backend is healthy (${version?.version || 'OK'})`);
+      } catch (err) {
+        throw new Error(`❌ ${err.message}\n   The Prolibu backend at ${domain} is not reachable. Fix the server before running the migration.`);
+      }
+      console.log('');
+    }
   }
 
   const context = {
@@ -199,6 +222,13 @@ async function run({ domain, apiKey, entities, phases: phaseFilter, from, to, dr
     entityDefinitions,
     batchSize,
     concurrency,
+    batchDelay,
+    recordDelay,
+    maxRetries,
+    cooldownMs,
+    consecutiveErrorsBeforeCooldown,
+    errorThreshold,
+    prefetchOnly,
     dryRun,
     withCount,
     force,

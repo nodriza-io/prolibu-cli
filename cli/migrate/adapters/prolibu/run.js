@@ -57,9 +57,19 @@ module.exports = async function runProlibuMigration(flags) {
     phases = [phaseFlag];
   }
 
-  // 5. --count flag
-  const withCount = flags.count === true;
+  // 5. Parse entities
+  const entityFlag = flags.entity;
+  let entities;
+  if (entityFlag && entityFlag !== 'all') {
+    entities = entityFlag.split(',').map(e => e.trim());
+  } else {
+    entities = ['all'];
+  }
 
-  // 6. Run
-  await engine.run({ domain, apiKey, phases, withCount });
+  // 6. Flags
+  const dryRun = flags['dry-run'] === true || flags.dryRun === true;
+  const force = flags.force === true;
+
+  // 7. Run
+  await engine.run({ domain, apiKey, phases, entities, dryRun, force });
 };

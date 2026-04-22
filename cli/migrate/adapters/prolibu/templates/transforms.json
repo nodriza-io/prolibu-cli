@@ -1,0 +1,25 @@
+{
+  "entities": {
+    "stages": {
+      "transforms": []
+    },
+    "companies": {
+      "transforms": []
+    },
+    "contacts": {
+      "transforms": []
+    },
+    "products": {
+      "transforms": []
+    },
+    "pricebooks": {
+      "transforms": []
+    },
+    "pricebookentries": {
+      "transforms": []
+    },
+    "deals": {
+      "transforms": []
+    }
+  }
+}

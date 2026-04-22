@@ -30,6 +30,8 @@ export default function FlowEditor() {
   const [running, setRunning] = useState(false);
   const [logs, setLogs] = useState([]);
   const logsEndRef = useRef(null);
+  const cancelledRef = useRef(false);
+  const stepResolverRef = useRef(null);
 
   // Entities already placed in the flow
   const assignedEntities = new Set(flow.flatMap((s) => s.entities));
@@ -207,17 +209,22 @@ export default function FlowEditor() {
 
   // Cancel running migration
   const handleCancel = async () => {
+    cancelledRef.current = true;
+    // Unblock any pending step-wait so the loop can exit
+    if (stepResolverRef.current) {
+      stepResolverRef.current();
+      stepResolverRef.current = null;
+    }
     try {
       await cancelMigration();
-      setLogs((prev) => [
-        ...prev,
-        { time: new Date(), text: "⛔ Migración cancelada por el usuario." },
-      ]);
-    } catch (err) {
-      showToast(`Error al cancelar: ${err.message}`, true);
-    } finally {
-      setRunning(false);
+    } catch {
+      /* server may already be dead */
     }
+    setLogs((prev) => [
+      ...prev,
+      { time: new Date(), text: "⛔ Migración cancelada por el usuario." },
+    ]);
+    setRunning(false);
   };
 
   // Execute migration flow
@@ -232,8 +239,11 @@ export default function FlowEditor() {
       return;
     }
 
+    cancelledRef.current = false;
     setRunning(true);
     setLogs([{ time: new Date(), text: "🚀 Iniciando migración..." }]);
+
+    let stepFailed = false;
 
     // Connect to SSE stream
     const closeSse = subscribeMigrationLogs(
@@ -241,14 +251,26 @@ export default function FlowEditor() {
         if (msg.type === "log") {
           setLogs((prev) => [...prev, { time: new Date(), text: msg.data }]);
         } else if (msg.type === "done") {
-          setLogs((prev) => [
-            ...prev,
-            {
-              time: new Date(),
-              text: `✅ ${msg.data || "Migración completada"}`,
-            },
-          ]);
+          const failed = /fail|error/i.test(msg.data || "");
+          if (failed) {
+            stepFailed = true;
+          }
+          if (!cancelledRef.current && !failed) {
+            setLogs((prev) => [
+              ...prev,
+              {
+                time: new Date(),
+                text: `✅ ${msg.data || "Migración completada"}`,
+              },
+            ]);
+          }
+          // Resolve pending step-wait so the loop can proceed
+          if (stepResolverRef.current) {
+            stepResolverRef.current();
+            stepResolverRef.current = null;
+          }
         } else if (msg.type === "error") {
+          stepFailed = true;
           setLogs((prev) => [
             ...prev,
             { time: new Date(), text: `❌ ${msg.data}` },
@@ -263,8 +285,12 @@ export default function FlowEditor() {
     // Execute each step sequentially
     try {
       for (let i = 0; i < flow.length; i++) {
+        if (cancelledRef.current) break;
+
         const step = flow[i];
         if (step.entities.length === 0) continue;
+
+        stepFailed = false;
 
         setLogs((prev) => [
           ...prev,
@@ -279,14 +305,30 @@ export default function FlowEditor() {
           throw new Error(res.error || `Error en paso ${i + 1}`);
         }
 
-        // Wait a bit for SSE logs to arrive before next step
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        // Wait for step completion (SSE 'done' event) or cancellation
+        await new Promise((resolve) => {
+          stepResolverRef.current = resolve;
+        });
+
+        if (stepFailed) {
+          setLogs((prev) => [
+            ...prev,
+            {
+              time: new Date(),
+              text: `⛔ Flujo detenido: el paso ${i + 1} (${step.name}) falló.`,
+            },
+          ]);
+          break;
+        }
+
+        if (cancelledRef.current) break;
       }
     } catch (err) {
       setLogs((prev) => [
         ...prev,
         { time: new Date(), text: `❌ Error: ${err.message}` },
       ]);
+    } finally {
       setRunning(false);
       closeSse();
     }
@@ -489,19 +531,32 @@ export default function FlowEditor() {
                   defaultValue=""
                   onBlur={() => setAddingEntity(false)}
                   onChange={async (e) => {
-                    const chosen = addableEntities.find((a) => a.entityKey === e.target.value);
+                    const chosen = addableEntities.find(
+                      (a) => a.entityKey === e.target.value,
+                    );
                     if (!chosen) return;
                     setAddingEntity(false);
                     try {
-                      await addSchemaEntity({ source: chosen.source, target: chosen.target, entityKey: chosen.entityKey });
+                      await addSchemaEntity({
+                        source: chosen.source,
+                        target: chosen.target,
+                        entityKey: chosen.entityKey,
+                      });
                       setAllEntities((prev) => [...prev, chosen.entityKey]);
-                      setAddableEntities((prev) => prev.filter((a) => a.entityKey !== chosen.entityKey));
+                      setAddableEntities((prev) =>
+                        prev.filter((a) => a.entityKey !== chosen.entityKey),
+                      );
                     } catch (err) {
-                      showToast(`Error al agregar entidad: ${err.message}`, true);
+                      showToast(
+                        `Error al agregar entidad: ${err.message}`,
+                        true,
+                      );
                     }
                   }}
                 >
-                  <option value="" disabled>Selecciona entidad…</option>
+                  <option value="" disabled>
+                    Selecciona entidad…
+                  </option>
                   {addableEntities.map((a) => (
                     <option key={a.entityKey} value={a.entityKey}>
                       {a.source} → {a.target}

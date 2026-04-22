@@ -3,15 +3,15 @@
 const ContactMap = require('../../../../../lib/vendors/salesforce/maps/ContactMap');
 
 /**
- * Default Salesforce → Prolibu pipeline for the 'contacts' entity.
+ * Default Salesforce → Prolibu pipeline for the 'leads' entity.
  * Applied to ALL domains unless overridden by:
- *   accounts/<domain>/migrations/salesforce/pipelines/contacts.js
+ *   accounts/<domain>/migrations/salesforce/pipelines/leads.js
  *
  * Steps:
  *   base           — engine injects the yaml/base transformer here
  *   normalizeFields — fixes country/state values that SF sends as full strings:
- *                    - address.country: "United States" → "US"
- *                    - address.state:   "Texas"         → "TX"
+ *                    - address.country: "Colombia" → "CO"
+ *                    - address.state:   "Antioquia" → state code
  */
 module.exports = {
     steps: [
@@ -33,7 +33,7 @@ module.exports = {
                 // Country: full name → ISO code
                 if (origCountry) {
                     const countryCode = ContactMap.transforms['address.country'](origCountry);
-                    record['address.country'] = countryCode; // undefined clears bad values (e.g. cities)
+                    record['address.country'] = countryCode;
                     if (origCountry) record['customFields.originalCountry'] = origCountry;
                 }
 
