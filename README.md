@@ -460,22 +460,27 @@ prolibu-cli/
 ├── accounts/               # Your workspaces
 │   └── <domain>/
 │       ├── profile.json    # Domain config (API key)
-│       ├── <scriptName>/   # Script project
-│       │   ├── index.js
-│       │   ├── config.json     # Model data (variables, hooks, git)
-│       │   ├── settings.json   # Build settings (minify, comments)
-│       │   ├── lib/
-│       │   ├── test/
-│       │   └── README.md       # Synced to config.json.readme
-│       ├── <siteName>/     # Site project
-│       │   ├── config.json     # Model data (siteType, git)
-│       │   ├── settings.json   # Build settings (port)
-│       │   ├── README.md       # Synced to config.json.readme
-│       │   ├── dist.zip        # Generated package
-│       │   └── public/         # Source files
-│       │       ├── index.html
-│       │       ├── styles.css
-│       │       └── app.js
+│       ├── scripts/        # Script & hook projects
+│       │   └── <scriptName>/
+│       │       ├── index.js
+│       │       ├── config.json     # Model data (variables, hooks, git)
+│       │       ├── settings.json   # Build settings (minify, comments)
+│       │       ├── lib/
+│       │       ├── test/
+│       │       └── README.md       # Synced to config.json.readme
+│       ├── sites/          # Site projects
+│       │   └── <siteName>/
+│       │       ├── config.json     # Model data (siteType, git)
+│       │       ├── settings.json   # Build settings (port)
+│       │       ├── README.md       # Synced to config.json.readme
+│       │       ├── dist.zip        # Generated package
+│       │       └── public/         # Source files
+│       │           ├── index.html
+│       │           ├── styles.css
+│       │           └── app.js
+│       ├── objects/        # Data objects (COBs, CustomFields)
+│       │   ├── Cob/
+│       │   └── CustomField/
 │       └── <vtName>/       # Virtual tour project
 │           ├── index.js        # Bulk upload script
 │           ├── config.json     # Configuration
