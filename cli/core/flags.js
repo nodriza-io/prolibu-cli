@@ -19,7 +19,8 @@ function parseFlags(argv) {
       'ext',
       'message',
       'modelName',
-      'id'
+      'id',
+      'type'
     ],
     boolean: [
       'watch',

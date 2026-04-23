@@ -58,8 +58,7 @@
     "test:site": "jest test/site.test.js",
     "test:plugin": "jest test/plugin.test.js",
     "test:account": "jest test/account.test.js",
-    "test:customfield": "jest test/customfield.test.js",
-    "test:cob": "jest test/cob.test.js",
+    "test:object": "jest test/object.test.js",
     "test:all": "jest test/"
   }
 }
