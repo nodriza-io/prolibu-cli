@@ -146,22 +146,30 @@ async function processTour(api, tourFolderName) {
     let colorMap = { external: {}, internal: {} };
     let totalColors = 0;
 
-    // 2. Solo procesar colores para Automotive
+    // 2. Crear VirtualTour primero (sin colores)
+    const vtSpinner = ui.createSpinner('Creating VirtualTour...');
+    vtSpinner.start();
+
+    const virtualTour = await createVirtualTour(api, tourFolderName, config, { external: {}, internal: {} }, tourType);
+    vtSpinner.succeed(`VirtualTour: ${ui.c.cyan(virtualTour._id)}`);
+
+    // 3. Subir colores con tourId (solo Automotive)
     if (tourType === 'automotive') {
         const colorSpinner = ui.createSpinner('Processing colors...');
         colorSpinner.start();
 
-        colorMap = await uploadColors(api, tourPath, colorSpinner);
+        colorMap = await uploadColors(api, tourPath, virtualTour._id, colorSpinner);
         totalColors = Object.keys(colorMap.external).length + Object.keys(colorMap.internal).length;
         colorSpinner.succeed(`Colors: ${ui.c.green(totalColors)} registered`);
+
+        // Actualizar VirtualTour con los color IDs
+        if (totalColors > 0) {
+            await api.update('virtualtour', virtualTour._id, {
+                'config.automotiveColors.external': Object.values(colorMap.external).map(c => c.id),
+                'config.automotiveColors.internal': Object.values(colorMap.internal).map(c => c.id)
+            });
+        }
     }
-
-    // 3. Crear VirtualTour
-    const vtSpinner = ui.createSpinner('Creating VirtualTour...');
-    vtSpinner.start();
-
-    const virtualTour = await createVirtualTour(api, tourFolderName, config, colorMap, tourType);
-    vtSpinner.succeed(`VirtualTour: ${ui.c.cyan(virtualTour._id)}`);
 
     // 4. Crear scenes
     console.log('');
@@ -204,7 +212,7 @@ function loadConfig(tourPath) {
 /**
  * Sube los archivos de colores y retorna un mapa de colorSlug → colorId
  */
-async function uploadColors(api, tourPath, spinner) {
+async function uploadColors(api, tourPath, virtualTourId, spinner) {
     const fs = require('fs');
     const path = require('path');
 
@@ -237,7 +245,8 @@ async function uploadColors(api, tourPath, spinner) {
                 filePath: path.join(typePath, file),
                 colorName,
                 colorSlug,
-                automotiveType: type
+                automotiveType: type,
+                virtualTourId
             });
 
             if (fileId) {
@@ -270,20 +279,18 @@ function generateUUID() {
 /**
  * Sube un archivo de color con metadatos
  */
-async function uploadColorFile(api, { filePath, colorName, colorSlug, automotiveType }) {
+async function uploadColorFile(api, { filePath, colorName, colorSlug, automotiveType, virtualTourId }) {
     const fs = require('fs');
     const path = require('path');
     const FormData = require('form-data');
 
     const formData = new FormData();
-    const fileName = path.basename(filePath);
-    const timestamp = Date.now();
     const colorCode = colorSlug.toUpperCase().replace(/[^A-Z0-9]/g, '-').substring(0, 20);
     const uuid = generateUUID();
 
     formData.append('file', fs.createReadStream(filePath));
     formData.append('isPublic', 'true');
-    formData.append('filePath', `.api/virtualTour/config.${automotiveType}/${timestamp}_${fileName}`);
+    formData.append('filePath', `.api/VirtualTour/${virtualTourId}/config.automotiveColors.${automotiveType}/${colorSlug}${path.extname(filePath)}`);
     formData.append('meta.id', uuid);
     formData.append('meta.name', colorName);
     formData.append('meta.hex', '#000000');
