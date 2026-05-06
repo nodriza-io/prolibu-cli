@@ -155,6 +155,7 @@ async function downloadVirtualTour(tourData, outputPath) {
     // 1. Guardar configuración
     console.log('\n   📋 Guardando _config.json...');
     const config = {
+        _id: tourData._id,
         virtualTourName: tourData.virtualTourName,
         virtualTourCode: tourCode,
         description: tourData.description,

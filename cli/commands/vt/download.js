@@ -121,6 +121,7 @@ module.exports = async function downloadVt(flags) {
 
     try {
         tourData = await fetchJson(apiUrl, {
+            'Authorization': `Bearer ${apiKey}`,
             'Cookie': `apiKey=${apiKey}`
         });
     } catch (error) {
