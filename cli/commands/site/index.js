@@ -13,6 +13,7 @@ module.exports = async function siteHandler(command, flags, args) {
     console.log('  --domain <domain>');
     console.log('  --prefix <name>              Site name prefix');
     console.log('  --siteType <Static|SPA>      Site type (default: Static)');
+    console.log('  --template <name>            Project template: vanilla, react, vue (default: vanilla)');
     console.log('  --watch, -w                  Watch for changes and hot reload');
     console.log('  --port <port>                Local server port (default: 3030)');
     console.log('  --ext <extensions>           File extensions to watch (default: html,css,js)');

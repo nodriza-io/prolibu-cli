@@ -11,6 +11,7 @@ module.exports = async function createSite(flags) {
   let repo = flags.repo;
   let siteType = flags.siteType;
   let apiKey = flags.apikey;
+  let template = flags.template;
 
   // 1. domain
   if (!domain) {
@@ -68,6 +69,34 @@ module.exports = async function createSite(flags) {
     }
     // Normalize 'Spa' to 'SPA'
     if (siteType === 'Spa') siteType = 'SPA';
+  }
+
+  // 4b. template
+  const TEMPLATES = ['vanilla', 'react', 'vue'];
+  if (!template) {
+    const response = await inquirer.default.prompt({
+      type: 'list',
+      name: 'template',
+      message: 'Select project template:',
+      choices: [
+        { name: 'Vanilla (HTML/CSS/JS)', value: 'vanilla' },
+        { name: 'React + Vite + TypeScript', value: 'react' },
+        { name: 'Vue + Vite + TypeScript', value: 'vue' },
+      ],
+      default: 'vanilla'
+    });
+    template = response.template;
+  } else {
+    template = template.toLowerCase();
+    if (!TEMPLATES.includes(template)) {
+      console.error(`Invalid template: ${template}. Must be one of: ${TEMPLATES.join(', ')}`);
+      process.exit(1);
+    }
+  }
+
+  // If using a build-tool template, default to SPA
+  if (template !== 'vanilla' && !flags.siteType) {
+    siteType = 'SPA';
   }
 
   // 5. repo (optional) - only ask if no .git exists in domain (for initial clone)
@@ -131,23 +160,40 @@ module.exports = async function createSite(flags) {
       fs.mkdirSync(repoDir, { recursive: true });
     }
     
-    // Copy template files from templates/site
-    const templateDir = path.join(__dirname, '../../../templates/site');
-    if (fs.existsSync(templateDir)) {
-      fs.readdirSync(templateDir).forEach(item => {
-        const src = path.join(templateDir, item);
+    // Copy template files based on selected template
+    const baseTemplateDir = path.join(__dirname, '../../../templates/site');
+    const templateDir = template === 'vanilla'
+      ? baseTemplateDir
+      : path.join(__dirname, `../../../templates/site-${template}`);
+
+    // Always copy base template first (config.json, settings.json, README, .gitignore)
+    if (fs.existsSync(baseTemplateDir)) {
+      ['config.json', 'settings.json', 'README.md', '.gitignore'].forEach(item => {
+        const src = path.join(baseTemplateDir, item);
         const dest = path.join(repoDir, item);
-        const stat = fs.statSync(src);
-        
-        // Skip config.json from template, we'll merge it later
-        if (item === 'config.json') return;
-        
-        if (stat.isDirectory()) {
-          fs.cpSync(src, dest, { recursive: true });
-        } else {
+        if (fs.existsSync(src) && !fs.existsSync(dest)) {
           fs.copyFileSync(src, dest);
         }
       });
+    }
+
+    // Then copy template-specific files (overrides base if exists)
+    if (fs.existsSync(templateDir)) {
+      const copyRecursive = (srcDir, destDir) => {
+        if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+        fs.readdirSync(srcDir).forEach(item => {
+          const src = path.join(srcDir, item);
+          const dest = path.join(destDir, item);
+          const stat = fs.statSync(src);
+          if (item === 'config.json') return; // merged later
+          if (stat.isDirectory()) {
+            copyRecursive(src, dest);
+          } else {
+            fs.copyFileSync(src, dest);
+          }
+        });
+      };
+      copyRecursive(templateDir, repoDir);
     }
     
     // Merge template config with repo config (repo takes priority for variables/lifecycleHooks)
@@ -181,7 +227,14 @@ module.exports = async function createSite(flags) {
       fs.copyFileSync(templateSettingsPath, repoSettingsPath);
     }
     
-    console.log(`[INIT] Site structure initialized from templates in ${repoDir}`);
+    console.log(`[INIT] Site structure initialized from ${template} template in ${repoDir}`);
+
+    // Install dependencies for build-tool templates
+    if (template !== 'vanilla' && fs.existsSync(path.join(repoDir, 'package.json'))) {
+      console.log(`[DEPS] Installing dependencies...`);
+      execSync('npm install', { cwd: repoDir, stdio: 'inherit' });
+      console.log(`[DEPS] Dependencies installed`);
+    }
   } catch (err) {
     console.error(`[ERROR] Failed to clone repository: ${err.message}`);
     process.exit(1);
