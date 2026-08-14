@@ -362,19 +362,40 @@ A `Site` hosts a static site or a single-page app (SPA) at a stable public URL �
 
 ### 3.1 The `Site` resource
 
-Managed through `/v2/site/` CRUD (authenticated). Key fields:
+Managed through `/v2/site/` CRUD (authenticated). Both `_id` and `siteCode` work as the path identifier, so `GET /v2/site/my-landing` is valid.
 
 | Field | Type | Notes |
 |---|---|---|
 | `siteName` | `String`, required | Human-readable name. |
-| `siteCode` | `String` | URL slug and short-URL code; auto-generated if omitted. |
-| `siteType` | `String` enum, default `Static` | `Static` or `SPA`. Determines the served subpath. |
-| `package` | `ObjectId` ref `File` (`.zip`) | The uploaded site archive. **Must contain an `index.html`.** |
-| `active` | `Boolean` | Controls public visibility (see [§3.3](#33-activation)). |
-| `url` | `String` (read-only) | The derived public URL. |
-| `shortUrl` | `String` (read-only) | The derived short URL (`/r/<siteCode>`). |
+| `siteCode` | `String`, unique | URL slug. Auto-generated as `SITE-<timestamp>` if omitted — **always set it explicitly**, it is the public URL. Restricted to `A-Z a-z 0-9 . _ -`. |
+| `siteType` | `String` enum, default `Static` | `Static` or `SPA`. Changes where the archive is unzipped **and** how unmatched paths are served — see [§3.4](#34-how-requests-are-served). |
+| `package` | `ObjectId` ref `File` (`.zip`) | The uploaded archive. **Must contain `index.html` at its root.** |
+| `active` | `Boolean`, default `true` | Public visibility — see [§3.5](#35-activation). |
+| `authenticationRequired` | `Boolean`, default `false` | Require a signed-in user to open the site — see [§3.6](#36-requiring-a-signed-in-visitor). |
+| `readme` | `String` (Markdown) | Free-form documentation stored with the site. |
+| `git.repositoryUrl` | `String` | Where the source lives. Informational only — the platform never pulls from it. |
+| `publicUrl` | `String` (read-only) | **The URL to share:** `https://<domain>/site/<siteCode>/`. |
+| `url` | `String` (read-only) | The long canonical origin the pretty URL proxies to. |
+| `assignee`, `collaborators` | `ObjectId` refs | Ownership, as on any other record. |
 
-### 3.2 Uploading a site
+> **`variables` and `lifecycleHooks` are not `Site` fields.** Some tooling sends them; the platform ignores them silently. Do not rely on them — configure a site through the files you ship in the archive.
+
+### 3.2 The two URLs
+
+Every published site is reachable two ways, and both keep working:
+
+```
+https://<domain>/site/<siteCode>/                                 ← publicUrl — use this
+https://<domain>/sites/<ownerId>/public/<siteCode>/[spa/]         ← url — the physical origin
+```
+
+The short form is a **reverse proxy**, not a redirect: the address bar keeps showing `/site/<siteCode>/`. Prefer `publicUrl` everywhere — the long form leaks the owner's record id and breaks if the site is re-created under another user.
+
+Requesting `/site/<siteCode>` without the trailing slash answers `302` to the canonical `/site/<siteCode>/`. That redirect is required: without it the browser would resolve the page's relative assets against `/site/` instead of the site folder.
+
+> **Historical note.** Sites used to also publish `/r/<siteCode>` through a `ShortUrl` record, exposed as a `shortUrl` field. **That field no longer exists and new sites no longer create the record** — `publicUrl` replaced it. Sites created before the change keep their `/r/` link working. If your code reads `site.shortUrl`, it now reads `undefined`; use `site.publicUrl`.
+
+### 3.3 Uploading a site
 
 Send the archive as `multipart/form-data` in the `package` field:
 
@@ -396,16 +417,117 @@ Response (`201`):
   "siteCode": "my-spa-site",
   "siteType": "SPA",
   "active": true,
-  "url": "https://<domain>/sites/.../public/my-spa-site/spa/",
-  "shortUrl": "https://<domain>/r/my-spa-site"
+  "publicUrl": "https://<domain>/site/my-spa-site/",
+  "url": "https://<domain>/sites/665f.../public/my-spa-site/spa/"
 }
 ```
 
-The archive **must** contain an `index.html`; if it does not, the request fails with `400`. The served subpath depends on `siteType` — a `SPA` is served under a `/spa/` segment, a `Static` site directly — so use the returned `url` (or the `shortUrl`) rather than constructing the path yourself. To update the site, `PATCH` with a new `package`.
+Rules the archive must satisfy:
 
-### 3.3 Activation
+- **`index.html` must sit at the root of the zip**, not inside a wrapper folder. Zip the *contents* of your build directory, not the directory itself. A missing `index.html` fails with `400` and the upload is rolled back.
+- Max upload size is **120 MB** (`MAX_UPLOAD_FILESIZE`).
+- Re-deploy by `PATCH`ing a new `package` to the same site. The previous unzipped folder is **deleted first**, so a deploy is a replacement, not a merge — files you stop shipping disappear.
 
-`active` is not merely a logical flag: toggling it changes whether the underlying hosted files are publicly reachable. Deactivating a site takes it offline immediately — previously working URLs return `403`.
+> **⚠️ The malicious-content scanner will reject a normal web page.** If the account has
+> `modules.tools.cloudDrive.advancedSecurity.enabled` **and** `scanMaliciousContent` turned on,
+> every text file extracted from your archive is pattern-matched, and the whole upload fails
+> with `400 Malicious content detected in file` if any of these appears:
+>
+> ```
+> <script>…</script>   javascript:   vbscript:   onload=   onerror=   onclick=
+> <iframe   <object   <embed   eval(   document.write
+> ```
+>
+> A paired `<script>` tag is enough — **including `<script src="./app.js"></script>`**, which
+> every SPA shell has. Verified: the same archive uploads `201` with the tag removed and `400`
+> with it present. The setting defaults to **off**, so most accounts are unaffected, but when it
+> is on there is no per-site override — sites with any JavaScript cannot be deployed until an
+> administrator turns `scanMaliciousContent` off. Check it first if an upload fails with that
+> message; the archive itself is fine.
+
+```bash
+curl -s -X PATCH "https://<domain>/v2/site/my-spa-site" \
+  -H "Authorization: Bearer <API_KEY>" \
+  -F "package=@dist.zip"
+```
+
+### 3.4 How requests are served
+
+Understanding this is what separates a site that works from one that 403s on its second page.
+
+| Request under `/site/<siteCode>/` | Static site | SPA site |
+|---|---|---|
+| `/` (the root) | `index.html` | `index.html` |
+| `foo.css`, `bar.js`, images… (any extension but `.html`) | `302` straight to storage | `302` straight to storage |
+| `about.html` (explicit `.html`) | that exact file | that exact file |
+| `about` (no extension) | `about/index.html` — treated as a folder | **`index.html`** — history-API fallback |
+| `deep/client/route` | `deep/client/route/index.html` | **`index.html`** — history-API fallback |
+
+Two consequences worth internalizing:
+
+- **Assets are answered by a redirect to object storage**, not proxied. They are fast and cost the platform nothing, but they are also *not* covered by `authenticationRequired` ([§3.6](#36-requiring-a-signed-in-visitor)).
+- **Only `siteType: 'SPA'` gets the history-API fallback.** A `Static` site keeps folder semantics, so nested static directories keep working. If your SPA is registered as `Static`, every client route below the root answers with a storage `AccessDenied` error page. Changing `siteType` requires re-uploading the `package`, because the archive is unzipped to a different path per type.
+
+### 3.5 Building an SPA that survives the mount path
+
+A site is served from `/site/<siteCode>/`, never from the domain root. A bundle built with default settings assumes it lives at `/` and breaks. Two things must be true:
+
+**1. Assets must be referenced relatively.** With Vite, set `base` — the default (`'/'`) emits absolute `/assets/...` paths that resolve against the domain root and 404:
+
+```ts
+// vite.config.ts
+export default defineConfig({
+  base: './',        // emits ./assets/... — required
+  build: { outDir: 'dist' },
+})
+```
+
+**2. The client router must know where it is mounted.** For SPA sites the platform injects a `<base>` tag into the shell before serving it:
+
+```html
+<head><base href="/site/my-spa-site/">
+```
+
+That tag makes relative assets resolve against the site root **at any depth** — which is what lets a deep link work at all — and it exposes the mount point to your code as `document.baseURI`. Read it instead of hardcoding:
+
+```js
+const basename = new URL(document.baseURI).pathname   // "/site/my-spa-site/"
+
+// React Router
+createBrowserRouter(routes, { basename })
+// or <BrowserRouter basename={basename}>
+
+// Vue Router
+createRouter({ history: createWebHistory(basename), routes })
+```
+
+The same bundle then works unmodified at the pretty URL, at the long `/sites/...` URL, and on your local dev server. **Hash routing (`#/route`) also works** with no configuration at all — it ignores the path entirely — and is the simplest option if you do not need clean URLs.
+
+If your shell already declares its own `<base>`, the platform leaves it alone.
+
+### 3.6 Requiring a signed-in visitor
+
+Set `authenticationRequired: true` to gate the site behind a Prolibu session:
+
+```bash
+curl -s -X PATCH "https://<domain>/v2/site/my-spa-site" \
+  -H "Authorization: Bearer <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{ "authenticationRequired": true }'
+```
+
+An anonymous visitor is answered `302` to `/v2/auth/signin?redirect=<the URL they asked for>` and lands back on the page after signing in. The session is read server-side from the `apiKey` cookie set at sign-in, so no client-side code is involved and the page HTML is never delivered to an anonymous caller.
+
+> **This gates the pages, not the files.** Assets are redirected to object storage, which serves them to anyone holding the URL while the site is `active`. Treat `authenticationRequired` as "who gets to open this site", not as a content lock — never ship secrets in a site bundle.
+
+Two behaviors to expect:
+
+- Toggling the flag takes up to **~60 seconds** to propagate (the site lookup is cached).
+- The session cookie is `SameSite=Strict`, so a visitor arriving from an external link (email, Slack) is bounced through the sign-in page once even when they already have a session.
+
+### 3.7 Activation
+
+`active` is not merely a logical flag: toggling it flips the stored files between public and private. Deactivating takes the site offline immediately — every URL, short and long, returns `403`.
 
 ```bash
 curl -s -X PATCH "https://<domain>/v2/site/665f0c9a1b2c3d4e5f0055dd" \
@@ -413,6 +535,10 @@ curl -s -X PATCH "https://<domain>/v2/site/665f0c9a1b2c3d4e5f0055dd" \
   -H "Content-Type: application/json" \
   -d '{ "active": false }'
 ```
+
+### 3.8 Calling the Prolibu API from inside a site
+
+A site is plain static hosting served from your account's own domain, so `fetch('/v2/...')` is same-origin. An authenticated visitor's `apiKey` cookie is `httpOnly` — JavaScript cannot read it — so a site that needs to call the API on the visitor's behalf signs in through `POST /v2/auth/signin` and keeps the returned `apiKey` in `localStorage`, sending it as `Authorization: Bearer <apiKey>`. See [Authentication & Connected Apps](04-authentication-and-connected-apps.md).
 
 ---
 
@@ -445,7 +571,9 @@ The public redirect route is:
 GET https://<domain>/r/<code>
 ```
 
-An existing code issues a `302` redirect to the destination; an unknown code returns a `404` page. Every `Site` automatically gets a short URL whose code is its `siteCode`, which is why `https://<domain>/r/<siteCode>` serves the site.
+An existing code issues a `302` redirect to the destination; an unknown code returns a `404` page.
+
+> **Sites no longer register a short URL.** They used to reserve `/r/<siteCode>` automatically, which meant publishing a site could overwrite a `ShortUrl` someone else had already created on that code. Sites now serve themselves at `/site/<siteCode>/` ([§3.2](#32-the-two-urls)) and the `ShortUrl` code space is yours alone. Links handed out before the change still resolve.
 
 ---
 
@@ -458,8 +586,14 @@ An existing code issues a `302` redirect to the destination; an unknown code ret
 5. **`mappings` and `access.password` are never exposed publicly.** The headless `jsonschema` and `view` payloads omit them — do not expect to read the mapping logic or password from a public route.
 6. **Uploads require a fresh `uploadToken`.** You cannot post a file to `/v2/form/upload` without first obtaining the short-lived, form-bound token from the form's view payload. Expired or forged tokens return `401`.
 7. **File uploads are validated hard.** Wrong field type → `400`; over the size cap → `413`; disallowed extension/content → rejected. Stored files are private and scoped to the form.
-8. **A site archive must contain `index.html`**, and `siteType` changes the served subpath (`/spa/` for a SPA). Always use the returned `url`.
+8. **A site archive must contain `index.html` at the root of the zip.** Zip the *contents* of your build folder, not the folder — a wrapper directory is the most common cause of a `400` on upload.
 9. **Deactivating a `Site` takes it offline immediately** — previously valid URLs return `403`. It is not a soft, logical flag.
+13. **Share `site.publicUrl`, not `site.url`.** `shortUrl` no longer exists (it reads `undefined`); the long `url` leaks the owner id. See [§3.2](#32-the-two-urls).
+14. **An SPA registered as `siteType: 'Static'` 403s on every route below the root.** Only `SPA` gets the history-API fallback, and switching the type requires re-uploading the `package`.
+15. **A default Vite build does not work under `/site/<siteCode>/`.** Set `base: './'` and give your router `basename: new URL(document.baseURI).pathname`, or use hash routing. See [§3.5](#35-building-an-spa-that-survives-the-mount-path).
+16. **`authenticationRequired` gates pages, not assets.** Files stay readable from object storage while the site is `active` — never ship secrets in a bundle.
+17. **Re-deploying replaces the whole site.** The old unzipped folder is deleted first, so anything you stop shipping disappears.
+18. **`400 Malicious content detected in file` on upload is not about your zip being corrupt.** It means the account has the cloud-drive content scanner on, and it rejects any `<script>…</script>` tag — see [§3.3](#33-uploading-a-site).
 10. **`routeName` + `method` must be unique per endpoint**; a collision is rejected with `400`. Pick distinct route names rather than relying on the method to disambiguate.
 11. **Endpoint scripts run under a timeout.** The request waits for the script; a long-running or throwing script surfaces as an error response. Keep endpoint scripts fast and do heavy work asynchronously.
 12. **Public submission and upload are rate-limited** per IP and per form; bursts return `429`.
@@ -487,9 +621,13 @@ An existing code issues a `302` redirect to the destination; an unknown code ret
 
 **Host a site (`Site`):**
 
-- [ ] Build a `.zip` that contains an `index.html`.
+- [ ] Pick an explicit `siteCode` — it *is* the public URL — and set `siteType` to `SPA` if any route lives below the root.
+- [ ] Build a `.zip` whose **root** holds `index.html` (zip the contents of `dist/`, not `dist/` itself), under 120 MB.
+- [ ] For an SPA: build with `base: './'` and read the router basename from `document.baseURI`, or use hash routing.
 - [ ] `POST` `multipart/form-data` to `/v2/site/` with `siteName`, `siteCode`, `siteType`, and `package=@site.zip`.
-- [ ] Use the derived `url` (or `shortUrl` = `/r/<siteCode>`); remember `siteType` changes the subpath.
+- [ ] Share the returned **`publicUrl`** (`https://<domain>/site/<siteCode>/`), never `url` and never `shortUrl`.
+- [ ] Re-deploy by `PATCH`ing a new `package` to `/v2/site/<siteCode>` — it replaces the whole folder.
+- [ ] Gate it with `authenticationRequired: true` if it should require a signed-in visitor (pages only, not assets).
 - [ ] Activate / deactivate with `PATCH /v2/site/<_id> { "active": ... }`.
 
 Sibling documents: [Platform & Data Model](01-platform-and-data-model.md) · [Custom Objects & Fields](02-custom-objects-and-fields.md) · [REST API](03-rest-api.md) · [Authentication & Connected Apps](04-authentication-and-connected-apps.md) · [Automation & Scripts](05-automation-and-scripts.md) · [Webhooks & Events](06-webhooks-and-events.md) · [Security & Permissions](10-security-and-permissions.md).

@@ -650,15 +650,29 @@ Your `script.js` uses this to make API calls to the correct domain:
 
 ```json
 {
-  "variables": [], // Environment variables
-  "lifecycleHooks": [], // Lifecycle hooks (if any)
-  "siteType": "Static", // Static or SPA
-  "readme": "# My Site\n\n...", // Site documentation
+  "variables": [], // ⚠️ not a Site field — the platform ignores this
+  "lifecycleHooks": [], // ⚠️ not a Site field — the platform ignores this
+  "siteType": "Static", // Static or SPA — see below, this one matters
+  "readme": "# My Site\n\n...", // Site documentation (synced from README.md)
   "git": {
-    "repositoryUrl": "https://github.com/user/site.git"
+    "repositoryUrl": "https://github.com/user/site.git" // informational; never pulled
   }
 }
 ```
+
+> `variables` and `lifecycleHooks` are still written and PATCHed by the CLI, but the `Site`
+> model has no such fields and the platform drops them silently. Configure a site through the
+> files you ship in `public/`.
+
+**`siteType` decides how unmatched paths are served.** A `Static` site treats
+`/site/<code>/about` as the folder `about/index.html`; an `SPA` answers it with the bundle's
+`index.html` (history-API fallback). **If your site has client-side routes it must be `SPA`** —
+otherwise every route below the root returns a raw storage `AccessDenied` page. Changing the
+type requires re-uploading the package.
+
+For SPA bundles, build with `base: './'` and read the router basename from `document.baseURI`
+(the platform injects `<base href="/site/<siteCode>/">` into the shell). See
+[docs/integrations-for-ai-agents/07-sites-forms-and-endpoints.md](docs/integrations-for-ai-agents/07-sites-forms-and-endpoints.md#35-building-an-spa-that-survives-the-mount-path).
 
 **`settings.json` - Build Settings (local only)**
 
@@ -715,15 +729,17 @@ When you publish with `p`, you'll see:
 ✓ Site 'my-site-dev' published successfully
 
 🌐 Site URLs:
-  https://dev10.prolibu.com/sites/.../my-site-dev/
-  https://dev10.prolibu.com/r/my-site-dev (short)
+  https://dev10.prolibu.com/site/my-site-dev/
+  https://dev10.prolibu.com/sites/.../public/my-site-dev/ (canonical)
 
 📱 Scan QR code for mobile access:
 █████████████████████████████
 ...
 ```
 
-The QR code points to the short URL for quick mobile access.
+The QR code points to `publicUrl` (`/site/<siteCode>/`) for quick mobile access. Sites no longer
+register a `/r/<siteCode>` short link and the `shortUrl` field has been removed from the
+platform — read `publicUrl` instead.
 
 ---
 

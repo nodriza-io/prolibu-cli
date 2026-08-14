@@ -380,15 +380,17 @@ async function runDevSite(sitePrefix, env, domain, apiKey, watch = false, port =
     const qrcode = require('qrcode-terminal');
     console.log('');
     console.log(chalk.bold('  🌐 Site Published:'));
-    if (siteData.url) {
-      console.log(`    ${chalk.cyan(siteData.url)}`);
+    // publicUrl (/site/<siteCode>/) is the shareable one; url is the long canonical origin it
+    // reverse-proxies. The `shortUrl` field (/r/<siteCode>) no longer exists on the platform.
+    if (siteData.publicUrl) {
+      console.log(`    ${chalk.cyan(siteData.publicUrl)}`);
     }
-    if (siteData.shortUrl && siteData.shortUrl !== siteData.url) {
-      console.log(`    ${chalk.cyan(siteData.shortUrl)} ${chalk.dim('(short)')}`);
+    if (siteData.url && siteData.url !== siteData.publicUrl) {
+      console.log(`    ${chalk.dim(siteData.url)} ${chalk.dim('(canonical)')}`);
     }
-    
+
     // Show QR code for production URL
-    const prodQrUrl = siteData.shortUrl || siteData.url;
+    const prodQrUrl = siteData.publicUrl || siteData.url;
     if (prodQrUrl) {
       console.log('');
       console.log(chalk.bold('  📱 Scan QR code for mobile access:'));
@@ -722,15 +724,15 @@ async function runDevSite(sitePrefix, env, domain, apiKey, watch = false, port =
           console.log(`${chalk.green('✓')} Site '${chalk.bold(siteCode)}' published successfully`);
           console.log('');
           console.log(chalk.bold('  🌐 Site URLs:'));
-          if (siteData.url) {
-            console.log(`    ${chalk.cyan(siteData.url)}`);
+          if (siteData.publicUrl) {
+            console.log(`    ${chalk.cyan(siteData.publicUrl)}`);
           }
-          if (siteData.shortUrl && siteData.shortUrl !== siteData.url) {
-            console.log(`    ${chalk.cyan(siteData.shortUrl)} ${chalk.dim('(short)')}`);
+          if (siteData.url && siteData.url !== siteData.publicUrl) {
+            console.log(`    ${chalk.dim(siteData.url)} ${chalk.dim('(canonical)')}`);
           }
-          
-          // Show QR code for short URL
-          const publishQrUrl = siteData.shortUrl || siteData.url;
+
+          // Show QR code for the shareable URL
+          const publishQrUrl = siteData.publicUrl || siteData.url;
           if (publishQrUrl) {
             console.log('');
             console.log(chalk.bold('  📱 Scan QR code for mobile access:'));
