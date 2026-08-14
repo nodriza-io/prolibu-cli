@@ -1,3 +1,26 @@
+# Prolibu CLI — agent guide
+
+## Documentation map
+
+Read the document that covers your task before writing code. Each one is a verified reference;
+none of it should be reconstructed from memory.
+
+| Task | Read |
+|---|---|
+| Anything about the platform's API, objects, auth, permissions | [`docs/integrations-for-ai-agents/`](docs/integrations-for-ai-agents/README.md) — start at its index |
+| Host a static site or SPA on an account | [`07-sites-forms-and-endpoints.md` §3](docs/integrations-for-ai-agents/07-sites-forms-and-endpoints.md#3-hosted-sites) |
+| Public form that creates records | [`07-sites-forms-and-endpoints.md` §2](docs/integrations-for-ai-agents/07-sites-forms-and-endpoints.md#2-web-to-lead-forms) |
+| Inbound HTTP endpoint or webhook receiver | [`07-sites-forms-and-endpoints.md` §1](docs/integrations-for-ai-agents/07-sites-forms-and-endpoints.md#1-custom-endpoints--inbound-http) |
+| Server-side automation, triggers, cron jobs | [`05-automation-and-scripts.md`](docs/integrations-for-ai-agents/05-automation-and-scripts.md) |
+| End-to-end, copy-pasteable integrations | [`12-integration-recipes.md`](docs/integrations-for-ai-agents/12-integration-recipes.md) |
+| Build/deploy sites, scripts and virtual tours with this CLI | [`README.md`](README.md) |
+
+Claude Code agents working inside this repo also get these as skills in
+[`.claude/skills/`](.claude/skills) (`prolibu-sites`, `prolibu-scripts`, `prolibu-endpoints`),
+which route to the same references.
+
+---
+
 # Virtual Tour (VT) Commands
 
 CLI tool for managing Prolibu virtual tours. Supports two tour types: **Automotive** (car configurators with colors + external/internal scenes) and **Spaces** (real estate with panoramas + floor plans).

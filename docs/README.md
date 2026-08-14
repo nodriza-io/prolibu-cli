@@ -4,6 +4,8 @@ This documentation covers the Prolibu CLI tools including plugin development, ev
 
 ## 📚 Table of Contents
 
+- [**Integration Guide for AI agents**](./integrations-for-ai-agents/README.md) - The platform reference: objects, REST API,
+  auth, scripts, webhooks, sites, forms, endpoints, MCP, permissions and end-to-end recipes
 - [Plugin Development](./plugins/README.md) - Build React plugins for the Prolibu platform
 - [Event System Overview](#event-system-overview)
 - [Event Types](#event-types)

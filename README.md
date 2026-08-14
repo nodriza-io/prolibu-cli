@@ -30,6 +30,13 @@ Key features:
 
 ---
 
+## Building against the platform
+
+This README covers the **CLI**. For how the platform itself behaves — the REST API, objects, authentication, scripts, endpoints, forms and hosted sites — read the
+[Integration Guide for AI agents](docs/integrations-for-ai-agents/README.md). It is written for a third-party integrator or an AI agent parametrizing an account, and every claim in it is verified against a live account.
+
+---
+
 ## Requirements
 
 - Node.js (v18 or higher recommended)
