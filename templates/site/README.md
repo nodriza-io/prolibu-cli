@@ -102,10 +102,58 @@ If your `index.html` already declares its own `<base>`, the platform leaves it u
 Set `authenticationRequired: true` on the site (via the API or the platform UI) and an anonymous
 visitor is redirected to `/v2/auth/signin` and returned to the page after signing in.
 
-This gates **pages, not files**: assets are served straight from object storage to anyone with
-the URL while the site is active. Never ship secrets in a bundle.
+**Do not build a login form.** No email/password fields, no `POST /v2/auth/signin`, no MFA, no
+password reset — the platform's sign-in page already does all of it, branded for the account, and
+the flag routes visitors there for you. Write your bundle as if the visitor is already signed in.
 
-Expect up to ~60s for a change to the flag to take effect.
+### Getting a token for API calls
+
+The gate and your JavaScript use two different copies of the same session:
+
+- **Page access** is checked server-side against the `apiKey` cookie, which is `httpOnly` — your
+  code can never read it.
+- **API calls** must send `Authorization: Bearer <apiKey>`. The `/v2/` API **does not accept the
+  cookie**: `GET /v2/user/me` with only the cookie returns `401 Unauthorized. Missing apiKey.`
+
+The bridge is `localStorage`: the platform's sign-in page stores the key as
+`localStorage['apiKey']` on your account's origin — the same origin your site is served from.
+
+```js
+const SIGNIN = () => '/v2/auth/signin?redirect=' +
+  encodeURIComponent(location.pathname + location.search + location.hash)
+
+async function api(path, options = {}) {
+  const apiKey = localStorage.getItem('apiKey')
+  if (!apiKey) { location.href = SIGNIN(); return }   // gate passed, no token on this browser
+
+  const res = await fetch(`/v2${path}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...options.headers, Authorization: `Bearer ${apiKey}` },
+  })
+  if (res.status === 401) {                            // expired or revoked
+    localStorage.removeItem('apiKey')
+    location.href = SIGNIN()
+    return
+  }
+  return res.status === 204 ? null : res.json()
+}
+
+const me = await api('/user/me')
+```
+
+Keep both redirect branches. The cookie and the `localStorage` copy can fall out of step — a
+visitor who cleared site data passes the page gate with no token — and bouncing through
+`/v2/auth/signin?redirect=…` re-seeds both and returns them where they were. Requests are
+same-origin, so there is no CORS to configure.
+
+### What it does not do
+
+This gates **pages, not files**: assets are served straight from object storage to anyone with
+the URL while the site is active. **Never ship secrets or API keys in a bundle** — if a page needs
+privileged data, put it behind a custom Endpoint whose script holds the credential.
+
+Expect up to ~60s for a change to the flag to take effect. Full walkthrough:
+[Recipe 6](https://github.com/nodriza-io/prolibu-cli/blob/main/docs/integrations-for-ai-agents/12-integration-recipes.md#recipe-6--internal-site-behind-the-platforms-login).
 
 ## Deploy notes
 

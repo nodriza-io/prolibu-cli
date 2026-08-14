@@ -22,6 +22,7 @@ The recipes are ordered from most-requested to most-specialized. They share a sm
 | 3. Web-to-lead capture | Web-to-Lead + Flow + Outbound Message | `form` / `endpoint` / `script` / `webhook` |
 | 4. Scheduled sync job | Scheduled Apex integration job | `servicecredential` / `script` (`scheduledTask`) / REST upsert |
 | 5. AI-native integration | Agentforce agent + external actions | MCP `oauthapp` / `token` / built-in tools |
+| 6. Internal site behind login | Experience Site with "Require login" | `site` (`authenticationRequired`) / platform sign-in page / REST from the browser |
 
 Sibling documents: [Platform & Data Model](01-platform-and-data-model.md) · [Custom Objects & Fields](02-custom-objects-and-fields.md) · [REST API](03-rest-api.md) · [Authentication & Connected Apps](04-authentication-and-connected-apps.md) · [Automation & Scripts](05-automation-and-scripts.md) · [Webhooks & Events](06-webhooks-and-events.md) · [Sites, Forms & Custom Endpoints](07-sites-forms-and-endpoints.md) · [AI & MCP](08-ai-and-mcp.md) · [Connecting External Services](09-connecting-external-services.md) · [Security & Permissions](10-security-and-permissions.md) · [Best Practices](11-best-practices.md).
 
@@ -764,6 +765,116 @@ The decoded result carries `{ modelName: "Deal", data, webUrl, previewUrl, track
 
 ---
 
+## Recipe 6 — Internal site behind the platform's login
+
+**Goal.** Publish an internal SPA at `https://<domain>/site/<siteCode>/` that only signed-in users of the account can open, and that reads the account's data as the visitor — **without writing a single line of login UI**.
+
+**Salesforce analogy.** An **Experience Site with "Require login"** using the org's own login page, where the running user's session drives the data the page can see.
+
+**Primitives composed.** [`Site`](07-sites-forms-and-endpoints.md#3-hosted-sites) (`authenticationRequired`), the platform's sign-in page, and the [REST API](03-rest-api.md) called from the browser.
+
+> **Read this first.** Do **not** build email/password fields, do not call `POST /v2/auth/signin` yourself, do not implement MFA, lockout, or password reset. The platform's sign-in page does all of it, branded for the account. Your bundle is written as if the visitor is already authenticated.
+
+### Step 1 — Understand the two halves of the session
+
+This is the whole recipe in one table. Getting it wrong is the only real failure mode.
+
+| | Who reads it | How | Your code |
+|---|---|---|---|
+| **Page access** | The platform, server-side | `apiKey` cookie (`httpOnly`) | none — `authenticationRequired` handles it |
+| **API calls** | Your JavaScript | `localStorage['apiKey']` → `Authorization: Bearer …` | ~6 lines, Step 3 |
+
+The `/v2/` API **rejects the cookie** — `GET /v2/user/me` with only the cookie returns `401 Unauthorized. Missing apiKey.` The cookie is also `httpOnly`, so JS cannot read it. The bridge is that the platform's sign-in page writes the key to `localStorage['apiKey']` **on your account's origin**, which is the same origin your site is served from.
+
+### Step 2 — Create the site and gate it
+
+```bash
+curl -s -X POST "https://<domain>/v2/site/" \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" \
+  -F "siteName=Ops Console" \
+  -F "siteCode=ops-console" \
+  -F "siteType=SPA" \
+  -F "package=@dist.zip"
+
+curl -s -X PATCH "https://<domain>/v2/site/ops-console" \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{ "authenticationRequired": true }'
+```
+
+Response carries the URL to share:
+
+```json
+{ "siteCode": "ops-console", "publicUrl": "https://<domain>/site/ops-console/", "authenticationRequired": true }
+```
+
+Build the bundle with `base: './'` and read the router basename from `document.baseURI` — see [Sites §3.5](07-sites-forms-and-endpoints.md#35-building-an-spa-that-survives-the-mount-path). Allow ~60s for the flag to propagate.
+
+### Step 3 — The only auth code your site contains
+
+```js
+// auth.js — the entire "login system" of a gated site
+const SIGNIN = () => '/v2/auth/signin?redirect=' +
+  encodeURIComponent(location.pathname + location.search + location.hash)
+
+export function getApiKey() {
+  const apiKey = localStorage.getItem('apiKey')
+  if (!apiKey) location.href = SIGNIN()   // gate passed, but no token on this browser yet
+  return apiKey
+}
+
+export async function api(path, options = {}) {
+  const res = await fetch(`/v2${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+      Authorization: `Bearer ${getApiKey()}`,
+    },
+  })
+  if (res.status === 401) {               // expired or revoked
+    localStorage.removeItem('apiKey')
+    location.href = SIGNIN()
+    return
+  }
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
+  return res.status === 204 ? null : res.json()
+}
+
+export function signOut() {
+  localStorage.removeItem('apiKey')
+  location.href = '/v2/auth/signin'
+}
+```
+
+Never drop the `localStorage`-empty branch. The cookie and the `localStorage` copy can fall out of step — a visitor who cleared site data, or whose session was established before your site existed, passes the page gate with no token. Sending them through `/v2/auth/signin?redirect=…` re-seeds both and returns them to the page they wanted.
+
+### Step 4 — Use it
+
+```js
+import { api } from './auth.js'
+
+const me = await api('/user/me')
+document.querySelector('#who').textContent = me.profile.firstName
+
+const deals = await api('/deal?limit=20&select=dealName amount stage&sort=-createdAt')
+render(deals.data)                        // list/search wrap in { pagination, data }
+```
+
+Requests are same-origin, so there is no CORS to configure. Every record the visitor sees is filtered by **their own** permissions — the page runs as them, not as a service account.
+
+### Testing Recipe 6 against a sandbox
+
+1. **The gate:** open `https://<domain>/site/ops-console/` in a private window → `302` to `/v2/auth/signin?redirect=%2Fsite%2Fops-console%2F`. The page HTML is never delivered anonymously; confirm with `curl -s -o /dev/null -w '%{http_code}'`.
+2. **The round trip:** sign in on that page → you land back on the site, and `localStorage.getItem('apiKey')` is populated.
+3. **Deep link preserved:** request `/site/ops-console/reports/q3` anonymously and confirm the `redirect` param carries the full path, and that you land there after signing in.
+4. **The cookie is not enough:** `curl --cookie "apiKey=<key>" https://<domain>/v2/user/me` → `401`. This is why Step 3 sends the header.
+5. **Desync recovery:** with a valid session, run `localStorage.removeItem('apiKey')` in the console and reload → the page loads (cookie gate) and your code bounces to sign-in, returning with the key restored.
+6. **Expiry:** revoke the token and call `api('/user/me')` → the `401` branch clears storage and redirects rather than throwing.
+7. **Assets are not gated:** fetch `https://<domain>/site/ops-console/assets/<file>.js` anonymously — it still serves. Confirms the boundary: `authenticationRequired` gates *pages*, never files. Never ship secrets or API keys in the bundle.
+
+---
+
 ## Cross-recipe common pitfalls
 
 1. **Schema is not live the instant you create it.** Custom Objects and Custom Fields (Recipes 1, 2, 3) are applied asynchronously — poll a `limit=1` list call until it stops returning `404` before writing records or referencing new fields, or writes silently drop the undeclared fields.
@@ -814,6 +925,14 @@ The decoded result carries `{ modelName: "Deal", data, webUrl, previewUrl, track
 - [ ] Called `getMyProfile` + `describeModel` before writing; used `find`/`findOne`/`search` for reads.
 - [ ] Built deal proposals only with `createProposal` / `updateProposal`; previewed with `calculateQuote`.
 - [ ] Verified the auth boundary (`401`/`403`), least-privilege enforcement, and session expiry against a sandbox.
+
+**Recipe 6 — Internal site behind login**
+- [ ] `Site` created with an explicit `siteCode`, `siteType: 'SPA'`, and `authenticationRequired: true`.
+- [ ] Bundle built with `base: './'` and the router basename read from `document.baseURI`.
+- [ ] **No login form written** — the platform's `/v2/auth/signin` page is the only credential UI.
+- [ ] API calls send `Authorization: Bearer <localStorage.apiKey>`; the cookie is never relied on.
+- [ ] The `localStorage`-empty and `401` branches both redirect to `/v2/auth/signin?redirect=…`.
+- [ ] Confirmed anonymously that pages `302` to sign-in and that assets still serve — no secrets in the bundle.
 
 ---
 

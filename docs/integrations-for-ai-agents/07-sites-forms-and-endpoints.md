@@ -525,6 +525,44 @@ Two behaviors to expect:
 - Toggling the flag takes up to **~60 seconds** to propagate (the site lookup is cached).
 - The session cookie is `SameSite=Strict`, so a visitor arriving from an external link (email, Slack) is bounced through the sign-in page once even when they already have a session.
 
+#### Do not build a login form
+
+**This is the mistake to avoid.** A gated site needs **no login UI of its own** — no email/password fields, no call to `/v2/auth/signin`, no "remember me", no MFA handling, no password-reset link. The platform's own sign-in page at `/v2/auth/signin` already does all of it, branded with the account's logo and colors, and `authenticationRequired` routes the visitor there automatically. Rebuilding it means re-implementing MFA and lockout by hand and getting them wrong.
+
+What you ship is a site that assumes it is already behind the gate.
+
+#### Getting a token for your API calls
+
+The gate and your JavaScript use **two different copies of the same session**, and this trips people up:
+
+- **The page gate** is server-side and reads the `apiKey` **cookie**, which is `httpOnly` — your JavaScript can never read it.
+- **Your API calls** must send `Authorization: Bearer <apiKey>`. The `/v2/` API **does not accept the cookie**: calling `GET /v2/user/me` with only the cookie returns `401 Unauthorized. Missing apiKey.`
+
+The bridge is `localStorage`. When the platform's sign-in page authenticates a visitor it stores the key as `localStorage['apiKey']` **on your account's origin** — the same origin your site is served from — so your site reads it directly:
+
+```js
+const SIGNIN = '/v2/auth/signin?redirect=' +
+  encodeURIComponent(location.pathname + location.search + location.hash)
+
+let apiKey = localStorage.getItem('apiKey')
+if (!apiKey) location.href = SIGNIN          // gate passed but no token yet
+
+const res = await fetch('/v2/user/me', {
+  headers: { Authorization: `Bearer ${apiKey}` },
+})
+
+if (res.status === 401) {                     // key expired or revoked
+  localStorage.removeItem('apiKey')
+  location.href = SIGNIN
+}
+
+const me = await res.json()                   // { profile: { firstName, email, … } }
+```
+
+Always keep the `localStorage`-empty branch. The cookie and the `localStorage` copy can fall out of step — a visitor who signed in on another tab before your site existed, or who cleared site data, passes the page gate but arrives with no token. Sending them to `/v2/auth/signin?redirect=…` re-seeds both and returns them where they were.
+
+Requests are same-origin (`/v2/...`, no host), so there is no CORS to configure.
+
 ### 3.7 Activation
 
 `active` is not merely a logical flag: toggling it flips the stored files between public and private. Deactivating takes the site offline immediately — every URL, short and long, returns `403`.
@@ -538,7 +576,12 @@ curl -s -X PATCH "https://<domain>/v2/site/665f0c9a1b2c3d4e5f0055dd" \
 
 ### 3.8 Calling the Prolibu API from inside a site
 
-A site is plain static hosting served from your account's own domain, so `fetch('/v2/...')` is same-origin. An authenticated visitor's `apiKey` cookie is `httpOnly` — JavaScript cannot read it — so a site that needs to call the API on the visitor's behalf signs in through `POST /v2/auth/signin` and keeps the returned `apiKey` in `localStorage`, sending it as `Authorization: Bearer <apiKey>`. See [Authentication & Connected Apps](04-authentication-and-connected-apps.md).
+A site is plain static hosting on your account's own domain, so `fetch('/v2/...')` is same-origin and needs no CORS setup. Every call must carry `Authorization: Bearer <apiKey>` — the `/v2/` API never authenticates from the cookie.
+
+- **Gated site** (`authenticationRequired: true`) — the visitor already signed in through the platform's page; read the key from `localStorage` as shown in [§3.6](#36-requiring-a-signed-in-visitor). Do not build a login form.
+- **Public site that needs data** — either call an unauthenticated [custom Endpoint](#1-custom-endpoints--inbound-http) that runs a script server-side (the right answer when the data is not the visitor's own), or send visitors through `/v2/auth/signin?redirect=…` for the same `localStorage` handoff.
+
+**Never embed an API key in a site bundle.** The files are public on object storage — see [§3.6](#36-requiring-a-signed-in-visitor) — so a key shipped in JavaScript is a published credential. If a page needs privileged data, put it behind an Endpoint whose script holds the credential. See [Authentication & Connected Apps](04-authentication-and-connected-apps.md).
 
 ---
 
