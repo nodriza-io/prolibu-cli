@@ -23,6 +23,7 @@ The recipes are ordered from most-requested to most-specialized. They share a sm
 | 4. Scheduled sync job | Scheduled Apex integration job | `servicecredential` / `script` (`scheduledTask`) / REST upsert |
 | 5. AI-native integration | Agentforce agent + external actions | MCP `oauthapp` / `token` / built-in tools |
 | 6. Internal site behind login | Experience Site with "Require login" | `site` (`authenticationRequired`) / platform sign-in page / REST from the browser |
+| 7. Proxy a third-party API | Apex REST + Named Credential callout | `script` (secret in `variables`) / `endpoint` (`authentication.enabled`) |
 
 Sibling documents: [Platform & Data Model](01-platform-and-data-model.md) · [Custom Objects & Fields](02-custom-objects-and-fields.md) · [REST API](03-rest-api.md) · [Authentication & Connected Apps](04-authentication-and-connected-apps.md) · [Automation & Scripts](05-automation-and-scripts.md) · [Webhooks & Events](06-webhooks-and-events.md) · [Sites, Forms & Custom Endpoints](07-sites-forms-and-endpoints.md) · [AI & MCP](08-ai-and-mcp.md) · [Connecting External Services](09-connecting-external-services.md) · [Security & Permissions](10-security-and-permissions.md) · [Best Practices](11-best-practices.md).
 
@@ -63,7 +64,7 @@ On the external side, store the Prolibu `_id` in *its* external-id field so the 
 
 ### Step 2 — Store the outbound credential
 
-Prolibu must authenticate when it calls the external CRM. A generic CRM isn't in the fixed `serviceCredential` `providerType` enum (`openai`, `anthropic`, `deepseek`, `twilio`, `sendgrid`, `google`), so keep its base URL and OAuth token in the push script's persistent `variables` (a least-privilege token issued on the external side). You'll also need a **scoped callback key** so the inbound receiver can write Prolibu data — create it with only what it needs:
+Prolibu must authenticate when it calls the external CRM. A generic CRM isn't in the fixed `serviceCredential` `providerType` enum (`openai`, `anthropic`, `deepseek`, `twilio`, `sendgrid`, `google`, `cloudflare`, `apollo`, `other`) — and a script could not read it anyway, since the value comes back encrypted and the sandbox has no decrypt primitive ([Recipe 7 Step 1](#step-1--know-where-the-secret-can-actually-live)). Keep its base URL and OAuth token in the push script's persistent `variables` (a least-privilege token issued on the external side). You'll also need a **scoped callback key** so the inbound receiver can write Prolibu data — create it with only what it needs:
 
 ```bash
 curl -s -X POST "https://<domain>/v2/token" \
@@ -875,6 +876,131 @@ Requests are same-origin, so there is no CORS to configure. Every record the vis
 
 ---
 
+## Recipe 7 — Proxy a third-party API behind an Endpoint
+
+**Goal.** Let a browser (a [hosted site](07-sites-forms-and-endpoints.md#3-hosted-sites), an external app) use a paid third-party API — Apollo.io, an enrichment provider, a geocoder — **without the key ever reaching the client**, with per-user authorization and an audit trail.
+
+**Salesforce analogy.** **Apex REST + Named Credential**: the page calls your Apex class, the class holds the credential and calls out.
+
+**Primitives composed.** [`Script`](05-automation-and-scripts.md) (holds the key in `variables`) + [`Endpoint`](07-sites-forms-and-endpoints.md#1-custom-endpoints--inbound-http) (`authentication.enabled: true`).
+
+> **Why this rather than shipping the key.** A site bundle is world-readable on object storage, so a key in the bundle is a published credential — and `authenticationRequired` gates pages, not files. Even a key delivered only to signed-in users lands in every one of their DevTools. **This pattern is the only one where the secret stays server-side.**
+
+### Step 1 — Know where the secret can actually live
+
+`Script.variables` — and only there.
+
+`ServiceCredential` looks like the right home (its `providerType` enum even lists `apollo`), but it is for **platform-native** features that decrypt it in server code. A script has no model access, and reading the record over REST hands back the value **still encrypted** (`"apiKey": "ZnRwa3BlfBR0YXx1eX4eCAcC"`), with no decrypt primitive in the sandbox. Verified — don't spend an afternoon on it.
+
+The tradeoff to accept: `variables` are **clear text on the `Script` record**, so anyone who can read that script can read the key. Restrict `Resource@Script.find` accordingly ([Security & Permissions](10-security-and-permissions.md)).
+
+### Step 2 — Create the proxy script
+
+```bash
+curl -s -X POST "https://<domain>/v2/script/" \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "scriptName": "Apollo people search (proxy)",
+    "active": true,
+    "timeout": 30000,
+    "variables": [
+      { "key": "apolloApiKey", "value": "<APOLLO_KEY>" },
+      { "key": "apiKey",       "value": "<SCOPED_PROLIBU_KEY>" }
+    ],
+    "code": "SEE READABLE VERSION BELOW"
+  }'
+```
+
+The readable `code`:
+
+```js
+(async () => {
+  if (eventName !== 'EndpointRequest') return;
+
+  // The endpoint is authenticated, so requestUser is always present here.
+  const { q, page = 1 } = eventData.body || {};
+  if (!q || typeof q !== 'string' || q.length > 120) {
+    output = { ok: false, reason: 'invalid_query' };   // expected failure => data, not throw
+    return;
+  }
+
+  const apolloKey = variables.find(v => v.key === 'apolloApiKey')?.value;
+
+  try {
+    const res = await axios.post(
+      'https://api.apollo.io/api/v1/mixed_people/search',
+      { q_keywords: q, page: Number(page) || 1, per_page: 10 },
+      { headers: { 'X-Api-Key': apolloKey, 'Content-Type': 'application/json' }, timeout: 20000 },
+    );
+
+    // Return only what the UI needs — never the provider's raw envelope.
+    output = {
+      ok: true,
+      results: (res.data.people || []).map(p => ({
+        name: p.name, title: p.title, company: p.organization?.name, linkedin: p.linkedin_url,
+      })),
+    };
+  } catch (err) {
+    // Log the detail server-side; hand the caller something safe.
+    console.error('apollo search failed', err.response?.status, err.response?.data);
+    output = { ok: false, reason: 'provider_error', status: err.response?.status || 0 };
+  }
+})();
+```
+
+Three deliberate choices, each of which prevents a real leak:
+
+- **Expected failures are returned as `output`, not thrown.** A thrown message is echoed verbatim to the caller, so throwing the provider's error can leak the key or its account details. Reserve `throw` for the truly exceptional.
+- **The provider's response is reshaped**, never forwarded whole. Raw envelopes carry quota headers, internal ids and PII you did not intend to publish.
+- **`timeout` on the outbound call is below the script's own budget**, so a slow provider surfaces as your handled error rather than a `Script execution timeout`.
+
+### Step 3 — Expose it, authenticated
+
+```bash
+curl -s -X POST "https://<domain>/v2/endpoint/" \
+  -H "Authorization: Bearer <ADMIN_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "endpointName": "Apollo people search",
+    "routeName": "apollo-people-search",
+    "method": "POST",
+    "script": "<SCRIPT_ID>",
+    "authentication": { "enabled": true }
+  }'
+```
+
+`authentication.enabled: true` is what turns this from "a public proxy for anyone on the internet to burn your quota" into an internal tool. Add `authentication.requiredRoles: ["<roleId>"]` to narrow it further — non-admins without one of those roles get `403`.
+
+Pick a `routeName` unique across **all** methods: dispatch ignores the method segment ([Endpoints §1.2](07-sites-forms-and-endpoints.md#12-invocation-url)).
+
+### Step 4 — Call it from the browser
+
+From a [gated site](#recipe-6--internal-site-behind-the-platforms-login), reusing that recipe's `api()` helper — the visitor's own token authorizes the call, and the Apollo key is never in the page:
+
+```js
+const r = await api('/endpoint/post/apollo-people-search', {
+  method: 'POST',
+  body: JSON.stringify({ q: 'cto fintech bogota' }),
+})
+
+if (!r.output.ok) showError(r.output.reason)   // read response.output, not the top level
+else render(r.output.results)
+```
+
+### Testing Recipe 7 against a sandbox
+
+1. **The key never ships:** `grep -r "<APOLLO_KEY>" dist/` in the site bundle returns nothing; fetch the deployed `assets/*.js` anonymously and grep again.
+2. **Anonymous is refused:** call the endpoint with no `Authorization` → `401` `{"statusCode":401,"error":"Authentication required to access this endpoint"}`.
+3. **Authorized works:** call it with a user token → `200` and `{ authenticated: true, output: { ok: true, results: [...] } }`.
+4. **Role gate (if set):** call with a user holding none of `requiredRoles` → `403`. An `isAdmin` user bypasses the role check by design.
+5. **Bad input is data, not an exception:** post `{ "q": "" }` → `200` with `output.ok === false`, not a `400`. Confirms failures stay machine-readable.
+6. **Provider failure is contained:** temporarily set `apolloApiKey` to garbage → `200` with `output.reason === 'provider_error'`, and the real detail only in the script run log. Nothing about the key reaches the caller.
+7. **Rotation without redeploy:** `PATCH` the script's `variables` with a new key and call again — the next run picks it up, with no change to `code` and no site rebuild.
+8. **Audit:** confirm the run appears in the script's logs with the calling user, so you can answer "who queried what".
+
+---
+
 ## Cross-recipe common pitfalls
 
 1. **Schema is not live the instant you create it.** Custom Objects and Custom Fields (Recipes 1, 2, 3) are applied asynchronously — poll a `limit=1` list call until it stops returning `404` before writing records or referencing new fields, or writes silently drop the undeclared fields.
@@ -933,6 +1059,13 @@ Requests are same-origin, so there is no CORS to configure. Every record the vis
 - [ ] API calls send `Authorization: Bearer <localStorage.apiKey>`; the cookie is never relied on.
 - [ ] The `localStorage`-empty and `401` branches both redirect to `/v2/auth/signin?redirect=…`.
 - [ ] Confirmed anonymously that pages `302` to sign-in and that assets still serve — no secrets in the bundle.
+
+**Recipe 7 — Third-party API proxy**
+- [ ] Secret stored in `Script.variables` (**not** `ServiceCredential` — unreadable from a script) and `Resource@Script.find` restricted.
+- [ ] `Endpoint` with `authentication.enabled: true`, a `routeName` unique across all methods, and `requiredRoles` if the tool is not for everyone.
+- [ ] Script validates input, reshapes the provider response, and returns expected failures as `output.ok === false` instead of throwing.
+- [ ] Outbound `timeout` set below the script's own budget.
+- [ ] Verified the key is absent from the deployed bundle, that `401`/`403` fire, and that a broken provider key never leaks detail to the caller.
 
 ---
 

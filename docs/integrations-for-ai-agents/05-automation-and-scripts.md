@@ -80,18 +80,43 @@ Every run happens in an **isolated sandbox** with a strict time budget. It is pl
 
 ### 2.1 What is available inside `code`
 
+The sandbox is a `vm` context inside a worker thread. Its globals are an explicit allow-list — everything below was verified by running a probe script through a live endpoint, not inferred.
+
 | Helper | Purpose |
 |---|---|
-| `axios` | The HTTP client for all outbound and callback requests (there is no `fetch`) |
+| `axios` | The HTTP client for all outbound and callback requests (there is **no `fetch`**) |
 | `console.log` / `console.error` / `console.warn` / `console.info` | Logging. `log` is streamed for live debugging; `error`/`warn`/`info` are also recorded as run log entries |
 | `setVariable(key, value)` | Persist a value into this script's `variables` store (async; see [§4](#4-persisting-variables)) |
-| `variables` | Read-only snapshot of the persistent store as loaded at the start of the run |
-| `output` | **Write your result here.** The value of `output` is what the run returns |
-| `eventName` | What triggered this run: `"ApiRun"`, `"ScheduledTask"`, or `"<Object>.<event>"` (e.g. `"Deal.beforeUpdate"`) |
-| `eventData` | The trigger payload — the HTTP request for manual runs, the record for triggers, the schedule info for cron (see [§3](#3-the-three-trigger-modes)) |
+| `variables` | Snapshot of the persistent store as `[{ key, value }]`, loaded at the start of the run |
+| `output` | **Write your result here.** The value of `output` is what the run returns; it starts as `null` |
+| `eventName` | What triggered this run: `"ApiRun"`, `"ScheduledTask"`, `"EndpointRequest"`, or `"<Object>.<event>"` (e.g. `"Deal.beforeUpdate"`) |
+| `eventData` | The trigger payload (see [§3](#3-the-three-trigger-modes) and [Endpoints](07-sites-forms-and-endpoints.md#14-what-the-script-receives-and-returns)) |
 | `localDomain` | Your account's host, so you can build REST calls back to your own API |
-| `setTimeout` / `setInterval` / `clearTimeout` / `clearInterval` / `URLSearchParams` | Standard timing and query-string helpers |
-| `requestUser` | For manual runs carrying a user context, basic identity fields (`_id`, `firstName`, `lastName`, `email`, roles) |
+| `env` | `"prod"` when `scriptCode` ends in `-prod`, otherwise `"dev"` — the switch for environment-specific behavior |
+| `scriptCode` | This script's own code, e.g. `SCP-1786747442068` |
+| `locale` | The account's locale preferences object |
+| `lifecycleHooks` | The array of objects this script is hooked to |
+| `setTimeout` / `setInterval` / `setImmediate` / `clearTimeout` / `clearInterval` | Standard timing helpers |
+| `URLSearchParams` | Query-string building |
+| `JSON` · `Date` · `Math` · `Promise` · `Error` · `RegExp` · `Intl` | Standard JavaScript built-ins |
+| `requestUser` | **Only when the caller was authenticated** — `_id`, `firstName`, `lastName`, `email`, `company`, `isAdmin`, `roles`. Otherwise the identifier is not defined at all, so test with `typeof requestUser !== 'undefined'` |
+
+#### What is *not* available — and what that costs you
+
+These are deliberately blocked or simply absent. Two of them have consequences that will change your design, so read past the list.
+
+| Absent | Consequence |
+|---|---|
+| `require` | **No npm packages.** No lodash, no date libraries, no SDKs. Everything is hand-rolled or an HTTP call. |
+| `fetch` | Use `axios`. |
+| `process`, `global`, `module` | No environment variables — configuration lives in `variables`. |
+| `Buffer` | — |
+| `btoa` / `atob` / `TextEncoder` | **No base64.** You cannot build a `Basic` auth header inside a script. Use a provider's token/header auth, or pre-compute the encoded value and store it in `variables`. |
+| `crypto` | **No HMAC, no hashing, no signature verification.** |
+
+> **This is the trap worth internalizing:** with neither `crypto` nor base64, a script **cannot verify a webhook provider's signature** (Stripe's `Stripe-Signature`, GitHub's `X-Hub-Signature-256`, Meta's `X-Hub-Signature`, …). If you are receiving third-party webhooks, authenticate the sender with a **shared secret in a plain header** compared against a value in `variables`, and treat the payload as untrusted — re-fetch the object from the provider's API by id rather than trusting the body. If a provider offers no way to send a static secret and signature verification is mandatory, terminate that webhook outside Prolibu and forward the verified result to your endpoint.
+
+There is also no filesystem, no direct database or model access, and no way to reach platform internals. All account data access is HTTP against your own [REST API](03-rest-api.md) — see [§5](#5-reading-and-writing-account-data).
 
 ### 2.2 Returning a result — write to `output`
 
@@ -232,6 +257,26 @@ This uses the exact same endpoints, query params, and response envelope document
 ```js
 await axios.post('https://erp.example.com/sync/deals', { deals: openDeals });
 ```
+
+### 5.1 Where a script's credentials live
+
+Third-party keys a script needs go in its **`variables`**, and nowhere else:
+
+```json
+"variables": [
+  { "key": "apiKey",      "value": "<SCOPED_PROLIBU_KEY>" },
+  { "key": "apolloApiKey", "value": "<APOLLO_KEY>" }
+]
+```
+
+> **`ServiceCredential` is not reachable from a script.** It is tempting — the `providerType` enum lists `openai`, `anthropic`, `deepseek`, `twilio`, `sendgrid`, `google`, `cloudflare`, `apollo`, `other` — but that store exists for **platform-native** features (AI providers, messaging channels, captcha), which decrypt it in server code. A script has no model access, and reading the record over REST returns the secret **still encrypted** — `GET /v2/servicecredential/<id>` answers `"apiKey": "ZnRwa3BlfBR0YXx1eX4eCAcC"`, not the plaintext — with no decrypt primitive in the sandbox (there is no `crypto`). Verified against a live account.
+
+Two consequences to design around:
+
+- **`variables` are stored in clear text on the `Script` record.** Anyone who can read that script through the API or the UI can read the key. Treat script variables as *"secret from the internet"*, not *"secret from your colleagues"*, and restrict who holds `Resource@Script.find` accordingly — see [Security & Permissions](10-security-and-permissions.md).
+- **Rotation is a `PATCH`, not a redeploy.** Updating `variables` takes effect on the next run, so rotate keys without touching `code`.
+
+`setVariable()` writes to the same store at runtime ([§4](#4-persisting-variables)), which is how you persist an OAuth access token you refreshed mid-run.
 
 ---
 
@@ -383,6 +428,11 @@ Response:
 8. **Trigger payloads are JSON.** Dates and ids arrive as strings inside `eventData`. Parse or compare them as strings; don't assume native `Date`/id types.
 9. **Scope the callback key.** A script that calls your REST API acts with the permissions of the API key it carries. Use a least-privilege token, not a full-admin key, and store it as a `variable` rather than hard-coding it.
 10. **Run logs are short-lived.** Use `console.error`/`warn`/`info` to record diagnostics, but export anything you need long-term — log entries are retained only for a limited window.
+11. **There is no `require`, and no npm.** No lodash, no `moment`, no vendor SDK. Write plain JavaScript or make the HTTP call yourself with `axios`.
+12. **There is no `crypto` and no base64** (`Buffer`, `btoa`, `atob` and `TextEncoder` are all absent). You cannot verify a webhook HMAC signature or build a `Basic` auth header inside a script — see [§2.1](#21-what-is-available-inside-code) for what to do instead.
+13. **`ServiceCredential` is unreadable from a script.** It comes back encrypted over REST and the sandbox has no way to decrypt it. Script secrets live in `variables` ([§5.1](#51-where-a-scripts-credentials-live)).
+14. **A thrown message is echoed to the caller.** When a script runs behind an [Endpoint](07-sites-forms-and-endpoints.md#1-custom-endpoints--inbound-http), throwing produces `400 { "error": "<your message>" }` verbatim. Never throw a provider's raw error or anything containing a key — log it with `console.error` and throw something generic, or return the failure as data in `output`.
+15. **`requestUser` is undefined, not null, when the caller is anonymous.** Guard with `typeof requestUser !== 'undefined'` — a bare reference throws a `ReferenceError`.
 
 ---
 

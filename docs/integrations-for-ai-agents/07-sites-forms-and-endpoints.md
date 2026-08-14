@@ -60,7 +60,9 @@ Once created, an endpoint is called at:
 https://<domain>/v2/endpoint/{method}/{routeName}
 ```
 
-where `{method}` is the lowercased HTTP method. So a `GET` endpoint named `get-test` is reachable at `https://<domain>/v2/endpoint/get/get-test`, a `POST` endpoint named `stripe-hook` at `https://<domain>/v2/endpoint/post/stripe-hook`, and so on. The HTTP method you use to call the URL must match the endpoint's `method`.
+where `{method}` is the lowercased HTTP method. So a `GET` endpoint named `get-test` is reachable at `https://<domain>/v2/endpoint/get/get-test`, a `POST` endpoint named `stripe-hook` at `https://<domain>/v2/endpoint/post/stripe-hook`, and so on.
+
+> **`routeName` must be unique across every method, not just per method.** The dispatcher resolves the endpoint by `routeName` alone and then ignores the method segment: a `POST` endpoint answers `GET /v2/endpoint/get/<routeName>` with a normal `200` (verified). The model only rejects a duplicate `routeName` **+** `method` pair, so nothing stops you from creating `sync` as both `GET` and `POST` — but only one of them will ever be reached, arbitrarily. Give every endpoint its own `routeName` (`sync-pull`, `sync-push`) and read the real verb from `eventData.headers` if you need it. Treat the `method` field as documentation plus a uniqueness key, not as a route guard.
 
 ### 1.3 Authentication behavior
 
@@ -68,7 +70,7 @@ where `{method}` is the lowercased HTTP method. So a `GET` endpoint named `get-t
 - If `authentication.enabled` is `true`, the caller must send `Authorization: Bearer <API_KEY>`. A missing or invalid credential returns `401`.
 - If `authentication.requiredRoles` is non-empty, an authenticated non-admin caller who holds none of those roles is rejected with `403`.
 
-Because an inbound webhook sender usually cannot present your API key, receivers for third-party webhooks are typically created with `authentication.enabled: false` and validate the sender **inside the script** (for example, by checking a shared-secret header, or a provider signature, against a value you keep in the script's persistent variables). See [Automation & Scripts](05-automation-and-scripts.md) for the variables store.
+Because an inbound webhook sender usually cannot present your API key, receivers for third-party webhooks are typically created with `authentication.enabled: false` and validate the sender **inside the script**, by comparing a **static shared-secret header** against a value in the script's persistent `variables`. Verifying a provider's cryptographic signature is **not possible** — the sandbox has no `crypto` and no base64; see [§1.6](#16-using-an-endpoint-as-a-webhook-receiver). For the variables store see [Automation & Scripts](05-automation-and-scripts.md#51-where-a-scripts-credentials-live).
 
 ### 1.4 What the script receives and returns
 
@@ -85,15 +87,36 @@ Each invocation runs the linked script with a request context. Inside the script
 | `query` | Parsed query-string parameters. |
 | `body` | The parsed request body (for `POST` / `PUT`). |
 
-Whatever the script assigns to `output` becomes the endpoint's response payload. The endpoint wraps it in an envelope:
+`eventData.endpoint.url` is informational and prints the method **uppercase** (`…/v2/endpoint/POST/probe`); the callable path is the lowercase one. Do not build links from it.
+
+The caller's own API key is **not** passed into the sandbox. When the caller was authenticated the script gets `requestUser` (`_id`, `email`, `isAdmin`, `roles`, …) so it can decide *who* is asking, but to *act* on the account it uses a key of its own from `variables` — see [Automation & Scripts §5](05-automation-and-scripts.md#5-reading-and-writing-account-data).
+
+#### Response shapes
+
+Whatever the script assigns to `output` becomes the endpoint's response payload, wrapped in an envelope:
 
 ```json
-{ "authenticated": <boolean>, "output": <whatever the script set> }
+{ "authenticated": false, "output": { "whatever": "the script set" } }
 ```
 
-> **Read `output`, not the raw body.** The HTTP response is always `{ authenticated, output }`. Your script's result is under the `output` key — clients must read `response.output`, not the top level.
+> **Read `output`, not the raw body.** A successful response is always `{ authenticated, output }` — clients must read `response.output`, not the top level.
 
-The script runs in an isolated sandbox with a per-run time budget (see [Automation & Scripts](05-automation-and-scripts.md)). The endpoint waits for the script to finish; if the script throws, the request fails with an error response. Possible status codes are `200`, `401`, `403`, `404`, and `429`.
+The failure shapes are **different objects**, not an envelope with an error inside. All verified against a live account:
+
+| Situation | Status | Body |
+|---|---|---|
+| Success | `200` | `{ "authenticated": <bool>, "output": <value> }` |
+| Script never assigned `output` | `200` | `{ "authenticated": <bool>, "output": null }` |
+| Script threw, or rejected a promise | `400` | `{ "statusCode": 400, "error": "<the thrown message>" }` |
+| Script exceeded its `timeout` | `400` | `{ "statusCode": 400, "error": "Script execution timeout" }` |
+| `authentication.enabled` and no/invalid credential | `401` | `{ "statusCode": 401, "error": "Authentication required to access this endpoint" }` |
+| Authenticated but missing a `requiredRoles` role | `403` | `{ "statusCode": 403, "error": "Forbidden, …" }` |
+| Unknown `routeName`, or endpoint `active: false` | `404` | error object |
+| Rate limited | `429` | error object |
+
+Two things follow. First, **the thrown message is echoed verbatim to the caller** — never put a key, a connection string, or a provider's raw error into a thrown `Error`; catch it, log it with `console.error`, and throw something generic. Second, a client cannot distinguish "script failed" from "bad request" by status alone — both are `400` — so return failures you expect as *data* inside `output` (`{ ok: false, reason: … }`) and reserve throwing for genuinely exceptional cases.
+
+The script runs in an isolated sandbox with a per-run time budget, and the endpoint waits for it. Read [Automation & Scripts §2.1](05-automation-and-scripts.md#21-what-is-available-inside-code) before writing the code — the sandbox has no `require`, no `crypto` and no base64, which rules out some designs outright.
 
 ### 1.5 Worked example — a public "echo" endpoint
 
@@ -162,7 +185,24 @@ An endpoint is the natural receiver for an outbound [webhook](06-webhooks-and-ev
 https://<domain>/v2/endpoint/post/<routeName>
 ```
 
-The delivered event arrives as `eventData.body`. For a Prolibu-to-Prolibu webhook that is `{ eventName, eventData }` (see [Webhooks & Events](06-webhooks-and-events.md) for the envelope); for a third-party sender it is whatever that provider posts. Validate the sender inside the script before acting on the payload.
+The delivered event arrives as `eventData.body`. For a Prolibu-to-Prolibu webhook that is `{ eventName, eventData }` (see [Webhooks & Events](06-webhooks-and-events.md) for the envelope); for a third-party sender it is whatever that provider posts.
+
+**Validate the sender — but you cannot verify a signature.** The sandbox has no `crypto` and no base64, so an HMAC check (Stripe's `Stripe-Signature`, GitHub's `X-Hub-Signature-256`, Meta's `X-Hub-Signature`) is impossible inside a script. Authenticate with a **static shared secret in a header**, compared against a value in `variables`:
+
+```js
+(async () => {
+  if (eventName !== 'EndpointRequest') return;
+
+  const expected = variables.find(v => v.key === 'hookSecret')?.value;
+  if (!expected || eventData.headers['x-hook-secret'] !== expected) {
+    output = { ok: false };            // do NOT throw — a 400 tells a prober it guessed the route
+    return;
+  }
+  // …act on eventData.body
+})();
+```
+
+If the provider cannot send a static header and signature verification is a requirement, terminate that webhook outside Prolibu and forward the verified payload to this endpoint. Either way treat the body as untrusted: prefer re-fetching the object from the provider's API by id over trusting the posted fields.
 
 ---
 
@@ -370,7 +410,7 @@ Managed through `/v2/site/` CRUD (authenticated). Both `_id` and `siteCode` work
 | `siteCode` | `String`, unique | URL slug. Auto-generated as `SITE-<timestamp>` if omitted — **always set it explicitly**, it is the public URL. Restricted to `A-Z a-z 0-9 . _ -`. |
 | `siteType` | `String` enum, default `Static` | `Static` or `SPA`. Changes where the archive is unzipped **and** how unmatched paths are served — see [§3.4](#34-how-requests-are-served). |
 | `package` | `ObjectId` ref `File` (`.zip`) | The uploaded archive. **Must contain `index.html` at its root.** |
-| `active` | `Boolean`, default `true` | Public visibility — see [§3.5](#35-activation). |
+| `active` | `Boolean`, default `true` | Public visibility — see [§3.7](#37-activation). |
 | `authenticationRequired` | `Boolean`, default `false` | Require a signed-in user to open the site — see [§3.6](#36-requiring-a-signed-in-visitor). |
 | `readme` | `String` (Markdown) | Free-form documentation stored with the site. |
 | `git.repositoryUrl` | `String` | Where the source lives. Informational only — the platform never pulls from it. |
