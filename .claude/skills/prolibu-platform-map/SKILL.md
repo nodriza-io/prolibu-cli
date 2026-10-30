@@ -34,6 +34,7 @@ Answer in the user's language. Object names, API paths and field names stay as w
 | Add, change or remove products on a deal's quote | `prolibu-quotes` |
 | Build a product picker or configurator inside the quote editor | `prolibu-extended-quote-sites` |
 | Move records between pipeline stages, or understand a pipeline | `prolibu-stages` |
+| Create a new skill, or rebuild one that does not work | `prolibu-skill-creator` |
 | Anything else: find, create or change records of any other object | This skill: Steps below |
 
 A request can need two skills (for example a form whose leads go to an external CRM:

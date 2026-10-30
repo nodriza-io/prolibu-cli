@@ -1,0 +1,12 @@
+# Public values that check-public.js must not report (one regular expression per line).
+# Factory stage ids: seeded identically in every account and used by the app itself.
+76a6f41079d81268f83fede[0-9a-f]
+3396e41069c71267e72fed[0-9a-f]{2}
+88a8f53079d82378f83fc4[0-9a-f]{2}
+64e6f53079d82378f83fc1[0-9a-f]{2}
+16b7f53079d82378f83fc3[0-9a-f]{2}
+# Made-up ids used in examples.
+665f1c2a9b4e2f0012a3b4c5|665f0a3b2c1d4e5f6a7b8c9d|60c72b2f9b1d4c3a1c8b4567
+# Example e-mail domains and the commit trailer.
+@([a-z0-9-]+\.)*(example\.(com|org|net)|acme\.com|b\.com?)\b
+noreply@anthropic\.com

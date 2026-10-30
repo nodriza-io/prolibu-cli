@@ -19,6 +19,7 @@ working from memory or from the guide.
 | Add, change or remove products on a deal's quote | [`prolibu-quotes`](.claude/skills/prolibu-quotes/SKILL.md) |
 | A product picker or configurator inside the quote editor | [`prolibu-extended-quote-sites`](.claude/skills/prolibu-extended-quote-sites/SKILL.md) |
 | Pipelines and stages: move a record, required fields | [`prolibu-stages`](.claude/skills/prolibu-stages/SKILL.md) |
+| Create a new skill, or rebuild one that does not work | [`prolibu-skill-creator`](.claude/skills/prolibu-skill-creator/SKILL.md) |
 
 Every skill that writes to an account follows
 [`_shared/WRITE-FLOW.md`](.claude/skills/_shared/WRITE-FLOW.md): read first, show a plain
