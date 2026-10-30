@@ -9,8 +9,12 @@
 //
 // cases.json (keep it out of the repo: it names records of a real test account):
 //   {
-//     "allow": ["Bash(./prolibu site dev:*)"],          // extra tools, optional
-//     "cases": [{ "id": "q1", "prompt": "Add 3 units of …", "reply": "Yes, go ahead." }]
+//     "allow": ["Bash(./prolibu vt push:*)"],           // extra tools, optional
+//     "deny": ["Bash(node .claude/skills/x/scripts/x.js send:*)"],  // extra denials, optional
+//     "cases": [
+//       { "id": "q1", "prompt": "Add 3 units of …", "reply": "Yes, go ahead." },
+//       { "id": "q2", "prompt": "…", "replies": ["Yes.", "Yes, the second step too."], "deny": [] }
+//     ]
 //   }
 //
 // Each turn's transcript goes to <out>/<id>-t1.jsonl and <id>-t2.jsonl (stream-json).
@@ -51,10 +55,46 @@ function defaultTools(cwd) {
   return tools.concat([
     'Bash(./prolibu script dev:*)', 'Bash(./prolibu site dev:*)',
     'Bash(./prolibu object list:*)', 'Bash(./prolibu object pull:*)',
-    'Bash(ls:*)', 'Bash(cat:*)', 'Bash(head:*)', 'Bash(grep:*)', 'Bash(mkdir:*)', 'Bash(cp:*)',
+    'Bash(ls:*)', 'Bash(mkdir:*)', 'Bash(cp:*)',
     'Read', 'Glob', 'Grep',
     'Write(accounts/**)', 'Edit(accounts/**)', 'Write(//private/tmp/**)', 'Write(//tmp/**)',
   ]);
+}
+
+// Profile files hold API keys: no child session may read them.
+const DENIED_TOOLS = ['Read(**/profile*.json)', 'Bash(cat:*)', 'Bash(head:*)', 'Bash(tail:*)', 'Bash(less:*)', 'Bash(grep:*)'];
+
+// Every key stored under accounts/, so transcripts can be checked for leaks.
+function knownKeys(cwd) {
+  const keys = [];
+  const accounts = path.join(cwd, 'accounts');
+  for (const domain of fs.existsSync(accounts) ? fs.readdirSync(accounts) : []) {
+    const dir = path.join(accounts, domain);
+    if (!fs.statSync(dir).isDirectory()) continue;
+    for (const file of fs.readdirSync(dir).filter((f) => /^profile.*\.json$/.test(f))) {
+      try {
+        const key = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')).apiKey;
+        if (typeof key === 'string' && key.length >= 12) keys.push(key);
+      } catch {
+        // not a profile we can read
+      }
+    }
+  }
+  return keys;
+}
+
+// Replaces any stored key found in a transcript and says so (never prints the key).
+function scrubLeaks(file, keys) {
+  let text = fs.readFileSync(file, 'utf8');
+  let leaked = false;
+  for (const key of keys) {
+    if (text.includes(key)) {
+      leaked = true;
+      text = text.split(key).join('***');
+    }
+  }
+  if (leaked) fs.writeFileSync(file, text);
+  return leaked;
 }
 
 // A child session must not believe it runs inside the current one.
@@ -80,14 +120,14 @@ function sessionOf(file) {
   return null;
 }
 
-function turn({ cwd, out, name, prompt, resume, tools, maxTurns }) {
+function turn({ cwd, out, name, prompt, resume, tools, deny = [], maxTurns }) {
   const file = path.join(out, `${name}.jsonl`);
   const errFile = path.join(out, `${name}.err`);
   const outFd = fs.openSync(file, 'w');
   const errFd = fs.openSync(errFile, 'w');
   const argv = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--max-turns', String(maxTurns)];
   if (resume) argv.push('--resume', resume);
-  argv.push('--allowedTools', ...tools);
+  argv.push('--disallowedTools', ...DENIED_TOOLS, ...deny, '--allowedTools', ...tools);
   const res = spawnSync('claude', argv, { cwd, env: childEnv(), stdio: ['ignore', outFd, errFd] });
   fs.closeSync(outFd);
   fs.closeSync(errFd);
@@ -100,28 +140,41 @@ function main() {
   const cwd = path.resolve(args.cwd || process.cwd());
   const spec = JSON.parse(fs.readFileSync(args.cases, 'utf8'));
   const tools = defaultTools(cwd).concat(spec.allow || []);
+  const keys = knownKeys(cwd);
+  const check = (file) => {
+    if (scrubLeaks(file, keys)) {
+      process.stdout.write(`WARNING: an API key appeared in ${path.basename(file)}; it was replaced with ***. Fix the skill.\n`);
+    }
+  };
   fs.mkdirSync(args.out, { recursive: true });
   const cases = (spec.cases || []).filter((c) => !args.only || args.only.includes(c.id));
   for (const c of cases) {
     const stamp = () => new Date().toISOString().slice(11, 19);
+    const deny = (spec.deny || []).concat(c.deny || []);
+    const replies = c.replies || (c.reply ? [c.reply] : []);
     process.stdout.write(`[${stamp()}] ${c.id}: turn 1\n`);
-    const first = turn({ cwd, out: args.out, name: `${c.id}-t1`, prompt: c.prompt, tools, maxTurns: args.maxTurns });
-    if (c.reply) {
-      const sid = sessionOf(first);
+    const first = turn({ cwd, out: args.out, name: `${c.id}-t1`, prompt: c.prompt, tools, deny, maxTurns: args.maxTurns });
+    check(first);
+    const sid = sessionOf(first);
+    for (const [i, reply] of replies.entries()) {
       if (!sid) {
-        process.stdout.write(`[${stamp()}] ${c.id}: no session id, skipping turn 2\n`);
-        continue;
+        process.stdout.write(`[${stamp()}] ${c.id}: no session id, skipping the replies\n`);
+        break;
       }
-      process.stdout.write(`[${stamp()}] ${c.id}: turn 2\n`);
-      turn({ cwd, out: args.out, name: `${c.id}-t2`, prompt: c.reply, resume: sid, tools, maxTurns: args.maxTurns });
+      process.stdout.write(`[${stamp()}] ${c.id}: turn ${i + 2}\n`);
+      check(turn({ cwd, out: args.out, name: `${c.id}-t${i + 2}`, prompt: reply, resume: sid, tools, deny, maxTurns: args.maxTurns }));
     }
     process.stdout.write(`[${stamp()}] ${c.id}: done\n`);
   }
 }
 
-try {
-  main();
-} catch (err) {
-  process.stderr.write(`${err.message}\n`);
-  process.exitCode = 2;
+if (require.main === module) {
+  try {
+    main();
+  } catch (err) {
+    process.stderr.write(`${err.message}\n`);
+    process.exitCode = 2;
+  }
 }
+
+module.exports = { defaultTools, knownKeys, scrubLeaks, DENIED_TOOLS };

@@ -6,7 +6,7 @@
 // listed in private-patterns.local.txt next to this file (git ignores it: put internal
 // domains, server paths and customer names there, one regular expression per line).
 //
-//   node check-public.js [--base <ref>]
+//   node check-public.js [--base <ref>] [--paths <dir1,dir2>]
 //
 // It scans the added lines of `git diff <base>` and every untracked file. Exit 1 when it
 // finds something. Allowed exceptions (public constants) live in public-allowlist.txt.
@@ -54,7 +54,10 @@ function main() {
   const patterns = GENERIC.concat(readLines(path.join(SKILL_DIR, 'private-patterns.local.txt'))
     .map((p) => ({ name: 'private pattern', re: new RegExp(p, 'i') })));
   const allow = readLines(path.join(SKILL_DIR, 'public-allowlist.txt')).map((p) => new RegExp(p));
-  const ignored = (file) => /^(accounts\/|node_modules\/)|package-lock\.json$/.test(file);
+  const pi = process.argv.indexOf('--paths');
+  const only = pi !== -1 && process.argv[pi + 1] ? process.argv[pi + 1].split(',').map((p) => p.replace(/\/$/, '')) : null;
+  const ignored = (file) => /^(accounts\/|node_modules\/)|package-lock\.json$/.test(file)
+    || (only && !only.some((p) => file === p || file.startsWith(`${p}/`)));
 
   const findings = [];
   const check = (file, lineNo, text) => {

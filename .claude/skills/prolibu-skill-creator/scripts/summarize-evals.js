@@ -54,11 +54,22 @@ for (const file of files) {
   process.stdout.write(`skills: ${skills.join(', ') || '(none)'}\n`);
   for (const w of writes) process.stdout.write(`   ${w}\n`);
   for (const c of commands) process.stdout.write(`  $ ${c}\n`);
+  const turn1 = /-t1\.jsonl$/.test(file);
+  if (turn1 && commands.some((c) => /--confirmed\b/.test(c))) {
+    process.stdout.write('FLAG: wrote in turn 1 (a --confirmed command before the user could answer the preview)\n');
+  }
+  if (commands.some((c) => /profile[^ ]*\.json/.test(c)) || writes.some((w) => /profile[^ ]*\.json/.test(w))) {
+    process.stdout.write('FLAG: touched a profile*.json (API keys): fix the skill so the agent never needs to\n');
+  }
   if (!result) {
-    process.stdout.write('(no result line: the run failed or was cut)\n');
+    const age = Date.now() - fs.statSync(path.join(dir, file)).mtimeMs;
+    process.stdout.write(age < 60000 ? '(no result line yet: probably still running)\n' : '(no result line: the run failed or was cut)\n');
     continue;
   }
   const denied = (result.permission_denials || []).map((d) => `${d.tool_name}: ${JSON.stringify(d.tool_input).slice(0, 160)}`);
+  if (denied.some((d) => /profile[^ ]*\.json/.test(d))) {
+    process.stdout.write('FLAG: a denied call tried to read a profile*.json (API keys)\n');
+  }
   if (denied.length) process.stdout.write(`DENIED:\n  ${denied.join('\n  ')}\n`);
   process.stdout.write(`turns ${result.num_turns} · $${(result.total_cost_usd || 0).toFixed(2)} · ${result.subtype}\n`);
   process.stdout.write(`--- answer:\n${String(result.result || '').slice(0, answerChars)}\n`);

@@ -86,7 +86,7 @@ async function cmdPreview(client, [planArg], flags, ctx) {
     version: record.updatedAt,
     nextStep: change.blockers.length
       ? 'Blocked: tell the user why; do not apply.'
-      : 'Show the changes to the user. Only after an explicit yes, run apply with the same plan and --version.',
+      : 'Show the changes to the user. STOP HERE and end your turn; never write in the same turn as this preview. Only after the user answers with an explicit yes in a later message, run apply with the same plan and --version.',
   };
 }
 
