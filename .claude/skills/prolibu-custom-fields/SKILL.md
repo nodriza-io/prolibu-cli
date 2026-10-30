@@ -138,8 +138,8 @@ Details, sources of each status and the CLI commands are in
   cause is fixed and the record is reactivated (another restart).
 - **Values in records.** A `customFields` field is read and written at
   `customFields.<name>`; an `overrides` field at the root. Links go as `_id` strings (lists
-  as arrays of `_id`), never as objects. When changing one value, send the record's whole
-  `customFields` object back with that key changed.
+  as arrays of `_id`), never as objects. Through the API, `PATCH {"customFields": {"x": …}}`
+  changes only `x`: the record's other custom fields stay as they are.
 - **Custom objects.** The REST path is the lowercased name (`Vehicle` → `/v2/vehicle`). An
   active custom object cannot be edited (`PATCH /v2/cob` answers 400), so its fields live on
   its Custom Field record. A new object accepts fields only after its own restart (the

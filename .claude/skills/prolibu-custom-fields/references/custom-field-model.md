@@ -107,8 +107,9 @@ blocks. The app's admin does it by itself only for `Error:` states, not for inde
 ## Values in records
 
 - `customFields` fields: `{"customFields": {"eventType": "Wedding"}}`. Read them at
-  `customFields.eventType`. When changing one value, send the record's whole `customFields`
-  object with that key changed (the app does that).
+  `customFields.eventType`. A `PATCH` with only some keys of `customFields` merges them: the
+  record's other custom fields keep their values (checked live: changing `notes` kept
+  `inspectionDate`). The app sends the whole object; either works through the API.
 - `overrides` fields: at the root, `{"eventType": "Wedding"}`.
 - Links: the `_id` string; lists: an array of `_id` strings. An object makes the API answer
   "Document not found by primaryKey '[object Object]'".
