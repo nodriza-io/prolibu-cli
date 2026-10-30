@@ -59,7 +59,12 @@
     "test:plugin": "jest test/plugin.test.js",
     "test:account": "jest test/account.test.js",
     "test:object": "jest test/object.test.js",
-    "test:skills": "jest test/prolibu-api.test.js",
+    "test:skills": "jest test/prolibu-",
     "test:all": "jest test/"
+  },
+  "jest": {
+    "modulePathIgnorePatterns": [
+      "<rootDir>/accounts/"
+    ]
   }
 }

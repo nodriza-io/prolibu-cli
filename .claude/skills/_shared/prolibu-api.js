@@ -105,9 +105,11 @@ function isInside(child, dir) {
   return child === dir || child.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep);
 }
 
-// Body files may only come from temp folders: the OS temp dir, $TMPDIR and $CLAUDE_SCRATCHPAD.
+// Body files may only come from temp folders: the OS temp dir, $TMPDIR, $CLAUDE_SCRATCHPAD and,
+// on macOS and Linux, /tmp (where Claude Code keeps its session scratchpad).
 function allowedDataDirs() {
-  const dirs = [os.tmpdir(), process.env.TMPDIR, process.env.CLAUDE_SCRATCHPAD].filter(Boolean);
+  const dirs = [os.tmpdir(), process.env.TMPDIR, process.env.CLAUDE_SCRATCHPAD, process.platform === 'win32' ? null : '/tmp']
+    .filter(Boolean);
   return [...new Set(dirs.flatMap((d) => [path.resolve(d), realOrResolved(d)]))];
 }
 
@@ -145,8 +147,16 @@ function validateTarget(domain, reqPath) {
   if (typeof reqPath !== 'string' || !/^\/v2\//.test(reqPath)) {
     throw new UsageError('Invalid path. It must start with /v2/.');
   }
-  if (reqPath.includes('..') || reqPath.includes('//') || /[\\\s]|%2e|%2f|%5c/i.test(reqPath) || hasControlChar(reqPath)) {
+  // The path part is strict. The query may carry encoded separators (a search term
+  // such as "A/B" becomes %2F) but never raw whitespace or control characters.
+  const queryAt = reqPath.indexOf('?');
+  const pathname = queryAt === -1 ? reqPath : reqPath.slice(0, queryAt);
+  const query = queryAt === -1 ? '' : reqPath.slice(queryAt + 1);
+  if (pathname.includes('..') || pathname.includes('//') || /[\\\s]|%2e|%2f|%5c/i.test(pathname) || hasControlChar(pathname)) {
     throw new UsageError('Invalid path. Traversal, double slashes and encoded separators are not allowed.');
+  }
+  if (/[\\\s#]/.test(query) || hasControlChar(query)) {
+    throw new UsageError('Invalid query string. Encode it with URLSearchParams or encodeURIComponent.');
   }
 }
 
@@ -175,51 +185,75 @@ function redact(text, secret) {
 }
 
 // Replaces the value of well-known secret keys in a parsed response, at any depth.
+// Header lists ({headers: [{name, value}]}, as webhooks store them) often carry shared
+// secrets, so their values are masked too.
 function redactFields(value) {
   if (Array.isArray(value)) return value.map(redactFields);
   if (value && typeof value === 'object') {
     const out = {};
     for (const [k, v] of Object.entries(value)) {
-      out[k] = SECRET_KEYS.has(k.toLowerCase()) ? '***' : redactFields(v);
+      if (SECRET_KEYS.has(k.toLowerCase())) out[k] = '***';
+      else if (k.toLowerCase() === 'headers' && Array.isArray(v)) out[k] = v.map(maskHeader);
+      else out[k] = redactFields(v);
     }
     return out;
   }
   return value;
 }
 
+function maskHeader(header) {
+  if (!header || typeof header !== 'object') return header;
+  return { ...redactFields(header), ...('value' in header ? { value: '***' } : {}) };
+}
+
 function isLikelyProduction(domain) {
   return !NON_PROD_RE.test(String(domain).split('.')[0]);
 }
 
-async function run(argv, opts = {}) {
-  const rootDir = opts.rootDir || DEFAULT_ROOT;
-  const fetchImpl = opts.fetchImpl || globalThis.fetch;
-  const stdout = opts.stdout || process.stdout;
-  const stderr = opts.stderr || process.stderr;
-  let key = '';
-  try {
-    const args = parseArgs(argv, rootDir);
-    validateTarget(args.domain, args.path);
-    const isWrite = WRITE_METHODS.includes(args.method);
-    if (isWrite && !args.confirmed) {
+// Requests that use a write method but change nothing on the account. They run
+// without --confirmed so a skill can preview a change before asking the user.
+const NON_MUTATING = [
+  { method: 'PUT', path: /^\/v2\/quote\/calculate(\?|$)/ },
+];
+
+function isNonMutating(method, reqPath) {
+  return NON_MUTATING.some((rule) => rule.method === method && rule.path.test(reqPath));
+}
+
+// Programmatic client for skill scripts, with the same guards as the command line:
+// host and path checks, --confirmed for writes, no redirects, 30 s timeout. The key
+// stays inside this closure; callers print only what they choose, through redact().
+function createClient({
+  domain, rootDir = DEFAULT_ROOT, profile, fetchImpl = globalThis.fetch, stderr = process.stderr, timeoutMs = REQUEST_TIMEOUT_MS,
+} = {}) {
+  const key = loadApiKey(domain, rootDir, profile);
+
+  async function request(method, reqPath, { data, confirmed = false } = {}) {
+    const verb = String(method).toUpperCase();
+    if (!METHODS.includes(verb)) throw new UsageError(`Unsupported method ${method}.`);
+    validateTarget(domain, reqPath);
+    if (data !== undefined && (verb === 'GET' || verb === 'DELETE')) {
+      throw new UsageError(`${verb} requests cannot have a body. Remove --data / --data-file.`);
+    }
+    const isWrite = WRITE_METHODS.includes(verb) && !isNonMutating(verb, reqPath);
+    if (isWrite && !confirmed) {
       throw new UsageError('Refusing to write without --confirmed. Show the user what will change and ask first.');
     }
-    key = loadApiKey(args.domain, rootDir, args.profile);
-    if (isWrite && isLikelyProduction(args.domain)) {
-      stderr.write(`WARNING: ${args.domain} looks like a production account.\n`);
+    if (isWrite && isLikelyProduction(domain)) {
+      stderr.write(`WARNING: ${domain} looks like a production account.\n`);
     }
     const headers = { Authorization: `Bearer ${key}`, Accept: 'application/json' };
     const init = {
-      method: args.method,
+      method: verb,
       headers,
       redirect: 'error',
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     };
-    if (args.data !== undefined) {
+    if (data !== undefined) {
       headers['Content-Type'] = 'application/json';
-      init.body = JSON.stringify(args.data);
+      init.body = JSON.stringify(data);
     }
-    const res = await fetchImpl(`https://${args.domain}${args.path}`, init);
+    const res = await fetchImpl(`https://${domain}${reqPath}`, init);
     const text = await res.text();
     let body;
     try {
@@ -227,19 +261,41 @@ async function run(argv, opts = {}) {
     } catch {
       body = text;
     }
-    const printed = { status: res.status, body: redactFields(body) };
-    stdout.write(`${redact(JSON.stringify(printed, null, 2), key)}\n`);
-    return res.status >= 200 && res.status < 300 ? 0 : 1;
+    return { status: res.status, ok: res.status >= 200 && res.status < 300, body };
+  }
+
+  return { domain, request, redact: (text) => redact(String(text), key) };
+}
+
+async function run(argv, opts = {}) {
+  const rootDir = opts.rootDir || DEFAULT_ROOT;
+  const fetchImpl = opts.fetchImpl || globalThis.fetch;
+  const stdout = opts.stdout || process.stdout;
+  const stderr = opts.stderr || process.stderr;
+  let client;
+  const hide = (text) => (client ? client.redact(text) : String(text));
+  try {
+    const args = parseArgs(argv, rootDir);
+    validateTarget(args.domain, args.path);
+    const isWrite = WRITE_METHODS.includes(args.method) && !isNonMutating(args.method, args.path);
+    if (isWrite && !args.confirmed) {
+      throw new UsageError('Refusing to write without --confirmed. Show the user what will change and ask first.');
+    }
+    client = createClient({ domain: args.domain, rootDir, profile: args.profile, fetchImpl, stderr });
+    const res = await client.request(args.method, args.path, { data: args.data, confirmed: args.confirmed });
+    const printed = { status: res.status, body: redactFields(res.body) };
+    stdout.write(`${hide(JSON.stringify(printed, null, 2))}\n`);
+    return res.ok ? 0 : 1;
   } catch (e) {
     if (e instanceof UsageError) {
-      stderr.write(`${redact(e.message, key)}\n`);
+      stderr.write(`${hide(e.message)}\n`);
       return 2;
     }
     if (e && e.name === 'TimeoutError') {
       stderr.write(`Request failed: timed out after ${REQUEST_TIMEOUT_MS / 1000} seconds.\n`);
       return 1;
     }
-    stderr.write(`Request failed: ${redact(String(e && e.message), key)}\n`);
+    stderr.write(`Request failed: ${hide(String(e && e.message))}\n`);
     return 1;
   }
 }
@@ -248,4 +304,7 @@ if (require.main === module) {
   run(process.argv.slice(2)).then((code) => { process.exitCode = code; });
 }
 
-module.exports = { parseArgs, validateTarget, loadApiKey, redact, redactFields, isLikelyProduction, run, UsageError };
+module.exports = {
+  parseArgs, validateTarget, loadApiKey, redact, redactFields, isLikelyProduction, isNonMutating, assertDataFileAllowed,
+  createClient, run, UsageError, DEFAULT_ROOT,
+};

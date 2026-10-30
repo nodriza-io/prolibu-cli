@@ -132,6 +132,18 @@ describe('hardening', () => {
     expect(fetchImpl.mock.calls[0][1].body).toBe('{"a":1}');
   });
 
+  test('--data-file accepts /tmp, where the Claude Code scratchpad lives', async () => {
+    if (process.platform === 'win32') return;
+    const dir = fs.mkdtempSync('/tmp/prolibu-api-scratch-');
+    const file = path.join(dir, 'body.json');
+    fs.writeFileSync(file, '{"a":1}');
+    try {
+      expect(await exec(['dev99.example.com', 'POST', '/v2/form', '--data-file', file, '--confirmed'])).toBe(0);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('--data-file refuses files outside temp folders', async () => {
     const repoFile = path.resolve(__dirname, '..', 'package.json');
     expect(await exec([D, 'POST', '/v2/form', '--data-file', repoFile, '--confirmed'])).toBe(2);
@@ -162,6 +174,11 @@ describe('hardening', () => {
     const printed = JSON.parse(out).body;
     expect(printed.data[0].nested.accessToken).toBe('***');
     expect(printed.user.name).toBe('kept');
+  });
+
+  test('masks header values, as webhooks store shared secrets there', () => {
+    const body = { data: [{ endpoint: 'https://x.example.com', headers: [{ name: 'X-Secret', value: 's3cr3t' }] }] };
+    expect(api.redactFields(body)).toEqual({ data: [{ endpoint: 'https://x.example.com', headers: [{ name: 'X-Secret', value: '***' }] }] });
   });
 
   test('does not redact unrelated keys such as tokenCount', () => {
@@ -256,5 +273,55 @@ describe('--profile', () => {
     expect(await exec([D, 'GET', '/v2/form', '--profile', 'nonadmin'])).toBe(2);
     expect(err).toContain('profile.nonadmin.json');
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('query strings and non-mutating writes', () => {
+  const D = 'dev99.example.com';
+
+  test('encoded separators are allowed in the query, not in the path', async () => {
+    expect(await exec([D, 'GET', '/v2/quote/productSearch?term=A%2FB'])).toBe(0);
+    expect(await exec([D, 'GET', '/v2/quote%2F..%2Fuser'])).toBe(2);
+    expect(await exec([D, 'GET', '/v2/quote/productSearch?term=a b'])).toBe(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test('PUT /v2/quote/calculate runs without --confirmed and without a production warning', async () => {
+    fs.mkdirSync(path.join(rootDir, 'accounts', 'acme.example.com'), { recursive: true });
+    fs.writeFileSync(path.join(rootDir, 'accounts', 'acme.example.com', 'profile.json'), JSON.stringify({ apiKey: 'K' }));
+    expect(await exec(['acme.example.com', 'PUT', '/v2/quote/calculate', '--data', '{"lineItems":[]}'])).toBe(0);
+    expect(err).not.toContain('production');
+  });
+
+  test('other PUTs still need --confirmed', async () => {
+    expect(await exec([D, 'PUT', '/v2/quote/abc', '--data', '{}'])).toBe(2);
+    expect(await exec([D, 'PUT', '/v2/quote/calculateX', '--data', '{}'])).toBe(2);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('createClient', () => {
+  const D = 'dev99.example.com';
+  const client = () => api.createClient({ domain: D, rootDir, fetchImpl, stderr: { write: (s) => { err += s; } } });
+
+  test('returns status, ok and the parsed body', async () => {
+    const res = await client().request('GET', '/v2/deal/1');
+    expect(res).toEqual({ status: 200, ok: true, body: { ok: true } });
+  });
+
+  test('refuses writes without confirmed and sends them with it', async () => {
+    const c = client();
+    await expect(c.request('PATCH', '/v2/deal/1', { data: {} })).rejects.toThrow('Refusing to write');
+    expect(fetchImpl).not.toHaveBeenCalled();
+    await c.request('PATCH', '/v2/deal/1', { data: { a: 1 }, confirmed: true });
+    expect(fetchImpl.mock.calls[0][1].body).toBe('{"a":1}');
+  });
+
+  test('redact hides the key', () => {
+    expect(client().redact('Bearer SECRET123')).toBe('Bearer ***');
+  });
+
+  test('a missing profile fails before any request', () => {
+    expect(() => api.createClient({ domain: 'dev98.example.com', rootDir, fetchImpl })).toThrow('No profile');
   });
 });
