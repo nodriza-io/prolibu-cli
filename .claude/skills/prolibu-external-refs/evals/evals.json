@@ -1,0 +1,61 @@
+{
+  "skill_name": "prolibu-external-refs",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json and no active sync connection on Contact. One test contact <email-a> with refId <id-a> (text), one test contact <email-b> without refId, and one test contact whose refId <digits> was stored as a number. Replace the placeholders with real test values from that account.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Our ERP customer CUS-<n> is Ana Test, <new-email>. Its page is https://erp.example.com/customers/CUS-<n>. Make sure she exists in Prolibu linked to that id, without duplicating anyone.",
+      "expected_output": "Checks the object, previews an upsert with refId as text, refUrl and a match on the email, shows the plan (create), waits for a yes, upserts and reports the _id, refId and refUrl.",
+      "expectations": [
+        "Uses scripts/refs.js (check/preview/upsert), not a hand-made POST",
+        "The plan sends refId as a string and includes match on the email",
+        "Shows the preview and waits for an explicit yes before upsert",
+        "upsert uses --expect from the preview and --confirmed",
+        "Reports the saved _id, refId and refUrl from the upsert result"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Enlaza el contacto <email-b> con el id ERP-<n> de nuestro ERP.",
+      "expected_output": "Answers in Spanish. Preview finds the contact by match and proposes action link (refId added); after a yes, upserts with --expect set to that contact's _id.",
+      "expectations": [
+        "Answers in Spanish",
+        "Uses match {\"email\": \"<email-b>\"} so the existing contact is linked, not a new one created",
+        "The preview action is link and the write is a PATCH of that contact, after a yes",
+        "Reads back exactly one contact with refId ERP-<n>"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Find the contact whose external id is <digits> and update its phone.",
+      "expected_output": "find returns no text match but a numeric twin; explains the id was stored as a number and offers to fix it to text before any other change.",
+      "expectations": [
+        "Runs find and reports the record under numericTwins",
+        "Explains in plain words that the id was stored as a number, so searches by text miss it",
+        "Does not create a new contact and does not write anything before the user agrees"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Import these three customers from our billing system: [{\"id\": 501, \"name\": \"Ana\", \"email\": \"<email-a>\"}, {\"id\": 502, \"name\": \"Luis\", \"email\": \"<new-email-2>\"}, {\"id\": 502, \"name\": \"Luis bis\", \"email\": \"<new-email-3>\"}]",
+      "expected_output": "Previews each record with refId as text ('501', '502'), shows one summary (Ana already has another refId -> stop; the two 502 rows are a conflict in the source data), and does not write the conflicting ones.",
+      "expectations": [
+        "Converts the numeric ids to text in every plan",
+        "Previews every record before writing any",
+        "Reports that <email-a> is already linked to another refId and asks before replacing it",
+        "Flags the repeated id 502 in the source data instead of creating or overwriting twice"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Put our HubSpot id in refId for all the deals.",
+      "setup": "The account has an active HubSpot sync connection whose objects include Deal with direction bidirectional (or the profile cannot read sync connections).",
+      "expected_output": "check reports that a sync owns refId on Deal (or that it cannot tell); explains why writing refId would break the sync and suggests a custom field. Writes nothing.",
+      "expectations": [
+        "Runs check (or preview) before any write",
+        "Explains that the sync writes and uses refId on deals",
+        "Suggests a custom field for the id and does not write refId"
+      ]
+    }
+  ]
+}

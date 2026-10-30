@@ -1,0 +1,61 @@
+{
+  "skill_name": "prolibu-forms",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json (an admin user). Note whether the account has an active Cloudflare Turnstile service credential: several expectations depend on it. <form> is an existing test form that creates a Contact, stores its submissions and has at least one failed submission (for example a repeated email).",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Create a contact form on <domain> that asks for name, email, phone and a message, and creates a contact for each submission. Anyone on the internet should be able to send it.",
+      "expected_output": "Reads the Contact fields, writes the form in the builder's format, previews, asks for a yes, creates it with an explicit public mode and captcha, and gives the view link.",
+      "expectations": [
+        "Uses scripts/form.js (fields, preview, create), never a hand-made POST to /v2/form",
+        "fieldMap keys are the form field keys and its values are Contact field paths from 'fields' (email → email); the email question is required and uses {\"type\":\"String\",\"format\":\"email\"}",
+        "Sets access.mode to \"public\" explicitly, with captcha on, and waits for an explicit yes before create",
+        "If preview says the account has no Cloudflare credential, tells the user nobody can send the form until an admin adds one (or captcha is turned off with their consent)",
+        "Reports the https://<domain>/v2/form/view/<_id> link and who can send it"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Necesito un formulario de soporte en <domain> que cree un ticket con el asunto y la descripción del problema, y que solo lo puedan llenar usuarios con sesión iniciada.",
+      "expected_output": "Answers in Spanish; maps both required Ticket fields from required questions; access.mode authenticated; preview, yes, create.",
+      "expectations": [
+        "Answers in Spanish",
+        "Runs 'fields <domain> Ticket' and maps subject and description, the Ticket's required fields, from required questions",
+        "Sets access.mode to \"authenticated\" and explains that only signed-in users of the account can send it",
+        "Does not create anything before the user's explicit yes to the preview"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Our form <form> says the message was sent, but no new contact shows up. Why?",
+      "expected_output": "Reads the form with show, reads the stored submissions, finds the failed mapping result and explains it in plain words, without writing anything.",
+      "expectations": [
+        "Runs 'show' and 'submissions' (reads only)",
+        "Explains that the submission answers 200 even when a mapping fails, and names the actual error from the stored result (for example Duplicated value: the email already exists and that contact got a note)",
+        "Does not send a test submission or change the form without asking"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "The form <form> asks for a captcha but there is no captcha on the page, so nobody can send it. Fix it.",
+      "setup": "<form> has an empty access.mode and captcha on.",
+      "expected_output": "Finds the empty access mode, proposes an explicit mode, previews the change with --form, asks for a yes, updates with the form version and reads back.",
+      "expectations": [
+        "Identifies the cause: access.mode is empty, so the server asks for a captcha the page never shows (or, for public mode, the missing Cloudflare credential)",
+        "Asks the user which mode they want instead of turning captcha off on its own",
+        "Uses preview --form and then update with --form-version and --confirmed; the read-back shows the new mode"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "On <form>, remove the phone question and add a required 'Company' question. Keep everything else.",
+      "expected_output": "Sends the full new formSchema and mappings without the phone key; the company answer is left unmapped (Contact has no free-text company field) or mapped only to a field 'fields' lists.",
+      "expectations": [
+        "Sends the whole formSchema (every remaining field plus the new one), not only the new field",
+        "Also sends mappings without the phone key, so the save is not rejected",
+        "Does not map the company answer to a path that 'fields' does not list; explains where an unmapped answer is kept",
+        "Previews, waits for a yes, updates with --form-version, and reports saved true"
+      ]
+    }
+  ]
+}
