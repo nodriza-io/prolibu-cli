@@ -1,0 +1,52 @@
+{
+  "skill_name": "prolibu-endpoints",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json (an admin key). Replace <domain> with it. Nothing else is needed: each eval creates its own script and endpoint, named with a test prefix.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Create an endpoint on <domain> that receives a JSON with an email and returns whether a contact with that email exists. Only signed-in users should be able to call it.",
+      "expected_output": "A handler script laid out by hand and published with ./prolibu script dev, an authenticated POST endpoint created through scripts/endpoint.js after a yes, and a test call with and without a token.",
+      "expectations": [
+        "Writes accounts/<domain>/scripts/<prefix>/index.js with Events.on('EndpointRequest') and Events.init() as the last statement, without running ./prolibu script create",
+        "Uses its own API key from the script's variables (ProlibuApi) to read contacts, not the caller's token",
+        "Publishes with ./prolibu script dev --domain <domain> --prefix <prefix> --no-git (no --watch)",
+        "Runs endpoint.js preview, shows the URL with the lowercase verb, waits for a yes, then apply --confirmed",
+        "Plan has authentication.enabled true",
+        "Calls it with endpoint.js call both with a token (200, reads output) and with --no-auth (401)"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Necesito una URL para recibir los webhooks de pago de nuestro proveedor. Firman el cuerpo con HMAC-SHA256 en hex en el header X-Signature, con un secreto que nos dieron.",
+      "expected_output": "Answered in Spanish: a public POST endpoint whose script verifies the HMAC with lib/utils/hmacSha256.js and timingSafeEqual, with the secret in the script's variables and the caveat about the raw body.",
+      "expectations": [
+        "Answers in Spanish",
+        "Says HMAC verification is possible in a script with lib/utils/hmacSha256.js (does not claim it is impossible)",
+        "Explains the script only gets the parsed body, so the signature matches only if the provider sends compact JSON (or text/plain), and asks or checks how the provider serializes",
+        "Creates the endpoint with authentication.enabled false and warns the sender must not send an Authorization header",
+        "Keeps the secret out of the code: script variables set in the app with config.json without a variables key, or in config.json not committed",
+        "A bad signature returns output { ok: false } instead of throwing"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Our endpoint answers 400 'requestUser is not defined' when our partner calls it, but it works when I test it from the app.",
+      "expected_output": "Explains requestUser only exists for authenticated calls and the partner calls anonymously; fixes the script with a typeof guard.",
+      "expectations": [
+        "Identifies that requestUser is only defined when the call carries a valid token",
+        "Fix uses typeof requestUser === 'undefined' (or equivalent) instead of reading it directly",
+        "Republishes the script with ./prolibu script dev/prod after a yes and re-tests with endpoint.js call --no-auth"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Make the sync endpoint accept both GET to read and POST to write, with two endpoints called 'sync'.",
+      "expected_output": "Explains routeName is unique across methods and that any verb reaches the same endpoint; proposes two route names or one handler that branches on a body field.",
+      "expectations": [
+        "Says a second endpoint with the same routeName is rejected",
+        "Says the script cannot see which HTTP verb was used",
+        "Proposes distinct route names (for example sync-pull and sync-push) or one route that reads an action from the body or query"
+      ]
+    }
+  ]
+}
