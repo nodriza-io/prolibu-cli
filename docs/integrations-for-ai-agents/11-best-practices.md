@@ -116,7 +116,7 @@ async function prolibu(path, init = {}, { retries = 3 } = {}) {
 
 ## 3. Idempotency
 
-The write endpoints are **not** idempotent by themselves: a repeated `POST /v2/<object>/` creates a **second** record. Because retries (yours, or a proxy's) and at-least-once webhook deliveries are facts of distributed life, make your writes safe to repeat.
+The write endpoints are **not** idempotent by themselves: a repeated `POST /v2/<object>/` creates a **second** record. Because retries (yours, or a proxy's) and repeated webhook events for one change are facts of distributed life, make your writes safe to repeat.
 
 ### 3.1 Dedupe on a stable business key
 
@@ -129,7 +129,7 @@ Pick a field that is unique in *your* source system and store it on the Prolibu 
 // Idempotent upsert keyed on an external order number.
 async function upsertDeal(order) {
   const q = encodeURIComponent(JSON.stringify({ externalOrderId: order.id }));
-  const { data } = await prolibu(`/deal/?query=${q}&limit=1`);
+  const { data } = await prolibu(`/deal/?xquery=${q}&limit=1`);
 
   if (data.length) {
     return prolibu(`/deal/${data[0]._id}`, {
@@ -150,10 +150,10 @@ async function upsertDeal(order) {
 
 ### 3.2 Idempotency on the receiving side (webhooks)
 
-Prolibu webhooks are **at-least-once and best-effort** — no built-in retry, no HMAC, and a delivery can arrive more than once or be lost entirely. Your receiver must:
+Prolibu webhooks are **best-effort** — one attempt, no built-in retry, no HMAC. A delivery can be lost entirely, and one change can still produce more than one event (with stage history on, a stage move fires two `Deal.update` events). Your receiver must:
 
 - **Dedupe** on a stable key derived from the payload — for an `update`, e.g. `afterUpdateDoc._id` + `afterUpdateDoc.updatedAt`. Skip work you've already committed.
-- **Reconcile** on a schedule to catch anything missed: poll the REST API for records changed since your last checkpoint, `GET /v2/<object>/?query={"updatedAt":{"$gt":"<lastCheckpoint>"}}&sort=updatedAt`.
+- **Reconcile** on a schedule to catch anything missed: poll the REST API for records changed since your last checkpoint, `GET /v2/<object>/?xquery={"updatedAt":{"$gt":"<lastCheckpoint>"}}&sort=updatedAt`. The filter parameter is `xquery`; a `query` parameter is ignored and returns every record.
 
 See [Webhooks & Events](06-webhooks-and-events.md) §4–5 for the full pattern. If a change must *never* be missed, prefer a **script on a record event** (reliable, in-transaction) over a webhook — [Automation & Scripts](05-automation-and-scripts.md).
 
@@ -161,13 +161,13 @@ See [Webhooks & Events](06-webhooks-and-events.md) §4–5 for the full pattern.
 
 ## 4. Rate-limit friendliness
 
-Treat `429` as normal back-pressure, not an exceptional failure. A well-behaved client rarely *sees* one because it is designed not to hammer.
+Treat `429` as normal back-pressure, not an exceptional failure. A well-behaved client rarely *sees* one because it is designed not to hammer. (The API does not apply a rate limit of its own today, although the OpenAPI document lists `429`; the habits below still keep your load reasonable and your client ready if one appears.)
 
 - **Honor `429`.** When you get one, back off — respect a `Retry-After` header if present, otherwise exponential back-off with jitter (as in the wrapper above). Never retry a `429` in a tight loop.
 - **Bound your concurrency.** A fixed-size worker pool (e.g. 4–8 in flight) is far friendlier than firing hundreds of parallel requests. Concurrency, not raw request count, is what tips a system into throttling.
 - **Fetch less.** Every unnecessary field and relationship is load. Use `select` to project only the fields you need, and an explicit `populate` / `populatePath` rather than `populate=*` (which expands *every* relationship and is expensive). See [REST API](03-rest-api.md) §3.
 - **Batch reads with generous pages** instead of many tiny requests — `limit` up to `500` (§5). One page of 500 beats 500 single reads.
-- **Filter server-side.** Push predicates into the `query` param so the server returns only what you need; don't fetch broadly and filter in your client.
+- **Filter server-side.** Push predicates into the `xquery` param so the server returns only what you need; don't fetch broadly and filter in your client.
 - **Cache what rarely changes.** Object schemas (via OpenAPI), stage lists, and reference data change slowly — cache them instead of refetching per request.
 - **Schedule background work off-peak** and spread it out; a cron automation that runs `0 * * * *` for every account at the top of the hour is a self-inflicted spike. Add an offset (`17 * * * *`) or jitter your outbound calls.
 
@@ -184,7 +184,7 @@ async function* allRecords(object, query = {}) {
   const qs = encodeURIComponent(JSON.stringify(query));
   let page = 1;
   while (true) {
-    const res = await prolibu(`/${object}/?query=${qs}&page=${page}&limit=500&sort=_id`);
+    const res = await prolibu(`/${object}/?xquery=${qs}&page=${page}&limit=500&sort=_id`);
     yield* res.data;
     if (page >= res.pagination.lastPage) break;
     page += 1;
@@ -192,13 +192,14 @@ async function* allRecords(object, query = {}) {
 }
 
 // Usage
-for await (const deal of allRecords('deal', { stage: 'open' })) {
+// stage values are Stage _ids: read them once with GET /v2/stage?xquery={"stageType":"Deal.stage"}
+for await (const deal of allRecords('deal', { stage: '<stageId>' })) {
   // process one deal at a time — bounded memory
 }
 ```
 
 - **Always set an explicit `sort`** (e.g. `sort=_id`) when paging. Without a stable order, records can shift between pages and you may skip or double-count. Sorting by an immutable field like `_id` is safest.
-- Prefer a **checkpoint cursor** over deep page numbers for incremental syncs: filter on `updatedAt.$gt=<lastSeen>` and sort by `updatedAt`, persisting the last value you processed. This survives records being inserted mid-sync and lets you resume exactly where you left off.
+- Prefer a **checkpoint cursor** over deep page numbers for incremental syncs: filter on `updatedAt[$gt]=<lastSeen>` (bracket form; a dotted `updatedAt.$gt=` is dropped silently) and sort by `updatedAt`, persisting the last value you processed. This survives records being inserted mid-sync and lets you resume exactly where you left off.
 
 ### 5.2 Bulk extract — stream a file instead of paging
 
@@ -207,14 +208,14 @@ When you need *all* records of an object (an export, a nightly warehouse load), 
 ```bash
 curl -G 'https://<domain>/v2/deal/' \
   -H 'Authorization: Bearer <API_KEY>' \
-  --data-urlencode 'query={"stage":"won"}' \
+  --data-urlencode 'xquery={"stage":"<wonStageId>"}' \
   --data-urlencode 'select=dealName amount closeDate' \
   --data-urlencode 'exportData=true' \
   --data-urlencode 'format=xlsx' \
   -o deals.xlsx
 ```
 
-Supported `format` values include `json`, `yaml`, `xlsx`, and `csv`. With `exportData=true` the response is the file itself; pagination metadata comes back in an `X-Pagination` response header rather than a JSON `pagination` block.
+`stage` holds a Stage `_id`, not a name: `{"stage":"won"}` answers `400`. Read the ids once with `GET /v2/stage?xquery={"stageType":"Deal.stage"}` and map them by name or code. Supported `format` values include `json`, `yaml`, `xlsx`, and `csv`. With `exportData=true` the response is the file itself; pagination metadata comes back in an `X-Pagination` response header rather than a JSON `pagination` block.
 
 ### 5.3 Bulk writes
 
@@ -304,8 +305,8 @@ curl -s -X POST 'https://acme-sandbox.prolibu.com/v2/deal/' \
 
 ```js
 // Teardown — list by marker, then delete each. Run only against the TEST host.
-const { data } = await prolibu(`/deal/?query=${encodeURIComponent(
-  JSON.stringify({ dealName: { $regex: '^TEST-', $options: 'i' } }),
+const { data } = await prolibu(`/deal/?xquery=${encodeURIComponent(
+  JSON.stringify({ dealName: { $regex: '^TEST-' } }), // case-insensitive: '(?i)^TEST-'; $options answers 400
 )}&limit=500&select=_id`);
 
 for (const rec of data) {
@@ -336,7 +337,7 @@ async function syncOrder(order) {
   const q = encodeURIComponent(JSON.stringify({ externalOrderId: order.id }));
 
   // 1. Look for an existing record keyed on the business id.
-  const found = await prolibu(`/deal/?query=${q}&limit=1&select=_id`);
+  const found = await prolibu(`/deal/?xquery=${q}&limit=1&select=_id`);
 
   const payload = {
     dealName: order.name,
@@ -362,7 +363,7 @@ async function syncOrder(order) {
     // 3. Lost a create race → the unique key rejected us with a 400 (Duplicated value).
     //    Re-read by the key; if the record is there now, update it.
     if (String(e.message).startsWith('400')) {
-      const again = await prolibu(`/deal/?query=${q}&limit=1&select=_id`);
+      const again = await prolibu(`/deal/?xquery=${q}&limit=1&select=_id`);
       if (!again.data.length) throw e;   // a different 400: not a lost race
       return prolibu(`/deal/${again.data[0]._id}`, {
         method: 'PATCH',
@@ -399,7 +400,7 @@ async function incrementalSync(object, lastCheckpoint, onRecord) {
   while (true) {
     const query = encodeURIComponent(JSON.stringify({ updatedAt: { $gt: checkpoint } }));
     const res = await prolibu(
-      `/${object}/?query=${query}&sort=updatedAt&page=${page}&limit=500`,
+      `/${object}/?xquery=${query}&sort=updatedAt&page=${page}&limit=500`,
     );
 
     for (const rec of res.data) {
@@ -418,7 +419,7 @@ async function incrementalSync(object, lastCheckpoint, onRecord) {
 # The single page underneath, as a curl for clarity:
 curl -G 'https://<domain>/v2/deal/' \
   -H 'Authorization: Bearer <API_KEY>' \
-  --data-urlencode 'query={"updatedAt":{"$gt":"2026-06-30T00:00:00.000Z"}}' \
+  --data-urlencode 'xquery={"updatedAt":{"$gt":"2026-06-30T00:00:00.000Z"}}' \
   --data-urlencode 'sort=updatedAt' \
   --data-urlencode 'limit=500'
 ```
@@ -480,7 +481,7 @@ Assert on the **status code and the presence of `statusCode`/`error`**, never on
 7. **`populate=*` and over-fetching.** Expanding every relationship (or selecting fields you don't use) multiplies load and invites `429`s. Project with `select` and an explicit `populate` (§4).
 8. **Paging without a stable `sort`.** Records shift between pages under concurrent writes; you skip or double-count. Always `sort` by an immutable field (e.g. `_id`) or use an `updatedAt` cursor (§5.1).
 9. **Paging to extract everything.** For a full dump, `exportData=true` + `format` is one streamed file and raises the `limit` cap — far better than thousands of `limit=500` pages (§5.2).
-10. **Treating webhooks as guaranteed.** They're at-least-once **and** best-effort (no retry, no HMAC). Dedupe on the receiver and add a reconcile pass; use a record-event script for anything that must not be missed (§3.2).
+10. **Treating webhooks as guaranteed.** They're best-effort (one attempt, no retry, no HMAC), and one change can still fire more than one event. Dedupe on the receiver and add a reconcile pass; use a record-event script for anything that must not be missed (§3.2).
 11. **Relying on run logs as an audit trail.** Script run logs are retained only briefly — export anything durable to your own store (§7).
 12. **Testing against production.** Use a separate test account (distinct host + least-privilege key) and gate teardown behind a host check. A `DELETE` loop pointed at production is unrecoverable (§8).
 13. **Hardcoding the schema.** Objects, fields, and custom actions can change; a new custom object `404`s until applied. Discover via OpenAPI and ignore unknown response fields (§6).

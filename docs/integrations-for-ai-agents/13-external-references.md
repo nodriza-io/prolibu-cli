@@ -11,7 +11,7 @@ Reach for `refId` / `refUrl` whenever a Prolibu record **mirrors or points to a 
 
 The platform's own integrations use them the same way: telephony stores the provider's id for a phone number or message template in `refId` and a link to the provider's console in `refUrl`, and built-in CRM sync connections store the external record's id and a deep link to it.
 
-The two fields are marked "hidden" in the data model. That only means the Prolibu app does not show them in its screens and forms. **Through the REST API they are ordinary fields:** you can write them, read them back and filter on them.
+The two fields are marked "hidden" in the data model. That only keeps them out of the app's list columns and edit inputs: the app shows both **read-only** at the bottom of a record's form, with `refUrl` as a link, and offers no way to edit them. **Through the REST API they are ordinary fields:** you can write them, read them back and filter on them.
 
 ## Prolibu ↔ Salesforce
 
@@ -45,9 +45,9 @@ Both also appear in the OpenAPI spec (`GET /v2/openapi/specification/<object>`) 
 
 ## 2. Uniqueness
 
-Among the objects you will normally write, only **Contact, Company, Deal and Product** enforce it: a text `refId` is unique within the account, across all of its workspaces. A second record with the same value is rejected with a `400` duplicate-value error, both on `POST` and on a `PATCH` that would create the clash.
+Among the objects you will normally write, only **Contact, Company, Deal and Product** enforce it: a text `refId` is unique within the account, across all of its workspaces, and **per object** (a contact and a company may share the same value). A second record with the same value is rejected with a `400` duplicate-value error, both on `POST` and on a `PATCH` that would create the clash.
 
-**Contact Submission** (the log entry the platform writes for each lead submission, for example from a lead ad) has its own stricter rule: its `refId` holds the lead platform's submission id, is unique for any value, text or not, and never changes after the entry is written. You read these entries; you do not write them. This is also why a `refId` sent to `POST /v2/contact/submit` lands on the submission entry, not on the contact.
+**Contact Submission** (the log entry the platform writes for each lead submission, for example from a lead ad) has its own stricter rule: its `refId` holds the lead platform's submission id, is unique for any value, text or not, and never changes after the entry is written. You read these entries; you do not write them. This is also why a `refId` sent to `POST /v2/contact/submit` lands on the submission entry, not on the contact. The same `refId` sent to that endpoint again is taken as a retry and ignored (the answer is `"resubmission"`). To link the contact itself, upsert it as in [§3](#3-worked-example--upsert-by-refid).
 
 The rule has gaps, so never rely on it as your only duplicate guard:
 
@@ -90,6 +90,8 @@ curl -s -X POST "https://<your-domain>/v2/contact" \
 
 **Step 2c: found more than one → stop** and report the duplicates; do not pick one at random.
 
+**Before Step 2b, when the record may already exist without a `refId`** (a first sync against existing data, a contact someone typed in by hand): look for it by a natural key such as the email. One match with no `refId` → `PATCH` the `refId` and `refUrl` onto it (link it) instead of creating a second record. One match that already holds another `refId` → stop and report it. Skipping this step is the usual cause of duplicates on a first import.
+
 The same flow in JavaScript, including the race where two runs create at the same time:
 
 ```js
@@ -105,9 +107,21 @@ async function findByRef(object, refId) {
   return data[0] || null;
 }
 
-async function upsertByRef(object, refId, fields) {
+// `match` (optional, equality only, e.g. { email }) links a record that exists without a refId.
+async function findUnlinked(object, match) {
+  const qs = new URLSearchParams({ ...match, limit: '2', select: '_id refId' });
+  const res = await fetch(`${base}/${object}?${qs}`, { headers });
+  if (!res.ok) throw new Error(`match lookup failed: ${res.status}`);
+  const { data } = await res.json();
+  if (data.length > 1) throw new Error(`more than one ${object} matches ${JSON.stringify(match)}`);
+  if (data[0] && data[0].refId != null && data[0].refId !== '') throw new Error(`${object} ${data[0]._id} already holds another refId`);
+  return data[0] || null;
+}
+
+async function upsertByRef(object, refId, fields, match) {
   const body = { ...fields, refId: String(refId) };
-  const existing = await findByRef(object, refId);
+  let existing = await findByRef(object, refId);
+  if (!existing && match) existing = await findUnlinked(object, match);
   if (existing) {
     const res = await fetch(`${base}/${object}/${existing._id}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
     if (!res.ok) throw new Error(`update failed: ${res.status}`);
@@ -117,7 +131,7 @@ async function upsertByRef(object, refId, fields) {
   if (res.status === 400) {
     // Another run may have created it in between (Contact, Company, Deal, Product reject the duplicate).
     const winner = await findByRef(object, refId);
-    if (winner) return upsertByRef(object, refId, fields);
+    if (winner) return upsertByRef(object, refId, fields, match);
   }
   if (!res.ok) throw new Error(`create failed: ${res.status}`);
   return res.json();
@@ -138,11 +152,13 @@ async function upsertByRef(object, refId, fields) {
 2. **Creating without searching first.** Uniqueness exists only on a few objects ([§2](#2-uniqueness)). Everywhere else a second `POST` silently creates a duplicate.
 3. **Treating a `400` on create as a failure.** On Contact, Company, Deal and Product it usually means the `refId` already exists. Read that record and update it.
 4. **Stamping `refId` after the create.** A crash between the `POST` and the `PATCH` leaves a record without its key, and the next run creates it again. Put `refId` in the create body.
-5. **Expecting to see the fields in the Prolibu app.** They are not shown in the app's screens or forms. Read them through the API.
+5. **Expecting to edit the fields in the Prolibu app.** The app shows both read-only at the bottom of a record's form, but has no input or list column for them. Write and filter them through the API.
 6. **Writing over a sync's `refId`.** If a built-in sync connection manages the object, `refId` belongs to it ([§4](#4-refid-or-a-custom-field)).
 7. **Putting secrets in `refUrl`.** It is returned in clear on every read, to anyone who can read the record. Never include tokens, API keys or signed links; store a plain link to the record's page and let the other system handle its own login.
-8. **Storing a non-link in `refUrl`.** Any text is accepted, so a typo goes unnoticed. Build it from a fixed `https://` pattern of the other system.
+8. **Storing a non-link in `refUrl`.** Any text is accepted, so a typo goes unnoticed, and the app shows the value as a link people click. Build it from a fixed `https://` pattern of the other system.
 9. **Typos in the filter name.** An unknown filter field is ignored and returns unfiltered results (see [REST API](03-rest-api.md) §4). Spell it exactly `refId`.
+10. **Writing refs on a closed deal.** A deal in an end-of-flow stage (Approved, Denied) rejects changes to `refId` and `refUrl` like any other field (`400`), unless an admin allowed edits in end-flow stages. Link deals before they close.
+11. **Creating a record that already exists without a `refId`.** Searching by `refId` alone misses it; match it by a natural key and link it ([§3](#3-worked-example--upsert-by-refid)).
 
 ---
 
@@ -152,6 +168,7 @@ async function upsertByRef(object, refId, fields) {
 - [ ] Checked `GET /v2/syncconnection` for an active connection whose `objects[].objectType` is this object; if the read was refused, asked the account admin.
 - [ ] Every write sends `refId` as a string, inside the create body.
 - [ ] Every create is preceded by `GET /v2/<object>?refId=<value>&limit=2`; one match → `PATCH`, none → `POST`, two → stop.
+- [ ] Records that may exist without a `refId` are matched by a natural key (e.g. the email) and linked, not created again.
 - [ ] A `400` on create is handled by re-reading by `refId` and updating.
 - [ ] `refUrl` is built from a fixed `https://` pattern and holds no secret.
 - [ ] To unlink a record, `PATCH` it with `{ "refId": null, "refUrl": null }`.

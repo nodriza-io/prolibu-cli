@@ -4,7 +4,7 @@
 
 ## When to use this
 
-Use a `Script` when a declarative rule is not enough and you need custom server-side logic: call an external API when a record changes, validate or enrich a record before it is saved, periodically sync data to another system, or expose an on-demand operation you can trigger over HTTP. Scripts are edited through the API and take effect on the next run — there is no build or deploy step. Everything the script does with account data goes through your account's own REST API (authenticated with an API key), so nothing here requires access to platform internals.
+Use a `Script` when a declarative rule is not enough and you need custom server-side logic: call an external API when a record changes, validate or enrich a record before it is saved, periodically sync data to another system, or expose an on-demand operation you can trigger over HTTP. Scripts are edited through the API and take effect on the next run — the platform has no build step and no restart (this repo's CLI adds a local bundling step before it uploads, see [§2.1](#21-what-is-available-inside-code)). Everything the script does with account data goes through your account's own REST API (authenticated with an API key), so nothing here requires access to platform internals.
 
 ## Prolibu ↔ Salesforce
 
@@ -76,7 +76,7 @@ Response (`201`):
 
 ## 2. The execution model
 
-Every run happens in an **isolated sandbox** with a strict time budget. It is plain JavaScript plus a small, fixed set of helpers — there is no filesystem, no arbitrary module loading, and no direct database access. All data access to the platform is done over HTTP against your account's [REST API](03-rest-api.md).
+Every run happens in an **isolated sandbox** with a strict time budget. It is plain JavaScript plus a small, fixed set of helpers — there is no filesystem, no module loading at run time, and no direct database access. All data access to the platform is done over HTTP against your account's [REST API](03-rest-api.md).
 
 ### 2.1 What is available inside `code`
 
@@ -85,36 +85,39 @@ The sandbox is a `vm` context inside a worker thread. Its globals are an explici
 | Helper | Purpose |
 |---|---|
 | `axios` | The HTTP client for all outbound and callback requests (there is **no `fetch`**) |
-| `console.log` / `console.error` / `console.warn` / `console.info` | Logging. `log` is streamed for live debugging; `error`/`warn`/`info` are also recorded as run log entries |
+| `console.log` / `console.error` / `console.warn` / `console.info` | Logging. `log` is only streamed for live debugging and is never stored; `error`/`warn`/`info` are also recorded as run log entries |
 | `setVariable(key, value)` | Persist a value into this script's `variables` store (async; see [§4](#4-persisting-variables)) |
 | `variables` | Snapshot of the persistent store as `[{ key, value }]`, loaded at the start of the run |
 | `output` | **Write your result here.** The value of `output` is what the run returns; it starts as `null` |
 | `eventName` | What triggered this run: `"ApiRun"`, `"ScheduledTask"`, `"EndpointRequest"`, or `"<Object>.<event>"` (e.g. `"Deal.beforeUpdate"`) |
 | `eventData` | The trigger payload (see [§3](#3-the-three-trigger-modes) and [Endpoints](07-sites-forms-and-endpoints.md#14-what-the-script-receives-and-returns)) |
 | `localDomain` | Your account's host, so you can build REST calls back to your own API |
-| `env` | `"prod"` when `scriptCode` ends in `-prod`, otherwise `"dev"` — the switch for environment-specific behavior |
+| `env` | `"prod"` when `scriptCode` ends in `-prod`, otherwise `"dev"`. This repo's CLI names the production copy `<prefix>` (no suffix) and the dev copy `<prefix>-dev`, so with the CLI `env` is always `"dev"`: tell the copies apart with `scriptCode.endsWith('-dev')` |
 | `scriptCode` | This script's own code, e.g. `SCP-1786747442068` |
 | `locale` | The account's locale preferences object |
 | `lifecycleHooks` | The array of objects this script is hooked to |
 | `setTimeout` / `setInterval` / `setImmediate` / `clearTimeout` / `clearInterval` | Standard timing helpers |
 | `URLSearchParams` | Query-string building |
 | `JSON` · `Date` · `Math` · `Promise` · `Error` · `RegExp` · `Intl` | Standard JavaScript built-ins |
-| `requestUser` | **Only when the caller was authenticated** — `_id`, `firstName`, `lastName`, `email`, `company`, `isAdmin`, `roles`. Otherwise the identifier is not defined at all, so test with `typeof requestUser !== 'undefined'` |
+| `requestUser` | **Only when the caller was authenticated** — `_id`, `firstName`, `lastName`, `email`, `company`, `isAdmin`, `roles`. Never present in record-event hooks or scheduled runs. Otherwise the identifier is not defined at all, so test with `typeof requestUser !== 'undefined'` |
 
 #### What is *not* available — and what that costs you
 
-These are deliberately blocked or simply absent. Two of them have consequences that will change your design, so read past the list.
+These are deliberately blocked or simply absent. Most have a workaround, because the CLI bundles your code before it uploads it (see below).
 
 | Absent | Consequence |
 |---|---|
-| `require` | **No npm packages.** No lodash, no date libraries, no SDKs. Everything is hand-rolled or an HTTP call. |
+| `require` | **Not at run time.** The CLI resolves your `require`s when it bundles, so your own files, the repo's `lib/` and pure-JS npm packages work. A Node built-in (`crypto`, `fs`, `http`…) or `require('axios')` stays a runtime `require` and fails with `require is not a function`; use the global `axios`. |
 | `fetch` | Use `axios`. |
-| `process`, `global`, `module` | No environment variables — configuration lives in `variables`. |
-| `Buffer` | — |
-| `btoa` / `atob` / `TextEncoder` | **No base64.** You cannot build a `Basic` auth header inside a script. Use a provider's token/header auth, or pre-compute the encoded value and store it in `variables`. |
-| `crypto` | **No HMAC, no hashing, no signature verification.** |
+| `process`, `global`, `module`, `exports` | No environment variables — configuration lives in `variables`. No `module.exports` in the entry file. |
+| `Buffer` | Use the pure-JS helpers below. |
+| `btoa` / `atob` / `TextEncoder` / `TextDecoder` | **No native base64.** The repo's `lib/vendors/fasa/FasaApi.js` has a pure-JS `FasaApi.toBase64`, enough to build a `Basic` auth header. |
+| `crypto` | **No native hashing.** The repo's `lib/utils/hmacSha256` gives `sha256Hex`, `hmacSha256Hex` and a constant-time `timingSafeEqual` in plain JavaScript. |
+| `URL`, `structuredClone`, `queueMicrotask`, `clearImmediate` | Also absent. Use `URLSearchParams` and string handling; deep-copy with `JSON.parse(JSON.stringify(x))`. |
 
-> **This is the trap worth internalizing:** with neither `crypto` nor base64, a script **cannot verify a webhook provider's signature** (Stripe's `Stripe-Signature`, GitHub's `X-Hub-Signature-256`, Meta's `X-Hub-Signature`, …). If you are receiving third-party webhooks, authenticate the sender with a **shared secret in a plain header** compared against a value in `variables`, and treat the payload as untrusted — re-fetch the object from the provider's API by id rather than trusting the body. If a provider offers no way to send a static secret and signature verification is mandatory, terminate that webhook outside Prolibu and forward the verified result to your endpoint.
+**How the CLI bundles.** With this repo's CLI you write `accounts/<your-domain>/scripts/<prefix>/index.js` like a small Node module. Each `./prolibu script dev|prod` runs esbuild on it (`bundle`, `platform: node`, `format: cjs`) and uploads the bundle as `code`. From that folder the repo's `lib/` is four levels up: `require('../../../../lib/utils/hmacSha256')`. A bare `require('lib/…')` does not resolve. Top-level `await` does not build; keep the async IIFE as the last statement.
+
+> **Verifying a webhook provider's signature** (Stripe's `Stripe-Signature`, GitHub's `X-Hub-Signature-256`, Meta's `X-Hub-Signature`, …) is possible with `lib/utils/hmacSha256`: compute `hmacSha256Hex(secret, rawBody)` and compare with `timingSafeEqual`. The catch is the message: providers sign the **raw bytes** of the body, and the script only receives the parsed body. `JSON.stringify(eventData.body)` rebuilds those bytes only when the provider sends compact JSON (or a `text/plain` body). When it cannot match, authenticate the sender with a **shared secret in a plain header** compared against a value in `variables`, and treat the payload as untrusted — re-fetch the object from the provider's API by id rather than trusting the body.
 
 There is also no filesystem, no direct database or model access, and no way to reach platform internals. All account data access is HTTP against your own [REST API](03-rest-api.md) — see [§5](#5-reading-and-writing-account-data).
 
@@ -153,6 +156,8 @@ Invoke a script over HTTP with `GET /v2/script/run` and the script's `scriptId` 
 GET /v2/script/run?scriptId=<SCRIPT_ID>
 ```
 
+> **Always run by `_id`.** `scriptId` also accepts the `scriptCode`, but the run endpoint caches the script under the value you pass and a save only clears the `_id` entry: a run by code can keep executing the code from before your last save.
+
 Inside the run, `eventName === "ApiRun"` and `eventData` carries the full request:
 
 ```json
@@ -163,7 +168,7 @@ So you can pass inputs as additional query params or a request body and read the
 
 | Response code | Meaning |
 |---|---|
-| `200` | Ran; body is the run result (see [§6](#6-run-result-shape)) |
+| `200` | Ran; body is the run result (see [§6](#6-run-result-shape)). Also `200` when the script itself failed: read `error` |
 | `401` | Missing/invalid credentials |
 | `403` | Not permitted to run this script |
 | `404` | No such script |
@@ -174,8 +179,11 @@ So you can pass inputs as additional query params or a request body and read the
 Set `lifecycleHooks` to the object API names whose events should fire the script. When a record of that object is created, updated, or deleted, the script runs automatically — this is the equivalent of an Apex trigger.
 
 - `eventName` is `"<Object>.<event>"`, e.g. `"Deal.beforeUpdate"`, `"Contact.afterCreate"`, `"Deal.beforeDelete"`.
-- `eventData` contains the record involved (and, for updates, the version being applied). Field values arrive as JSON, so non-serializable types (dates, ids) are strings — compare and forward them accordingly.
+- `eventData` is `{ doc }` for `beforeCreate`, `afterCreate`, `beforeDelete` and `afterDelete`, and `{ doc, payload, beforeUpdateDoc }` for `beforeUpdate` and `afterUpdate` (in `beforeUpdate` the payload is already applied to `doc`). Field values arrive as JSON, so non-serializable types (dates, ids) are strings — compare and forward them accordingly. There is no `requestUser` in a hook.
 - The available events cover **before** and **after** each of create, update, and delete, so you can validate/enrich before persistence or react after it.
+- **Changing the record:** top-level fields the script changes on `eventData.doc` in a `before…` event are saved with the record.
+- **Errors:** if the run fails, the request that changed the record fails with `"<message> - Lifecycle script [<scriptName>]"`. In a `before…` event nothing is saved (that is how a script blocks a change); in an `after…` event the record is **already saved** and only the response is an error.
+- **Every active script** that lists the object runs, one after the other. There is no loop guard: a hook that writes to its own object through the API starts itself again, so write only when the value actually changes.
 
 **Enabling triggers is a deliberate, two-part step.** Reacting to record events is off by default. Beyond setting `lifecycleHooks` on the script, event-triggered automation must be **enabled at the account level for each object** you want to hook. If the object is not enabled, saving a script that hooks it is rejected. This prevents accidental server-side side effects on core objects; enable it explicitly per object in your account's integration settings.
 
@@ -204,8 +212,9 @@ Set `scheduledTask.periodicity` to a cron expression and `scheduledTask.timeZone
 `variables` is a per-script key/value store — the analog of mutable Custom Settings. Use it for cursors, counters, last-sync timestamps, or the API key a scheduled script uses to call back into your account.
 
 - **Read** at the start of a run from the injected `variables` array: `variables.find(v => v.key === 'cursor')?.value`.
-- **Write** with `await setVariable(key, value)`. Both arguments are required and values are stored as strings — serialize with `String(...)` or `JSON.stringify(...)`.
+- **Write** with `await setVariable(key, value)`. Both arguments are required (`null` and `undefined` are rejected). A value is saved as whatever you send (the field is free-form), so store strings to keep reads predictable — serialize with `String(...)` or `JSON.stringify(...)`.
 - The `variables` array is a **snapshot from the start of the run**. Calling `setVariable` during a run persists the value but does **not** update the local array in that same run — you will read the new value on the next run.
+- **A CLI deploy can replace the whole list.** When the script's `config.json` has a `variables` key (the file the CLI creates has `"variables": []`), each `./prolibu script dev|prod` sends that list as is, so values a run saved with `setVariable` (cursors, refreshed tokens) or set in the app are lost. Leave the `variables` key out of `config.json` to keep them.
 
 ```js
 (async () => {
@@ -246,8 +255,11 @@ const openDeals = page.data;
 // Create
 await client.post('/deal', { title: 'From automation', amount: 1000 });
 
-// Update
-await client.patch(`/deal/${openDeals[0]._id}`, { stage: 'Won' });
+// Update — a reference such as `stage` takes the Stage `_id`, not its name (a name answers
+// 400 "Document not found by primaryKey"). Read the ids once from
+// GET /v2/stage?xquery={"stageType":"Deal.stage"} and map them by name or code.
+// Moving a deal to the approved ("won") stage also creates a work order.
+await client.patch(`/deal/${openDeals[0]._id}`, { stage: stageIds.won });
 ```
 
 This uses the exact same endpoints, query params, and response envelope documented in [REST API](03-rest-api.md). Record-level visibility applies to the API key the script uses, so scope that token appropriately.
@@ -274,7 +286,7 @@ Third-party keys a script needs go in its **`variables`**, and nowhere else:
 Two consequences to design around:
 
 - **`variables` are stored in clear text on the `Script` record.** Anyone who can read that script through the API or the UI can read the key. Treat script variables as *"secret from the internet"*, not *"secret from your colleagues"*, and restrict who holds `Resource@Script.find` accordingly — see [Security & Permissions](10-security-and-permissions.md).
-- **Rotation is a `PATCH`, not a redeploy.** Updating `variables` takes effect on the next run, so rotate keys without touching `code`.
+- **Rotation is a `PATCH`, not a redeploy.** Updating `variables` takes effect on the next run, so rotate keys without touching `code`. If the script's `config.json` has a `variables` key, the next CLI deploy overwrites them ([§4](#4-persisting-variables)).
 
 `setVariable()` writes to the same store at runtime ([§4](#4-persisting-variables)), which is how you persist an OAuth access token you refreshed mid-run.
 
@@ -297,10 +309,11 @@ A manual run (`GET /v2/script/run`) returns a JSON envelope:
 |---|---|
 | `output` | Whatever the script assigned to the global `output` (`null` if it assigned nothing) |
 | `eventData` | The trigger payload the run received |
-| `error` | `null` on success, or the error message on failure |
+| `error` | `null` on success, or the error message on failure (the HTTP status is still `200`) |
+| `errorStack` | Present on failure. `at line N` points at the uploaded `code` (with the CLI, `dist/bundle.js`, not your `index.js`) |
 | `timeMs` | Wall-clock execution time in milliseconds |
 
-Failed runs also record a log entry (from `console.error`/`warn`/`info` and from runtime errors), which you can review to debug behavior. Log entries are retained for a limited period, so capture anything you need to keep elsewhere.
+Runs record log entries (`GET /v2/log?logType=Script`): every `console.error`/`warn`/`info` line, and a `Failure` entry for every failed run. `console.log` is never stored — it only streams to a live session. Log entries expire after **7 days**, so capture anything you need to keep elsewhere.
 
 ---
 
@@ -343,7 +356,7 @@ The readable `code`:
 })();
 ```
 
-Every time a `Deal` is updated, the script runs with `eventName === "Deal.afterUpdate"` and posts to the external endpoint. To *block* an invalid save instead of just reacting, use a `before` event and return an error from the run — the platform aborts the operation, the equivalent of `addError()` on an Apex trigger.
+Every time a `Deal` is updated, the script runs with `eventName === "Deal.afterUpdate"` and posts to the external endpoint. To *block* an invalid save instead of just reacting, use a `before` event and throw an error from the run — the platform aborts the operation, the equivalent of `addError()` on an Apex trigger. An error in an `after` event does not undo the save: the record is already stored and only the response fails.
 
 ### 7.2 Scheduled sync
 
@@ -396,7 +409,7 @@ A manually invoked script that reads its inputs from the request and returns a c
 })();
 ```
 
-Invoke it:
+Invoke it by `_id` (see [§3.1](#31-run-manually-on-demand)):
 
 ```bash
 curl -s "https://<domain>/v2/script/run?scriptId=<SCRIPT_ID>&dealId=665f...abcd" \
@@ -423,16 +436,16 @@ Response:
 3. **No direct data access.** There is no model or database access inside a script and no `fetch`. Read/write account data with `axios` against your own [REST API](03-rest-api.md), authenticated with an API key.
 4. **Triggers require per-object enablement.** Setting `lifecycleHooks` is not enough — event-triggered automation must also be enabled for that object at the account level, or saving the script is rejected. Both parts are off by default.
 5. **`scheduledTask.timeZone` is required with `periodicity`.** Omitting it makes the schedule invalid. Sub-minute frequencies are rejected on production accounts.
-6. **`variables` is a start-of-run snapshot.** Values written with `setVariable` during a run are visible only on the next run, not the current one. Values are always strings — serialize accordingly.
+6. **`variables` is a start-of-run snapshot.** Values written with `setVariable` during a run are visible only on the next run, not the current one. Store strings — serialize accordingly. A CLI deploy whose `config.json` has a `variables` key replaces the whole list, wiping what `setVariable` saved ([§4](#4-persisting-variables)).
 7. **Mind the timeout.** Long callouts or large syncs can exceed the `timeout` budget and be terminated. Raise `timeout` (up to 300000 ms), paginate large reads, and keep runs bounded.
 8. **Trigger payloads are JSON.** Dates and ids arrive as strings inside `eventData`. Parse or compare them as strings; don't assume native `Date`/id types.
 9. **Scope the callback key.** A script that calls your REST API acts with the permissions of the API key it carries. Use a least-privilege token, not a full-admin key, and store it as a `variable` rather than hard-coding it.
-10. **Run logs are short-lived.** Use `console.error`/`warn`/`info` to record diagnostics, but export anything you need long-term — log entries are retained only for a limited window.
-11. **There is no `require`, and no npm.** No lodash, no `moment`, no vendor SDK. Write plain JavaScript or make the HTTP call yourself with `axios`.
-12. **There is no `crypto` and no base64** (`Buffer`, `btoa`, `atob` and `TextEncoder` are all absent). You cannot verify a webhook HMAC signature or build a `Basic` auth header inside a script — see [§2.1](#21-what-is-available-inside-code) for what to do instead.
+10. **Run logs are short-lived.** Use `console.error`/`warn`/`info` to record diagnostics (`console.log` is never stored), and export anything you need long-term — log entries expire after 7 days.
+11. **There is no `require` at run time.** The CLI bundles your `require`s before upload, so your own files, the repo's `lib/` (`../../../../lib/…` from the script folder) and pure-JS npm packages work. A Node built-in or `require('axios')` stays a runtime `require` and fails with `require is not a function`.
+12. **There is no native `crypto` and no native base64** (`Buffer`, `btoa`, `atob`, `TextEncoder` are all absent). Bundle the repo's pure-JS helpers instead: `lib/utils/hmacSha256` for SHA-256/HMAC and a constant-time compare, `FasaApi.toBase64` for a `Basic` header. An HMAC over a JSON body only matches when the provider sends compact JSON — see [§2.1](#21-what-is-available-inside-code).
 13. **`ServiceCredential` is unreadable from a script.** It comes back encrypted over REST and the sandbox has no way to decrypt it. Script secrets live in `variables` ([§5.1](#51-where-a-scripts-credentials-live)).
 14. **A thrown message is echoed to the caller.** When a script runs behind an [Endpoint](07-sites-forms-and-endpoints.md#1-custom-endpoints--inbound-http), throwing produces `400 { "error": "<your message>" }` verbatim. Never throw a provider's raw error or anything containing a key — log it with `console.error` and throw something generic, or return the failure as data in `output`.
-15. **`requestUser` is undefined, not null, when the caller is anonymous.** Guard with `typeof requestUser !== 'undefined'` — a bare reference throws a `ReferenceError`.
+15. **`requestUser` is undefined, not null, when the caller is anonymous** — and always in hooks and scheduled runs. Guard with `typeof requestUser !== 'undefined'` — a bare reference throws a `ReferenceError`.
 
 ---
 
@@ -444,9 +457,9 @@ Response:
 - [ ] To read/write account data, call your own REST API with `axios` against `https://${localDomain}/v2/...`, using a scoped API key stored as a `variable`.
 - [ ] For persistent state, read from `variables` and write with `await setVariable(key, String(value))`.
 - [ ] Set `timeout` (5000–300000 ms) with headroom for the work the script does.
-- [ ] For **triggers**: set `lifecycleHooks: ["<Object>"]` **and** enable event-triggered automation for that object at the account level. Mutate the record before save to enrich it, or return an error to block the save.
+- [ ] For **triggers**: set `lifecycleHooks: ["<Object>"]` **and** enable event-triggered automation for that object at the account level. Mutate `eventData.doc` in a `before` event to enrich the record, or throw to block the save (an `after` error does not undo it).
 - [ ] For **schedules**: set both `scheduledTask.periodicity` (valid cron) and `scheduledTask.timeZone`. Avoid sub-minute frequency on production.
-- [ ] Invoke manually with `GET /v2/script/run?scriptId=<id>` (Bearer/API key); read `output`, `error`, and `timeMs` from the response.
+- [ ] Invoke manually with `GET /v2/script/run?scriptId=<_id>` (Bearer/API key; by `_id`, not by code); read `output`, `error`, and `timeMs` from the response — a failed script still answers `200`.
 - [ ] Remember: editing `code`, `variables`, `active`, `timeout`, or the schedule takes effect on the **next** run — no restart, no deploy.
 
 ---

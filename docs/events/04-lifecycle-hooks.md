@@ -1,8 +1,8 @@
 # Lifecycle Hook Events
 
-**Event Type:** `lifecycleHooks`  
+**eventName:** `<Model>.<hook>` (e.g. `Contact.afterUpdate`)  
 **Trigger:** Entity CRUD operations (Create, Update, Delete)  
-**Authentication:** System (No API key required)  
+**Authentication:** None of its own — no `requestUser`; API calls need a key from the script's `variables`  
 **Use Case:** Real-time data synchronization, validation, side effects
 
 ## Overview
@@ -26,6 +26,8 @@ Perfect for:
 | **afterUpdate** | After entity update | ❌ No | `doc`, `beforeUpdateDoc`, `payload` | Sync changes to external systems |
 | **beforeDelete** | Before entity deletion | ✅ Yes | `doc` | Validation, prevent deletion |
 | **afterDelete** | After entity deletion | ❌ No | `doc` | Cascade deletes, sync deletion |
+
+An error in a `before…` hook aborts the operation. An error in an `after…` hook cannot undo it: the record is already saved, but the request still answers with the error `"<message> - Lifecycle script [<scriptName>]"`.
 
 ## How It Works
 
@@ -58,140 +60,113 @@ sequenceDiagram
 
 ## Configuration
 
+Hooks need two switches:
+
+1. **The account** must have lifecycle hooks enabled for the object. Only an admin turns this on, in the app's preferences (Integrations › Lifecycle hooks). Saving a script that lists an object that is not enabled is rejected, and a script already saved that way fails on every run.
+2. **The script** must be active and list the object in `lifecycleHooks`. With this CLI, that list lives in the script's `config.json`: `"lifecycleHooks": ["Contact"]`.
+
+Every active script that lists the object runs on each event, one after the other.
+
 ### Script Structure
 
-Lifecycle hooks are defined in a script with handlers object:
+The platform does not call a handler object. It runs the whole script with two globals: `eventName`, which is `"<Model>.<hook>"` (for example `"Contact.afterUpdate"`), and `eventData`. With this repo's `EventManager`, register one handler per event:
 
 ```javascript
-module.exports = {
-  // Hook handlers
-  Handlers: {
-    beforeCreate: async (doc, { API, requestUser, logger }) => {
-      // Logic before creation
-    },
-    
-    afterCreate: async (doc, { API, requestUser, logger }) => {
-      // Logic after creation
-    },
-    
-    beforeUpdate: async (doc, beforeUpdateDoc, payload, { API, requestUser, logger }) => {
-      // Logic before update
-    },
-    
-    afterUpdate: async (doc, beforeUpdateDoc, payload, { API, requestUser, logger }) => {
-      // Logic after update
-    },
-    
-    beforeDelete: async (doc, { API, requestUser, logger }) => {
-      // Logic before deletion
-    },
-    
-    afterDelete: async (doc, { API, requestUser, logger }) => {
-      // Logic after deletion
-    },
-  },
-  
-  // Entity configuration
-  EntityConfig: [
-    {
-      objectName: 'Contact',           // Prolibu entity name
-      externalObjectName: 'Contact',   // External system object name
-      defaultEvents: ['afterCreate', 'afterUpdate', 'afterDelete'],
-      globalTransforms: {
-        // Field-level transforms
-      },
-      fieldsMap: {
-        // Field mapping configuration
-      }
-    }
-  ]
-};
+const Events = require('../../../../lib/vendors/prolibu/EventManager');
+
+Events.on('Contact.beforeCreate', async () => {
+  const { doc } = eventData;
+  if (!doc.email) throw new Error('Email is required'); // aborts the create
+  doc.source = 'prolibu';                                // saved with the record
+});
+
+Events.on('Contact.afterUpdate', async () => {
+  const { doc, beforeUpdateDoc, payload } = eventData;
+  // sync the change to another system…
+});
+
+(async function main() {
+  await Events.init();
+})();
 ```
 
-### Real Example from Codebase
+- Keep `main()` as the last statement and do not use `module.exports`: the run ends when that last promise settles.
+- `EventManager` drops a `<Model>.<hook>` handler (with a `[WARN] … ignored` console line) unless `<Model>` is in the script's `lifecycleHooks`.
+- A hook has no `requestUser` and no API identity of its own. To call the API, build a client with a key stored in the script's `variables` (`lib/vendors/prolibu/ProlibuApi`).
 
-See [`/accounts/dev10.prolibu.com/hook-integrations/outbound-salesforce.js`](../../../accounts/dev10.prolibu.com/hook-integrations/outbound-salesforce.js) for a complete production example.
+The examples further down are written as helper functions — `(doc, { API, logger })` or `(doc, beforeUpdateDoc, payload, { API, logger })` — to keep them short. The platform does not call them with those arguments: wire each one from its `Events.on` handler, passing `eventData.doc` itself (mutate that object, not a copy), an `API` object you build from the repo's clients, and a `logger` that forwards to `console.info` / `warn` / `error`:
+
+```javascript
+Events.on('Contact.afterUpdate', async () => {
+  const { doc, beforeUpdateDoc, payload } = eventData;
+  await afterUpdate(doc, beforeUpdateDoc, payload, { API, logger });
+});
+```
+
+For a config-driven outbound sync (field maps and transforms), see `lib/vendors/prolibu/OutboundIntegration.js` with `DataMapper` and `ConfigValidator`.
 
 ## Event Data Structure
+
+A hook run gets these globals. There is no `requestUser`, `hookType`, `objectName`, `apiKey` or `scriptId`: read the model and the hook from `eventName` (`const [model, hook] = eventName.split('.')`).
+
+| Global | Value |
+|---|---|
+| `eventName` | `"<Model>.<hook>"`, e.g. `"Contact.afterUpdate"` |
+| `eventData` | The payload below |
+| `scriptCode`, `variables`, `localDomain`, `lifecycleHooks`, `env` | As in any run |
 
 ### beforeCreate / afterCreate / beforeDelete / afterDelete
 
 ```javascript
-{
-  // Base fields
-  apiKey: null,
-  requestUser: Object,           // User who triggered the operation
-  eventName: "lifecycleHooks",
-  scriptId: String,
-  
-  // Lifecycle-specific fields
-  eventData: {
-    doc: Object,                 // The entity document
-    hookType: String,            // beforeCreate, afterCreate, etc.
-    objectName: String,          // Entity name (e.g., 'Contact')
-  }
+// eventName === "Contact.beforeCreate"
+eventData = {
+  doc: Object,                 // The record
 }
 ```
 
 ### beforeUpdate / afterUpdate
 
 ```javascript
-{
-  // Base fields (same as above)
-  
-  // Update-specific fields
-  eventData: {
-    doc: Object,                 // Current state (after update)
-    beforeUpdateDoc: Object,     // Previous state (before update)
-    payload: Object,             // Only the fields that changed
-    hookType: String,            // beforeUpdate or afterUpdate
-    objectName: String,
-  }
+// eventName === "Contact.beforeUpdate"
+eventData = {
+  doc: Object,                 // The record with the update already applied
+  beforeUpdateDoc: Object,     // The record before the update
+  payload: Object,             // The fields sent in the update request
 }
 ```
 
 ### Example Event Data
 
 ```javascript
-// afterUpdate event
-{
-  requestUser: {
-    _id: "507f1f77bcf86cd799439011",
-    email: "user@example.com",
-    name: "John Admin"
+// eventName === "Contact.afterUpdate"
+eventData = {
+  // Previous state
+  beforeUpdateDoc: {
+    _id: "60c72b2f9b1d4c3a1c8b4567",
+    firstName: "Jane",
+    lastName: "Doe",
+    email: "jane.old@example.com",
+    mobile: "+1234567890"
   },
-  eventName: "lifecycleHooks",
-  scriptId: "507f191e810c19729de860ea",
-  eventData: {
-    hookType: "afterUpdate",
-    objectName: "Contact",
-    
-    // Previous state
-    beforeUpdateDoc: {
-      _id: "60c72b2f9b1d4c3a1c8b4567",
-      name: "Jane Doe",
-      email: "jane.old@example.com",
-      mobile: "+1234567890",
-      status: "active"
-    },
-    
-    // Current state
-    doc: {
-      _id: "60c72b2f9b1d4c3a1c8b4567",
-      name: "Jane Smith",              // Changed
-      email: "jane.new@example.com",   // Changed
-      mobile: "+1234567890",
-      status: "active"
-    },
-    
-    // Only changed fields
-    payload: {
-      name: "Jane Smith",
-      email: "jane.new@example.com"
-    }
+
+  // Current state
+  doc: {
+    _id: "60c72b2f9b1d4c3a1c8b4567",
+    firstName: "Jane",
+    lastName: "Smith",               // Changed
+    email: "jane.new@example.com",   // Changed
+    mobile: "+1234567890"
+  },
+
+  // Fields sent in the update
+  payload: {
+    lastName: "Smith",
+    email: "jane.new@example.com"
   }
 }
 ```
+
+Record payloads are JSON copies: dates and ids are strings, and encrypted fields are masked. In a `before…` hook, top-level fields you change on `eventData.doc` are saved with the record; changing `eventData.payload` in `beforeUpdate` does not change what is saved (the payload is already applied to `doc`).
 
 ## Hook Implementations
 
@@ -201,7 +176,7 @@ See [`/accounts/dev10.prolibu.com/hook-integrations/outbound-salesforce.js`](../
 
 ```javascript
 Handlers: {
-  beforeCreate: async (doc, { API, requestUser, logger }) => {
+  beforeCreate: async (doc, { API, logger }) => {
     logger.info('Before creating', { doc });
     
     // 1. Validation
@@ -223,11 +198,11 @@ Handlers: {
       throw new Error('Contact already exists in Salesforce');
     }
     
-    // 4. Modify doc before creation
+    // 4. Modify doc before creation (top-level changes are saved;
+    //    createdBy is set by the platform)
     doc.source = 'prolibu';
-    doc.createdBy = requestUser._id;
     
-    return doc;  // Optional: return modified doc
+    return doc;  // The return value is ignored; the mutated doc is what counts
   }
 }
 ```
@@ -238,7 +213,7 @@ Handlers: {
 
 ```javascript
 Handlers: {
-  afterCreate: async (doc, { API, requestUser, logger }) => {
+  afterCreate: async (doc, { API, logger }) => {
     logger.info('After creating', { docId: doc._id });
     
     try {
@@ -280,7 +255,7 @@ Handlers: {
 
 ```javascript
 Handlers: {
-  beforeUpdate: async (doc, beforeUpdateDoc, payload, { API, requestUser, logger }) => {
+  beforeUpdate: async (doc, beforeUpdateDoc, payload, { API, logger }) => {
     logger.info('Before updating', {
       docId: doc._id,
       changes: Object.keys(payload)
@@ -311,8 +286,8 @@ Handlers: {
     
     // 3. Conditional modifications
     if (payload.status && payload.status !== beforeUpdateDoc.status) {
-      doc.statusChangedAt = new Date();
-      doc.statusChangedBy = requestUser._id;
+      doc.statusChangedAt = new Date().toISOString();
+      // There is no requestUser in a hook to record who did it
     }
     
     return doc;
@@ -326,7 +301,7 @@ Handlers: {
 
 ```javascript
 Handlers: {
-  afterUpdate: async (doc, beforeUpdateDoc, payload, { API, requestUser, logger }) => {
+  afterUpdate: async (doc, beforeUpdateDoc, payload, { API, logger }) => {
     logger.info('After updating', {
       docId: doc._id,
       changes: Object.keys(payload)
@@ -384,7 +359,7 @@ Handlers: {
 
 ```javascript
 Handlers: {
-  beforeDelete: async (doc, { API, requestUser, logger }) => {
+  beforeDelete: async (doc, { API, logger }) => {
     logger.info('Before deleting', { docId: doc._id });
     
     // 1. Check for dependencies
@@ -397,18 +372,15 @@ Handlers: {
       throw new Error('Cannot delete contact with active orders');
     }
     
-    // 2. Require specific permissions
-    if (!requestUser.isAdmin) {
-      throw new Error('Only admins can delete contacts');
-    }
+    // 2. Permissions: a hook has no requestUser, so it cannot check
+    //    who is deleting. Restrict deletes with roles instead.
     
     // 3. Soft delete instead
     if (doc.hasHistory) {
       // Convert to soft delete
       await API.prolibu.update('Contact', doc._id, {
         status: 'deleted',
-        deletedAt: new Date(),
-        deletedBy: requestUser._id
+        deletedAt: new Date().toISOString()
       });
       
       throw new Error('Contact archived instead of deleted');
@@ -425,7 +397,7 @@ Handlers: {
 
 ```javascript
 Handlers: {
-  afterDelete: async (doc, { API, requestUser, logger }) => {
+  afterDelete: async (doc, { API, logger }) => {
     logger.info('After deleting', { docId: doc._id });
     
     try {
@@ -463,7 +435,6 @@ Handlers: {
         action: 'delete',
         objectName: 'Contact',
         objectId: doc._id,
-        userId: requestUser._id,
         timestamp: new Date(),
         data: doc
       });
@@ -478,7 +449,7 @@ Handlers: {
 
 ## Real-World Example: Bidirectional Sync
 
-Complete example from the codebase:
+A sketch in the helper style above (wire each handler from `Events.on`, see [Script Structure](#script-structure)):
 
 ```javascript
 /**
@@ -486,13 +457,13 @@ Complete example from the codebase:
  * Syncs Contact changes from Prolibu to Salesforce
  */
 
-const DataMapper = require('../../../lib/vendors/prolibu/DataMapper');
-const ContactMap = require('../../../lib/vendors/salesforce/maps/ContactMap');
+const DataMapper = require('../../../../lib/vendors/prolibu/DataMapper');
+const ContactMap = require('../../../../lib/vendors/salesforce/maps/ContactMap');
 
-module.exports = {
+const integration = {   // not module.exports: it breaks a script entry
   Handlers: {
     // After a contact is created in Prolibu
-    afterCreate: async (doc, { API, requestUser, logger }) => {
+    afterCreate: async (doc, { API, logger }) => {
       const mapped = DataMapper.mapWithConfig(doc, entityConfig, logger);
       
       const sfContact = await API.salesforce.create('Contact', {
@@ -514,7 +485,7 @@ module.exports = {
     },
     
     // After a contact is updated in Prolibu
-    afterUpdate: async (doc, beforeUpdateDoc, payload, { API, requestUser, logger }) => {
+    afterUpdate: async (doc, beforeUpdateDoc, payload, { API, logger }) => {
       if (!doc.externalId) {
         logger.warn('No Salesforce ID, skipping sync');
         return;
@@ -547,7 +518,7 @@ module.exports = {
     },
     
     // After a contact is deleted in Prolibu
-    afterDelete: async (doc, { API, requestUser, logger }) => {
+    afterDelete: async (doc, { API, logger }) => {
       if (!doc.externalId) {
         logger.warn('No Salesforce ID, skipping delete');
         return;
@@ -719,13 +690,12 @@ beforeCreate: async (doc, { API, logger }) => {
 Track all changes:
 
 ```javascript
-afterUpdate: async (doc, beforeUpdateDoc, payload, { API, requestUser, logger }) => {
+afterUpdate: async (doc, beforeUpdateDoc, payload, { API, logger }) => {
   await API.prolibu.create('AuditLog', {
     action: 'update',
     objectName: 'Contact',
     objectId: doc._id,
-    userId: requestUser._id,
-    changes: payload,
+    changes: payload,                 // no requestUser in hooks
     before: beforeUpdateDoc,
     after: doc,
     timestamp: new Date()
@@ -791,8 +761,8 @@ beforeCreate: async (doc, { API, logger }) => {
 - **Create Infinite Loops**: Prevent hook → update → hook cycles
 - **Skip Error Handling**: Always wrap external API calls in try/catch
 - **Block Too Long**: Keep hooks fast, queue heavy operations
-- **Ignore Context**: Use requestUser for permissions/audit
-- **Hard-code Values**: Use environment variables for external IDs
+- **Assume a Caller**: Hooks get no `requestUser`; enforce permissions with roles
+- **Hard-code Values**: Keep keys and external IDs in the script's `variables` (there are no environment variables)
 - **Sync Unchanged Data**: Check payload before syncing
 
 ## Error Handling
@@ -873,23 +843,24 @@ afterUpdate: async (doc, beforeUpdateDoc, payload, { API, logger }) => {
 }
 ```
 
-#### 2. Use Sync Flags
+#### 2. Recognize Your Own Write
+
+There is no flag that skips hooks: every write through the API fires them again, and unknown fields are dropped. Recognize your own write by what it changes:
 
 ```javascript
-// ✅ GOOD: Use flag to prevent loops
+// ✅ GOOD: skip the update this hook made itself
 afterUpdate: async (doc, beforeUpdateDoc, payload, { API, logger }) => {
-  // Skip if this update came from sync
-  if (payload._skipHooks || payload._syncUpdate) {
-    return;
+  const keys = Object.keys(payload);
+  if (keys.length === 1 && keys[0] === 'lastSyncedAt') {
+    return;  // our own write below
   }
   
   // Sync to Salesforce
   await API.salesforce.update('Contact', doc.externalId, mappedData);
   
-  // Update with sync flag (won't trigger hook)
+  // This update fires the hook again; the check above stops it
   await API.prolibu.update('Contact', doc._id, {
-    lastSyncedAt: new Date(),
-    _skipHooks: true
+    lastSyncedAt: new Date().toISOString()
   });
 }
 ```
@@ -957,8 +928,8 @@ describe('Contact Lifecycle Hooks', () => {
 ### Integration Testing
 
 ```bash
-# Run integration tests
-npm test -- accounts/dev10.prolibu.com/hook-integrations/test/outbound-salesforce.test.js
+# Run a script's jest tests
+DOMAIN=<your-domain> SCRIPT_PREFIX=<prefix> npx jest accounts/<your-domain>/scripts/<prefix>/test/<name>.test.js
 ```
 
 ## Performance Optimization
@@ -983,8 +954,10 @@ afterUpdate: async (doc, beforeUpdateDoc, payload, { API, logger }) => {
 
 ```javascript
 afterUpdate: async (doc, beforeUpdateDoc, payload, { API, logger }) => {
-  // Only sync during business hours
-  const hour = new Date().getHours();
+  // Only sync during business hours (the server clock is UTC: use Intl with a timeZone)
+  const hour = Number(new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric', hourCycle: 'h23', timeZone: 'America/Bogota'
+  }).format(new Date()));
   if (hour < 8 || hour > 18) {
     logger.debug('Outside business hours, queueing for later');
     await queueForLater(doc, payload);
@@ -996,17 +969,21 @@ afterUpdate: async (doc, beforeUpdateDoc, payload, { API, logger }) => {
 }
 ```
 
-### Async Non-Blocking
+### Don't Fire and Forget
+
+A run ends when the script's last statement settles, and the worker is then stopped: work you do not `await` is cut off with no error. The hook also runs inside the user's request, so its time adds to the save. Keep the hook short and `await` everything; push slow work to a queue (above) processed by a scheduled script.
 
 ```javascript
 afterCreate: async (doc, { API, logger }) => {
-  // Don't wait for external API
-  syncToSalesforce(doc, API, logger).catch(error => {
-    logger.error('Async sync failed', error);
-  });
-  
-  // Return immediately
-  return;
+  // ❌ BAD: not awaited — cut off when the run ends
+  // syncToSalesforce(doc, API, logger).catch(...);
+
+  // ✅ GOOD
+  try {
+    await syncToSalesforce(doc, API, logger);
+  } catch (error) {
+    logger.error('Sync failed', error);
+  }
 }
 ```
 
@@ -1015,8 +992,7 @@ afterCreate: async (doc, { API, logger }) => {
 - **[Event System Overview](./README.md)** - Understanding the event system
 - **[ApiRun Events](./01-api-run.md)** - Manual script execution
 - **[ScheduledTask Events](./02-scheduled-task.md)** - Automated periodic tasks
-- **[Example: Salesforce Integration](../../../accounts/dev10.prolibu.com/hook-integrations/outbound-salesforce.js)** - Real implementation
-- **[Example: HubSpot Integration](../../../accounts/dev10.prolibu.com/hook-integrations/outbound-hubspot.js)** - Real implementation
+- **[OutboundIntegration](../../lib/vendors/prolibu/OutboundIntegration.js)** - Config-driven outbound sync library
 
 ---
 

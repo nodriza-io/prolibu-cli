@@ -456,7 +456,7 @@ Any update that includes `stage` in the body is refused:
 curl -X PATCH 'https://<domain>/v2/ticket/64f0a1b2c3d4e5f607080910' \
   -H 'Authorization: Bearer <TICKET_ENRICHER_KEY>' \
   -H 'Content-Type: application/json' \
-  -d '{ "subject": "Updated", "stage": "closed" }'
+  -d '{ "subject": "Updated", "stage": "<closedStageId>" }'
 ```
 
 Response:

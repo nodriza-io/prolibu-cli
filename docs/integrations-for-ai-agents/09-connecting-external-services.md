@@ -200,7 +200,7 @@ curl -s -X POST 'https://<domain>/v2/script/' \
     "active": true,
     "timeout": 20000,
     "variables": [{ "key": "apiKey", "value": "<SCOPED_CALLBACK_KEY>" }],
-    "code": "(async () => { const evt = eventData.body || {}; const apiKey = variables.find(v => v.key === \"apiKey\").value; const client = axios.create({ baseURL: `https://${localDomain}/v2`, headers: { Authorization: `Bearer ${apiKey}` } }); const found = await client.get(`/deal?externalId=${encodeURIComponent(evt.Id)}&limit=1`); if (found.data.data.length) { await client.patch(`/deal/${found.data.data[0]._id}`, { amount: evt.Amount, stage: evt.StageName }); output = { updated: true }; } else { await client.post(\"/deal\", { title: evt.Name, amount: evt.Amount, externalId: evt.Id }); output = { created: true }; } })();"
+    "code": "(async () => { const evt = eventData.body || {}; const apiKey = variables.find(v => v.key === \"apiKey\").value; const client = axios.create({ baseURL: `https://${localDomain}/v2`, headers: { Authorization: `Bearer ${apiKey}` } }); const STAGE_IDS = { \"Proposal\": \"<proposalStageId>\", \"Closed Won\": \"<approvedStageId>\" }; const stage = STAGE_IDS[evt.StageName]; const found = await client.get(`/deal?externalId=${encodeURIComponent(evt.Id)}&limit=1`); if (found.data.data.length) { await client.patch(`/deal/${found.data.data[0]._id}`, { amount: evt.Amount, ...(stage && { stage }) }); output = { updated: true }; } else { await client.post(\"/deal\", { title: evt.Name, amount: evt.Amount, externalId: evt.Id }); output = { created: true }; } })();"
   }'
 ```
 
@@ -215,10 +215,15 @@ The readable `code`:
     headers: { Authorization: `Bearer ${apiKey}` },
   });
 
+  // `stage` takes a Stage _id, never a name (a name answers 400). Map the external
+  // stage names once, from GET /v2/stage?xquery={"stageType":"Deal.stage"}.
+  const STAGE_IDS = { 'Proposal': '<proposalStageId>', 'Closed Won': '<approvedStageId>' };
+  const stage = STAGE_IDS[evt.StageName];
+
   // Correlate by the external system's id (stored on the Prolibu record as externalId).
   const found = await client.get(`/deal?externalId=${encodeURIComponent(evt.Id)}&limit=1`);
   if (found.data.data.length) {
-    await client.patch(`/deal/${found.data.data[0]._id}`, { amount: evt.Amount, stage: evt.StageName });
+    await client.patch(`/deal/${found.data.data[0]._id}`, { amount: evt.Amount, ...(stage && { stage }) });
     output = { updated: true };
   } else {
     await client.post('/deal', { title: evt.Name, amount: evt.Amount, externalId: evt.Id });
@@ -226,6 +231,8 @@ The readable `code`:
   }
 })();
 ```
+
+A deal's `stage` holds the `_id` of a Stage record, so an external stage name must be mapped first; read the account's deal stages with `GET /v2/stage?xquery={"stageType":"Deal.stage"}` and keep the map in the script (or in a variable). Moving a deal to the won stage (the factory **Approved** stage) is not a plain field change: by default it also creates a Work Order for the deal.
 
 Then the endpoint that exposes it publicly:
 
@@ -400,11 +407,13 @@ Webhooks and callouts are best-effort; deliveries get dropped. A scheduled scrip
     params: { q }, headers: { Authorization: `Bearer ${tok}` }, timeout: 20000,
   });
 
-  // 2. Upsert each into Prolibu, keyed by externalId.
+  // 2. Upsert each into Prolibu, keyed by externalId. Stage names map to Stage _ids (see §4.1).
+  const STAGE_IDS = { 'Proposal': '<proposalStageId>', 'Closed Won': '<approvedStageId>' };
   for (const rec of data.records) {
+    const stage = STAGE_IDS[rec.StageName];
     const found = await local.get(`/deal?externalId=${rec.Id}&limit=1`);
     if (found.data.data.length) {
-      await local.patch(`/deal/${found.data.data[0]._id}`, { amount: rec.Amount, stage: rec.StageName });
+      await local.patch(`/deal/${found.data.data[0]._id}`, { amount: rec.Amount, ...(stage && { stage }) });
     } else {
       await local.post('/deal', { title: rec.Name, amount: rec.Amount, externalId: rec.Id });
     }

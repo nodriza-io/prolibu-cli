@@ -182,8 +182,11 @@ Readable `code`:
   });
 
   // 2. Upsert keyed by externalId (the external opportunity id).
+  // `stage` takes a Stage _id, never a name: map the external names (see below).
+  const STAGE_IDS = { 'Proposal': '<proposalStageId>', 'Closed Won': '<approvedStageId>' };
+  const stage = STAGE_IDS[evt.StageName];
   const found = await client.get(`/deal?externalId=${encodeURIComponent(evt.Id)}&limit=1`);
-  const patch = { dealName: evt.Name, amount: evt.Amount, stage: evt.StageName, syncedFrom: 'crm' };
+  const patch = { dealName: evt.Name, amount: evt.Amount, ...(stage && { stage }), syncedFrom: 'crm' };
   if (found.data.data.length) {
     await client.patch(`/deal/${found.data.data[0]._id}`, patch);
     output = { updated: true };
@@ -195,6 +198,8 @@ Readable `code`:
 ```
 
 (If you use a `syncedFrom` tag, add it as a Custom Field on `Deal` the same way as `externalId` in Step 1.)
+
+A deal's `stage` holds the `_id` of a Stage record: a name such as `"Proposal"` fails with `400 Document not found by primaryKey`. Read the account's deal stages once with `GET /v2/stage?xquery={"stageType":"Deal.stage"}` and fill `STAGE_IDS` from it. The won stage is the factory **Approved** stage, and moving a deal there is not a plain field change: it also creates a Work Order for the deal.
 
 Then the endpoint that exposes the script publicly — `authentication.enabled: false` because the CRM can't present your API key; the shared-secret header is checked inside the script:
 
@@ -264,7 +269,8 @@ Do all of this on your **sandbox host** with a least-privilege `<SCOPED_KEY>`.
    ```bash
    curl -s -X POST "https://<domain>/v2/deal/" \
      -H "Authorization: Bearer <SCOPED_KEY>" -H "Content-Type: application/json" \
-     -d '{ "dealName": "Sandbox push test", "amount": 5000, "stage": "negotiation" }'
+     -d '{ "dealName": "Sandbox push test", "amount": 5000, "stage": "<negotiationStageId>" }'
+   # stage is a Stage _id from GET /v2/stage?xquery={"stageType":"Deal.stage"}; a name answers 400
    # then read it back and check externalId is populated
    ```
 
@@ -397,10 +403,10 @@ curl -s -X POST "https://<domain>/v2/form/" \
     "formName": "Website contact form",
     "formSchema": {
       "title": "Talk to us",
-      "fullName":    { "type": "string", "required": true },
-      "email":       { "type": "email",  "required": true },
-      "companyName": { "type": "string" },
-      "message":     { "type": "textarea" }
+      "fullName":    { "type": "String", "label": "Name", "required": true },
+      "email":       { "type": "String", "format": "email", "label": "Email", "required": true },
+      "companyName": { "type": "String", "label": "Company" },
+      "message":     { "type": "String", "uiCom": "TextArea", "label": "Message" }
     },
     "mappings": [
       {
@@ -408,8 +414,7 @@ curl -s -X POST "https://<domain>/v2/form/" \
         "action": "create",
         "fieldMap": {
           "fullName":    "firstName",
-          "email":       "email",
-          "companyName": "company.companyName"
+          "email":       "email"
         },
         "defaults": { "source": "web-form" }
       }
@@ -427,7 +432,7 @@ Response (`201`, abridged) — capture the `_id`; you submit against it:
 { "_id": "665f0c9a1b2c3d4e5f0022aa", "formCode": "FRM-a1b2c3", "formName": "Website contact form", "active": true }
 ```
 
-Every `fieldMap` value must reference a key present in `formSchema`, and every `modelName` must be an existing object, or the form is rejected with `400`. Because `submissions.persist` is `true`, each submission is also stored as a queryable `FormSubmission`.
+Every `fieldMap` key must be a field key present in `formSchema`, and every `modelName` must be an existing object, or the form is rejected with `400`. The target paths (the values) are **not** checked: one the object does not have is dropped silently, and a path through a reference (`company.companyName`) does not work — take paths from `GET /v2/form/getmodelfields/Contact`. Answers you do not map (`companyName`, `message` here) are kept with the stored submission. Field types follow the form builder's format (`String` + `format` / `uiCom`); lowercase pseudo-types such as `email` or `textarea` save but render as plain text boxes ([Forms §2.2](07-sites-forms-and-endpoints.md#22-formschema--flat-vs-paged)). Because `submissions.persist` is `true`, each submission is also stored as a queryable `FormSubmission`.
 
 ### Step 2 — Notify the external system on new contacts
 
@@ -482,7 +487,7 @@ If you need server-side enrichment (score the lead, normalize the name, look up 
 
 ### Step 4 — Submit the form
 
-The public submit route is **`PUT /v2/form/register`** (not `POST`) and takes `{ id, data }`. A `public` form with captcha needs a `captchaToken`; for headless server-side testing you can validate access with `verifyOnly`.
+The public submit route is **`PUT /v2/form/register`** (not `POST`) and takes `{ id, data }`. A `public` form with captcha needs a `captchaToken`, which only exists when the account has an active Cloudflare Turnstile credential (otherwise the page shows no captcha and every submission fails); for headless server-side testing you can validate access with `verifyOnly`.
 
 ```bash
 curl -s -X PUT "https://<domain>/v2/form/register" \
@@ -517,7 +522,7 @@ Response (`200`) — one `results` entry per mapping:
 3. **Confirm persistence:** `GET /v2/formsubmission?form=<formId>&sort=-createdAt&limit=1` returns the stored submission with `status: "processed"`.
 4. **Confirm the webhook fired:** your `marketing.example.com` receiver logs a `Contact.create` delivery carrying only the `selectedFields`; assert `X-Api-Key` matches before trusting the body.
 5. **Enrichment (if used):** after the after-event runs, the `Contact` shows a split `firstName`/`lastName` and `leadScore: 10`.
-6. **Negative paths:** submit with `POST` instead of `PUT` (it won't hit `register`); omit the required `email` (→ `400`); and hammer the endpoint to observe per-IP/per-form rate limiting (`429`).
+6. **Negative paths:** submit with `POST` instead of `PUT` (it won't hit `register`); omit the required `email` (→ `400`); and send more than 60 submissions to the form within one clock minute to observe the per-form rate limit (`429`; the per-IP limit is 1000 per minute).
 
 ---
 
@@ -774,7 +779,7 @@ The decoded result carries `{ modelName: "Deal", data, webUrl, previewUrl, track
 
 **Primitives composed.** [`Site`](07-sites-forms-and-endpoints.md#3-hosted-sites) (`authenticationRequired`), the platform's sign-in page, and the [REST API](03-rest-api.md) called from the browser.
 
-> **Read this first.** Do **not** build email/password fields, do not call `POST /v2/auth/signin` yourself, do not implement MFA, lockout, or password reset. The platform's sign-in page does all of it, branded for the account. Your bundle is written as if the visitor is already authenticated.
+> **Read this first.** A published site never asks for a password: do **not** build email/password fields, do not call `POST /v2/auth/signin` yourself (with MFA on it answers `mfaRequired` instead of a token; `/v2/auth/login` does not exist), do not implement MFA, lockout, or password reset. The platform's sign-in page does all of it — password, Google, Microsoft and Okta sign-in included. It shows the platform's logo, not the account's branding. Your bundle is written as if the visitor is already authenticated.
 
 ### Step 1 — Understand the two halves of the session
 
@@ -819,7 +824,10 @@ const SIGNIN = () => '/v2/auth/signin?redirect=' +
   encodeURIComponent(location.pathname + location.search + location.hash)
 
 export function getApiKey() {
-  const apiKey = localStorage.getItem('apiKey')
+  // The app stores the key JSON-quoted ("abc…"), older screens plain: accept both.
+  const raw = localStorage.getItem('apiKey')
+  let apiKey = raw
+  try { const parsed = JSON.parse(raw); if (typeof parsed === 'string' && parsed) apiKey = parsed } catch {}
   if (!apiKey) location.href = SIGNIN()   // gate passed, but no token on this browser yet
   return apiKey
 }
@@ -833,8 +841,7 @@ export async function api(path, options = {}) {
       Authorization: `Bearer ${getApiKey()}`,
     },
   })
-  if (res.status === 401) {               // expired or revoked
-    localStorage.removeItem('apiKey')
+  if (res.status === 401) {               // expired or revoked: the sign-in page checks and cleans up
     location.href = SIGNIN()
     return
   }
@@ -842,11 +849,14 @@ export async function api(path, options = {}) {
   return res.status === 204 ? null : res.json()
 }
 
-export function signOut() {
-  localStorage.removeItem('apiKey')
+// The site shares the app's session, so signing out ends it in the app too.
+export async function signOut() {
+  await fetch('/v2/auth/signout', { method: 'DELETE', headers: { Authorization: `Bearer ${getApiKey()}` } })
   location.href = '/v2/auth/signin'
 }
 ```
+
+**Never call `localStorage.removeItem('apiKey')`** — not on a `401`, not to sign out. It is the same session the app uses on this origin, so removing it signs the user out of the app while leaving the token itself alive. A key sent with its JSON quotes answers `401`, which is why `getApiKey()` parses it.
 
 Never drop the `localStorage`-empty branch. The cookie and the `localStorage` copy can fall out of step — a visitor who cleared site data, or whose session was established before your site existed, passes the page gate with no token. Sending them through `/v2/auth/signin?redirect=…` re-seeds both and returns them to the page they wanted.
 
@@ -870,8 +880,8 @@ Requests are same-origin, so there is no CORS to configure. Every record the vis
 2. **The round trip:** sign in on that page → you land back on the site, and `localStorage.getItem('apiKey')` is populated.
 3. **Deep link preserved:** request `/site/ops-console/reports/q3` anonymously and confirm the `redirect` param carries the full path, and that you land there after signing in.
 4. **The cookie is not enough:** `curl --cookie "apiKey=<key>" https://<domain>/v2/user/me` → `401`. This is why Step 3 sends the header.
-5. **Desync recovery:** with a valid session, run `localStorage.removeItem('apiKey')` in the console and reload → the page loads (cookie gate) and your code bounces to sign-in, returning with the key restored.
-6. **Expiry:** revoke the token and call `api('/user/me')` → the `401` branch clears storage and redirects rather than throwing.
+5. **Desync recovery:** with a valid session, run `localStorage.removeItem('apiKey')` in the console (a deliberate test only — it signs this browser out of the app) and reload → the page loads (cookie gate) and your code bounces to sign-in, returning with the key restored.
+6. **Expiry:** revoke the token and call `api('/user/me')` → the `401` branch redirects to sign-in rather than throwing, and leaves `localStorage` alone.
 7. **Assets are not gated:** fetch `https://<domain>/site/ops-console/assets/<file>.js` anonymously — it still serves. Confirms the boundary: `authenticationRequired` gates *pages*, never files. Never ship secrets or API keys in the bundle.
 
 ---
@@ -996,7 +1006,7 @@ else render(r.output.results)
 4. **Role gate (if set):** call with a user holding none of `requiredRoles` → `403`. An `isAdmin` user bypasses the role check by design.
 5. **Bad input is data, not an exception:** post `{ "q": "" }` → `200` with `output.ok === false`, not a `400`. Confirms failures stay machine-readable.
 6. **Provider failure is contained:** temporarily set `apolloApiKey` to garbage → `200` with `output.reason === 'provider_error'`, and the real detail only in the script run log. Nothing about the key reaches the caller.
-7. **Rotation without redeploy:** `PATCH` the script's `variables` with a new key and call again — the next run picks it up, with no change to `code` and no site rebuild.
+7. **Rotation without redeploy:** `PATCH` the script's `variables` with a new key and call again — the next run picks it up, with no change to `code` and no site rebuild. If you publish the script with this CLI, mind that each `./prolibu script dev` replaces the script's `variables` with those in its `config.json`: leave the `variables` key out of `config.json` to keep the ones set in the app or over the API.
 8. **Audit:** confirm the run appears in the script's logs with the calling user, so you can answer "who queried what".
 
 ---
@@ -1056,8 +1066,8 @@ else render(r.output.results)
 - [ ] `Site` created with an explicit `siteCode`, `siteType: 'SPA'`, and `authenticationRequired: true`.
 - [ ] Bundle built with `base: './'` and the router basename read from `document.baseURI`.
 - [ ] **No login form written** — the platform's `/v2/auth/signin` page is the only credential UI.
-- [ ] API calls send `Authorization: Bearer <localStorage.apiKey>`; the cookie is never relied on.
-- [ ] The `localStorage`-empty and `401` branches both redirect to `/v2/auth/signin?redirect=…`.
+- [ ] API calls send `Authorization: Bearer <localStorage.apiKey>`, read with `JSON.parse` and a raw fallback; the cookie is never relied on.
+- [ ] The `localStorage`-empty and `401` branches both redirect to `/v2/auth/signin?redirect=…`; the site never removes `localStorage.apiKey`.
 - [ ] Confirmed anonymously that pages `302` to sign-in and that assets still serve — no secrets in the bundle.
 
 **Recipe 7 — Third-party API proxy**
