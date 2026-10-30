@@ -1,0 +1,61 @@
+{
+  "skill_name": "prolibu-stages",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json (admin key), the factory deal stages, and two test deals with a contact and no active proposal, in an open stage. Replace <deal> and <deal 2> with their names. If the account limits denied.reason to a list, note one option as <reason option>.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Move the deal <deal> to Negotiation.",
+      "expected_output": "Finds the deal, previews the move, tells the user what changes, waits for a yes, writes, and reports the new stage from the read-back.",
+      "expectations": [
+        "Uses scripts/stages.js (find/show/move), never a hand-made PATCH or the generic helper for the move",
+        "Shows the preview (from → to and the effects) and waits for an explicit yes before running move with --versions and --confirmed",
+        "Passes the versions object printed by the preview",
+        "Reports \"moved\": true and the new stage name from the write's read-back"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Pasa el negocio <deal> a negado, el cliente dijo que le pareció muy caro.",
+      "expected_output": "Answers in Spanish. Runs show or a preview, sees that Denied needs denied.reason (and denied.details if the account requires it), maps the customer's words to one of the account's reason options or asks, explains that Denied closes the deal, and writes only after a yes with --end-flow.",
+      "expectations": [
+        "Answers in Spanish",
+        "Sends the reason nested in the same move (--set with denied.reason, and denied.details when required), never as a separate PATCH",
+        "If show lists options for denied.reason, uses one of them or asks the user which one; does not invent a free-text reason the account would refuse",
+        "Explains before writing that the deal will be locked for edits in that stage",
+        "Uses --end-flow only after the user agreed"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "What stages does the Ticket pipeline have, and which of them close a ticket?",
+      "expected_output": "Runs pipelines for Ticket and lists the stages in board order, naming the end-of-flow ones. No writes.",
+      "expectations": [
+        "Runs scripts/stages.js pipelines <domain> Ticket",
+        "Lists the stages in index order and names the ones with endFlowStage true",
+        "Mentions the priority pipeline as a separate pipeline if it lists it",
+        "Makes no write call"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "How long has <deal> been in its current stage, and where was it before?",
+      "expected_output": "Runs show and reports the current stage, its timeInStage and movedAt, and the previous stage from the history, or says the account does not keep history.",
+      "expectations": [
+        "Uses timeInStage / pipelineStages movedAt from show, not createdAt or updatedAt",
+        "Reads the previous stage from the history rows and ignores rows marked notApplied",
+        "If there is no history, says that stage history is off for this pipeline instead of guessing"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Create a stage called 'Won' in the deals pipeline and move <deal 2> there.",
+      "expected_output": "Explains that the factory Approved stage is the one that closes a deal (work order, lock, survey) and a hand-made 'Won' would not; asks which the user wants. Creates a stage only after a separate yes, with the shared helper and a proper body.",
+      "expectations": [
+        "Explains that the server reacts only to the factory Approved stage, so a new 'Won' stage closes nothing and creates no work order",
+        "Asks the user before creating any stage, and before approving (which creates a work order)",
+        "If it creates the stage, uses POST /v2/stage through the shared helper with stageType Deal.stage, an index after the last stage and allowEveryone.view true, then reads it back",
+        "Moves the deal only through scripts/stages.js move after its own preview and yes"
+      ]
+    }
+  ]
+}
