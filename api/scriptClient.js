@@ -69,6 +69,8 @@ async function patchScript(domain, apiKey, scriptCode, value, field) {
     });
   } catch (err) {
     console.error(`Failed to PATCH ${field} for ${scriptCode}:`, err.response?.data || err.message);
+    // Keep going (watch mode retries on the next change) but make the run fail.
+    process.exitCode = 1;
   }
 }
 
@@ -390,7 +392,8 @@ async function runDevScript(scriptPrefix, env, domain, watch = false, fileName =
   }
 
   if (!watch) {
-    process.exit(0);
+    // Exit with the code set by any failed PATCH above (0 when everything went through).
+    process.exit();
   }
 }
 

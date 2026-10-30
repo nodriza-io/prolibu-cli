@@ -7,8 +7,8 @@ const fs = require('fs');
 const path = require('path');
 
 // Import Prolibu APIs
-const ProlibuApi = require('../../../../lib/vendors/prolibu/ProlibuApi');
-const UserApi = require('../../../../lib/vendors/prolibu/UserApi');
+const ProlibuApi = require('../../../../../lib/vendors/prolibu/ProlibuApi');
+const UserApi = require('../../../../../lib/vendors/prolibu/UserApi');
 
 // Use DOMAIN and SCRIPT_CODE from environment variables
 const domain = process.env.DOMAIN;
