@@ -8,17 +8,27 @@ working from memory or from the guide.
 
 | Task | Skill |
 |---|---|
+| First step: connect to an account, check the API key, import an account repo, Prolibu MCP in Claude | [`prolibu-account-setup`](.claude/skills/prolibu-account-setup/SKILL.md) |
 | Which object or skill fits a goal; any object without its own skill | [`prolibu-platform-map`](.claude/skills/prolibu-platform-map/SKILL.md) |
-| Server-side code: automations, record triggers, cron jobs | [`prolibu-scripts`](.claude/skills/prolibu-scripts/SKILL.md) |
+| Server-side code without an LLM: automations, record triggers, cron jobs | [`prolibu-scripts`](.claude/skills/prolibu-scripts/SKILL.md) |
 | Host a static site or SPA on an account | [`prolibu-sites`](.claude/skills/prolibu-sites/SKILL.md) |
 | Inbound HTTP endpoint or webhook receiver | [`prolibu-endpoints`](.claude/skills/prolibu-endpoints/SKILL.md) |
 | Public form that creates records | [`prolibu-forms`](.claude/skills/prolibu-forms/SKILL.md) |
 | Notify another system when records change | [`prolibu-webhooks`](.claude/skills/prolibu-webhooks/SKILL.md) |
 | Store another system's id on a record (`refId` / `refUrl`) | [`prolibu-external-refs`](.claude/skills/prolibu-external-refs/SKILL.md) |
+| Import contacts, companies or deals from CSV/Excel without duplicates; bulk edits; import results | [`prolibu-imports`](.claude/skills/prolibu-imports/SKILL.md) |
 | Add fields to an object, or create a custom object | [`prolibu-custom-fields`](.claude/skills/prolibu-custom-fields/SKILL.md) |
+| Catalog: products, price lists and prices, taxes, volume discounts, coupons; load a catalog from Excel | [`prolibu-catalog`](.claude/skills/prolibu-catalog/SKILL.md) |
 | Add, change or remove products on a deal's quote | [`prolibu-quotes`](.claude/skills/prolibu-quotes/SKILL.md) |
+| Set up a deal's proposal and template, its versions, contract templates and contracts ready for e-signature | [`prolibu-proposals`](.claude/skills/prolibu-proposals/SKILL.md) |
 | A product picker or configurator inside the quote editor | [`prolibu-extended-quote-sites`](.claude/skills/prolibu-extended-quote-sites/SKILL.md) |
 | Pipelines and stages: move a record, required fields | [`prolibu-stages`](.claude/skills/prolibu-stages/SKILL.md) |
+| Tasks, notes, meetings and calls on a record; a record's activity history | [`prolibu-activities`](.claude/skills/prolibu-activities/SKILL.md) |
+| Support tickets: open, assign, reply or note; case types, routing; articles and portal | [`prolibu-support`](.claude/skills/prolibu-support/SKILL.md) |
+| E-mail templates with variables, contact lists and e-mail campaigns (test, launch, schedule); WhatsApp conversations (read only) | [`prolibu-messaging`](.claude/skills/prolibu-messaging/SKILL.md) |
+| Reports and dashboards: build, add pages, combine reports, goals vs. actuals, zeros | [`prolibu-dashboards`](.claude/skills/prolibu-dashboards/SKILL.md) |
+| Native AI agents: instructions, model, skills, actions, scheduled and record-event triggers, runs and token cost | [`prolibu-ai-agents`](.claude/skills/prolibu-ai-agents/SKILL.md) |
+| Virtual tours: create, upload scenes, update, download | [`prolibu-virtual-tours`](.claude/skills/prolibu-virtual-tours/SKILL.md) |
 | Create a new skill, or rebuild one that does not work | [`prolibu-skill-creator`](.claude/skills/prolibu-skill-creator/SKILL.md) |
 
 Every skill that writes to an account follows
@@ -33,7 +43,7 @@ summary, write only after an explicit yes, read back. The API's own rules (filte
 |---|---|
 | The platform explained for an outside integrator (no CLI) | [`docs/integrations-for-ai-agents/`](docs/integrations-for-ai-agents/README.md) |
 | End-to-end, copy-pasteable integrations | [`12-integration-recipes.md`](docs/integrations-for-ai-agents/12-integration-recipes.md) |
-| Virtual tours with this CLI | the section below |
+| Virtual tours with this CLI | [`prolibu-virtual-tours`](.claude/skills/prolibu-virtual-tours/SKILL.md) (the section below is a command reference) |
 | Everything else this CLI does | [`README.md`](README.md) |
 
 ---
@@ -212,6 +222,11 @@ File name prefixes determine the scene type:
 
 ## Workflow Recipes
 
+> **Agents: use the [`prolibu-virtual-tours`](.claude/skills/prolibu-virtual-tours/SKILL.md) skill.**
+> `vt push` on an existing tour deletes and re-creates every scene (hotspots, initial views,
+> scene order and names made in the app are lost) and, for car tours, leaves the scenes
+> without their color. The recipes below are the CLI's raw commands, not a safe procedure.
+
 ### Pull → Edit → Push (sync existing tours)
 
 ```sh
@@ -282,7 +297,7 @@ cp -r accounts/dev11.prolibu.com/vt/project/virtualTours/BMW_X3 \
 
 ## Important Notes
 
-- `vt push` is idempotent for updates — it deletes all existing scenes/floorPlans and re-uploads from local files. Image ordering depends on filesystem order.
+- `vt push` is **not** safe to repeat on a tour edited in the app: it deletes all existing scenes/floorPlans (and the app work on them) and re-uploads from local files; car tours lose their colors. Image ordering depends on filesystem order. Preview it with the `prolibu-virtual-tours` skill.
 - `vt bulk` always creates new tours. Use `vt push` for upsert behavior.
 - The folder name becomes the `virtualTourCode` if not specified in `_config.json`.
 - `_id` in `_config.json` is written automatically by `pull` and `push` (after first create). Do not fabricate it.

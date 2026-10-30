@@ -161,7 +161,7 @@ See [Webhooks & Events](06-webhooks-and-events.md) §4–5 for the full pattern.
 
 ## 4. Rate-limit friendliness
 
-Treat `429` as normal back-pressure, not an exceptional failure. A well-behaved client rarely *sees* one because it is designed not to hammer. (The API does not apply a rate limit of its own today, although the OpenAPI document lists `429`; the habits below still keep your load reasonable and your client ready if one appears.)
+Treat `429` as normal back-pressure, not an exceptional failure. A well-behaved client rarely *sees* one because it is designed not to hammer. (Each API key has a request limit of about 2,500 calls whose counter resets only after a full minute without calls, so a steady integration can reach it; the habits below keep you under it.)
 
 - **Honor `429`.** When you get one, back off — respect a `Retry-After` header if present, otherwise exponential back-off with jitter (as in the wrapper above). Never retry a `429` in a tight loop.
 - **Bound your concurrency.** A fixed-size worker pool (e.g. 4–8 in flight) is far friendlier than firing hundreds of parallel requests. Concurrency, not raw request count, is what tips a system into throttling.

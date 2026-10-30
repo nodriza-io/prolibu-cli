@@ -269,7 +269,7 @@ The OpenAPI document describes a different error shape; this one is what the ser
 | `401` | Missing or invalid credential. |
 | `403` | Authenticated but not permitted — including a record that exists but is hidden from the caller. |
 | `404` | Object or record not found. A newly created custom object returns `404` until its schema is applied. |
-| `429` | Listed in the OpenAPI document, but the API does not apply a rate limit of its own. Still send requests one at a time, and if a `429` ever comes back, wait before retrying. |
+| `429` | Too many requests for this API key. Each key has a request limit (about 2,500 calls), and its counter resets only after a full minute without calls, so steady traffic can reach it. Send requests one at a time, load large batches through the importer, and wait at least a minute before retrying. |
 
 Write validation errors (missing `required` field, `enum`/`min`/`max`/`match` violations, etc.) come back as `400` with a message identifying the offending field. A duplicate on a `unique` field is also a `400` duplicate-value error, not a `409`. See [Custom Objects & Fields](02-custom-objects-and-fields.md) for field constraints.
 

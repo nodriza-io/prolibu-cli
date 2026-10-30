@@ -139,8 +139,12 @@ A reference is stored as an `_id` string. To get the referenced record instead:
   exists but this user may not read or change it · `404` no such record (also for an id that
   is not valid) · `400 Invalid JSON` for a body that does not parse.
 - Request bodies are limited to 10 MB.
-- No rate limit was found in the API code, although the OpenAPI document lists `429`. Call
-  one request at a time, and on a `429` wait before retrying.
+- Each API key has a request limit (about 2,500 calls; the counter only resets after a full
+  minute without calls, so steady traffic can hit it). Past it the API answers `429`. Call one
+  request at a time, batch with the importer (`prolibu-imports`) instead of one call per
+  record, and on a `429` wait at least a minute before retrying.
+- A `PATCH` of a field the schema hides (`avoid: always`) answers `200`, changes nothing and
+  still updates `updatedAt`. Read the record back instead of trusting the status.
 
 ## Read the schema before writing
 

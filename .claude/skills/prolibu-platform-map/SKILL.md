@@ -1,6 +1,6 @@
 ---
 name: prolibu-platform-map
-description: Start here for any Prolibu account task. Routes the request to the right Prolibu skill (sites, scripts, endpoints, forms, webhooks, external ids, custom fields, quotes, quote-editor sites, stages), maps business words to Prolibu objects and modules, explains how the core sales objects relate, and gives the safe procedure to read or write any other object through the API (schema first, then the write flow). Use it whenever someone asks what Prolibu has or "how does X work in Prolibu", wants to create, find or change records of an object no other Prolibu skill covers (tickets, tasks, invoices, products, custom objects…), or a call returns every record, 400 on a populate or sort, or a filter that seems ignored. Spanish triggers: "qué objetos tiene Prolibu", "cómo funciona", "qué módulo", "configurar la cuenta", "crear un registro", "consultar por API".
+description: Start here for any Prolibu account task. Routes the request to the right Prolibu skill (account setup, sites, scripts, endpoints, forms, webhooks, external ids, imports, custom fields, catalog, quotes, proposals, stages, activities, support, messaging, dashboards, AI agents, virtual tours), maps business words to Prolibu objects and modules, and gives the safe procedure to read or write any other object through the API (schema first, then the write flow). Use it whenever someone asks what Prolibu has or "how does X work in Prolibu", wants to work with an object no other Prolibu skill covers (invoices, payments, custom objects…), or a call returns every record, 400 on a populate or sort, or a filter that seems ignored. Spanish triggers: "qué objetos tiene Prolibu", "cómo funciona", "qué módulo", "crear un registro", "consultar por API".
 ---
 
 # Prolibu platform map
@@ -29,11 +29,21 @@ Answer in the user's language. Object names, API paths and field names stay as w
 | Expose a custom URL or receive another system's webhook | `prolibu-endpoints` |
 | Build or change a web form, or route ad lead forms | `prolibu-forms` |
 | Notify an external system when records change | `prolibu-webhooks` |
-| Store another system's id or link on records, import without duplicates | `prolibu-external-refs` |
+| Connect the CLI to an account: API key, import/pull an account repo, check the key and its permissions, connect the account's MCP server to Claude Code | `prolibu-account-setup` |
+| Store another system's id or link on records | `prolibu-external-refs` |
+| Import contacts, companies or deals from a CSV or Excel file without duplicates, change one field on many records, or read an import's result | `prolibu-imports` |
 | Add fields to an object, or create a Custom Object | `prolibu-custom-fields` |
+| Create or update products, price lists and their prices, taxes, volume discounts or coupons, or load a catalog from Excel | `prolibu-catalog` |
 | Add, change or remove products on a deal's quote | `prolibu-quotes` |
+| Turn a deal's proposal on or change its template, save or restore proposal versions, write contract templates, or generate a deal's contract ready for e-signature | `prolibu-proposals` |
 | Build a product picker or configurator inside the quote editor | `prolibu-extended-quote-sites` |
 | Move records between pipeline stages, or understand a pipeline | `prolibu-stages` |
+| Log tasks, notes, meetings or calls on a contact, company or deal, or read a record's activity history | `prolibu-activities` |
+| Open, find, assign or answer support tickets; case types, routing, the support mailbox; help articles and the portal | `prolibu-support` |
+| Build e-mail templates with variables, contact lists or e-mail campaigns; test, launch, schedule or pause one; read WhatsApp conversations | `prolibu-messaging` |
+| Build or change a report or dashboard (KPIs, charts, several reports, goals vs. actuals), or find why one shows zeros | `prolibu-dashboards` |
+| Create or change a native AI agent (instructions, model, skills, actions) and the triggers that run it on a schedule or a record event | `prolibu-ai-agents` |
+| Create, update or download virtual tours (car configurators, 360° spaces) | `prolibu-virtual-tours` |
 | Create a new skill, or rebuild one that does not work | `prolibu-skill-creator` |
 | Anything else: find, create or change records of any other object | This skill: Steps below |
 
@@ -137,13 +147,19 @@ Every record also carries `_id`, `createdAt`, `updatedAt`, `createdBy`, `updated
 ## Don't
 
 - Use an object's API without reading its schema first.
-- Touch these, ever, through a skill (read, list, create, change or delete): `Token`,
+- Create, change or delete these through a skill, or read their secrets: `Token`,
   `ServiceCredential`, `User`, `Role`, `AuthenticationRule`, `OauthApp`, `OauthGrant`,
   `McpSession`, `SyncConnection`, `ChannelProvider`, `EmailHub`, `ConfirmationCode`, the
   Subscriptions module (`Account`, `Deployment`, `Pool`, `SubscriptionPlan`), and the account
   preferences. They hold keys, credentials, sign-in or access rules. Tell the user to use the
-  Prolibu app or ask an admin, and stop. Only exception: `prolibu-external-refs` reads
-  `SyncConnection` to check sync coverage.
+  Prolibu app or ask an admin, and stop. A skill may only read what it needs and holds no
+  secret, with a fixed field list:
+  - your own user and the account switches: `GET /v2/user/me`, `GET /v2/user/preferences`;
+  - names, not credentials: users and roles by name (to assign or check access), whether a
+    credential or mailbox exists and which models it offers (`prolibu-ai-agents`,
+    `prolibu-forms`, `prolibu-support`), sync coverage (`prolibu-external-refs`);
+  - an MCP tool call records an `McpSession` by itself; that is allowed (`prolibu-dashboards`).
+  Never print or copy a key, token, password, secret or authorization header.
 - Write a deal's quote, move a stage, or create custom fields by hand: use their skills.
 - Bulk-change records without showing the user how many will change.
 - Print values of fields that look like secrets (`password`, `token`, `headers`, `variables`)
