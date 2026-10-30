@@ -1,0 +1,38 @@
+{
+  "skill_name": "prolibu-extended-quote-sites",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json and an active price list. Replace <domain> and <price list> with real values.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Build an extended quote site for <domain> where sellers pick products from the <price list> price list, with a quantity each, and add them to the quote.",
+      "expected_output": "A Static site under accounts/<domain>/sites/<prefix>/public/ built on the helper, published with ./prolibu site dev after a yes, plus the exact preference the admin must set.",
+      "expectations": [
+        "Lays out accounts/<domain>/sites/<prefix>/ by hand (config.json with siteType Static, public/index.html, public/prolibu-extended-quote.js) instead of running site create",
+        "Sends form:get:model as soon as the page loads",
+        "Searches with /v2/quote/productSearch passing pricebookId, and builds lines with /v2/quote/formatLineItem",
+        "Applies the full list (existing lines plus new ones), then sends form:close",
+        "Asks before publishing, and publishes with ./prolibu site dev --no-git (no --watch)",
+        "Tells the user to set modules.sales.deals.quote.extendedQuote {enabled, url} without changing preferences itself"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Our extended quote site adds lines but they show up as virtual and without taxes. Here is the code: <paste a site that builds lines as { productName, unitPrice, quantity }>.",
+      "expected_output": "Explains the lines lack pricebookEntry (and unitPrice is not a field), and rewrites them with productSearch + formatLineItem.",
+      "expectations": [
+        "Names the missing pricebookEntry as the cause",
+        "Points out unitPrice does not exist (it is price)",
+        "Replaces hand-built lines with formatLineItem results"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "When sellers press Apply in our extended quote, the lines that were already in the quote disappear.",
+      "expected_output": "Explains form:set:model replaces all lines and the site must send existing + new.",
+      "expectations": [
+        "Says form:set:model replaces the whole lineItems array",
+        "Fix sends the lines that arrived plus the new ones, and avoids duplicating on a second apply"
+      ]
+    }
+  ]
+}

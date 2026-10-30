@@ -1,0 +1,58 @@
+{
+  "skill_name": "prolibu-quotes",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json, an active price list in the account currency with at least two active products, and a test deal with a contact, in an open stage, whose quote already has one catalog line. Replace <deal> and <product> in the prompts with real names from that account.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Add 3 units of <product> to the quote of the deal <deal>.",
+      "expected_output": "Finds the deal and the product in the right price list, previews, asks for a yes, saves, and reports the saved total.",
+      "expectations": [
+        "Uses scripts/quote.js (deals/show/search/preview/apply), never a hand-made PATCH of the deal",
+        "Shows the preview (lines and the server's new total) and waits for an explicit yes before apply",
+        "After saving, the new line has product and pricebookEntry, is not virtual, and has quantity 3",
+        "The line that was already in the quote is still there with the same uuid",
+        "The total it reports is the one apply returned"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Agrégale 2 <product> a la cotización del negocio <deal> con 10% de descuento.",
+      "expected_output": "Same flow, answered in Spanish, with discountRate 0.1 and discountAmount 0 on the new line.",
+      "expectations": [
+        "Answers in Spanish",
+        "Sends discountRate as 0.1 (a decimal), not 10",
+        "The saved line carries discountRate 0.1 and discountAmount 0"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add a 'Custom onboarding package' to the quote of <deal> for 500.",
+      "expected_output": "Searches the catalog, finds nothing, tells the user the product is not in the price list and does not create a made-up line.",
+      "expectations": [
+        "Searches the catalog before anything else",
+        "Does not write a virtual line or invent a price-list entry",
+        "Explains the options in plain words (create the product in the catalog, or a custom line in the app)"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Change the quantity of the first line of <deal>'s quote to 5 and remove the service charge.",
+      "expected_output": "Updates the line by uuid; explains the service charge is automatic and only dismisses it if the user insists after hearing that.",
+      "expectations": [
+        "Identifies the line by uuid from show, not by lineId",
+        "Explains that the service charge is added by the account's rules and comes back unless dismissed",
+        "If it keeps the removal, the preview lists the charge under dismissedAutoCharges and nothing is saved before the user's yes"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Add <product> to the quote of <closed deal>.",
+      "setup": "<closed deal> is a test deal in an Approved or Denied stage.",
+      "expected_output": "Reads the deal, sees the end-of-flow stage, explains the quote is locked and stops.",
+      "expectations": [
+        "Reports the blocker from show or preview",
+        "Does not call apply and does not try another way to write the quote"
+      ]
+    }
+  ]
+}
