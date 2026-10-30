@@ -1,29 +1,39 @@
 # Prolibu CLI — agent guide
 
-## Documentation map
+## Start with the skill for your task
 
-Read the document that covers your task before writing code. Each one is a verified reference;
-none of it should be reconstructed from memory.
+Claude Code agents in this repo get these skills from [`.claude/skills/`](.claude/skills). Each
+one is the procedure for its task, verified against the platform's code: use it instead of
+working from memory or from the guide.
 
-| Task | Read |
+| Task | Skill |
 |---|---|
-| Anything about the platform's API, objects, auth, permissions | [`docs/integrations-for-ai-agents/`](docs/integrations-for-ai-agents/README.md) — start at its index |
-| Host a static site or SPA on an account | [`07-sites-forms-and-endpoints.md` §3](docs/integrations-for-ai-agents/07-sites-forms-and-endpoints.md#3-hosted-sites) |
-| Public form that creates records | [`07-sites-forms-and-endpoints.md` §2](docs/integrations-for-ai-agents/07-sites-forms-and-endpoints.md#2-web-to-lead-forms) |
-| Inbound HTTP endpoint or webhook receiver | [`07-sites-forms-and-endpoints.md` §1](docs/integrations-for-ai-agents/07-sites-forms-and-endpoints.md#1-custom-endpoints--inbound-http) |
-| Server-side automation, triggers, cron jobs | [`05-automation-and-scripts.md`](docs/integrations-for-ai-agents/05-automation-and-scripts.md) |
-| End-to-end, copy-pasteable integrations | [`12-integration-recipes.md`](docs/integrations-for-ai-agents/12-integration-recipes.md) |
-| Which object, endpoint or skill to use for a goal | [`prolibu-platform-map`](.claude/skills/prolibu-platform-map/SKILL.md) skill |
-| Store another system's id on a record (`refId` / `refUrl`) | [`13-external-references.md`](docs/integrations-for-ai-agents/13-external-references.md) |
-| Build/deploy sites, scripts and virtual tours with this CLI | [`README.md`](README.md) |
+| Which object or skill fits a goal; any object without its own skill | [`prolibu-platform-map`](.claude/skills/prolibu-platform-map/SKILL.md) |
+| Server-side code: automations, record triggers, cron jobs | [`prolibu-scripts`](.claude/skills/prolibu-scripts/SKILL.md) |
+| Host a static site or SPA on an account | [`prolibu-sites`](.claude/skills/prolibu-sites/SKILL.md) |
+| Inbound HTTP endpoint or webhook receiver | [`prolibu-endpoints`](.claude/skills/prolibu-endpoints/SKILL.md) |
+| Public form that creates records | [`prolibu-forms`](.claude/skills/prolibu-forms/SKILL.md) |
+| Notify another system when records change | [`prolibu-webhooks`](.claude/skills/prolibu-webhooks/SKILL.md) |
+| Store another system's id on a record (`refId` / `refUrl`) | [`prolibu-external-refs`](.claude/skills/prolibu-external-refs/SKILL.md) |
+| Add fields to an object, or create a custom object | [`prolibu-custom-fields`](.claude/skills/prolibu-custom-fields/SKILL.md) |
+| Add, change or remove products on a deal's quote | [`prolibu-quotes`](.claude/skills/prolibu-quotes/SKILL.md) |
+| A product picker or configurator inside the quote editor | [`prolibu-extended-quote-sites`](.claude/skills/prolibu-extended-quote-sites/SKILL.md) |
+| Pipelines and stages: move a record, required fields | [`prolibu-stages`](.claude/skills/prolibu-stages/SKILL.md) |
 
-Claude Code agents working inside this repo also get these as skills in
-[`.claude/skills/`](.claude/skills): `prolibu-platform-map` (start here to pick the right
-object), `prolibu-sites`, `prolibu-scripts`, `prolibu-endpoints`, `prolibu-forms`,
-`prolibu-webhooks`, `prolibu-external-refs` and `prolibu-custom-fields`. They route to the same
-references. Every skill that writes to an account follows
-[`_shared/WRITE-FLOW.md`](.claude/skills/_shared/WRITE-FLOW.md): ask first, write only after an
-explicit yes, read back.
+Every skill that writes to an account follows
+[`_shared/WRITE-FLOW.md`](.claude/skills/_shared/WRITE-FLOW.md): read first, show a plain
+summary, write only after an explicit yes, read back. The API's own rules (filters with
+`xquery`, populate depth, how `PATCH` merges) are in
+[`api-conventions.md`](.claude/skills/prolibu-platform-map/references/api-conventions.md).
+
+## Other references
+
+| Need | Read |
+|---|---|
+| The platform explained for an outside integrator (no CLI) | [`docs/integrations-for-ai-agents/`](docs/integrations-for-ai-agents/README.md) |
+| End-to-end, copy-pasteable integrations | [`12-integration-recipes.md`](docs/integrations-for-ai-agents/12-integration-recipes.md) |
+| Virtual tours with this CLI | the section below |
+| Everything else this CLI does | [`README.md`](README.md) |
 
 ---
 

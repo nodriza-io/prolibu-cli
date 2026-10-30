@@ -1,12 +1,14 @@
 # Prolibu objects by module
 
 Every standard object in the public API, grouped by the platform module it belongs to. The
-**API path** column is the collection path (`GET /v2/<path>/`, `POST /v2/<path>/`). A "—"
-means the purpose is not documented clearly enough to state; read the object's schema before
-using it.
+**API path** column is the collection path: `GET /v2/<path>` lists, `POST /v2/<path>` creates.
+A few objects are read-only logs (ContactSubmission, LoginActivity, ProposalVersion,
+StageHistory): they have no create.
 
-This list covers the standard platform. An account can add its own Custom Objects; they also
-appear in `GET /v2/openapi/specification` but not here (see `prolibu-custom-fields`).
+Modules are switched on per account. An object listed here but missing from the account's
+`GET /v2/openapi/specification/<path>` is not enabled there; say so and stop. An account can
+also add its own Custom Objects; they appear in the account's OpenAPI document but not here
+(see `prolibu-custom-fields`). The rules every call follows are in `api-conventions.md`.
 
 ## Sales
 
@@ -21,7 +23,7 @@ appear in `GET /v2/openapi/specification` but not here (see `prolibu-custom-fiel
 | AdCampaign | `adcampaign` | An advertising campaign that contacts are attributed to, with the user group that receives them. |
 | AdHub | `adhub` | A connected ad-platform account (for example Meta) that brings in leads and reports conversions. |
 | AdHubForm | `adhubform` | A lead form discovered on a connected ad-platform account, linked to the Prolibu form that receives its leads. |
-| Campaign | `campaign` | — |
+| Campaign | `campaign` | An older, minimal campaign record (code and name) that nothing else points to. For ad campaigns use AdCampaign. |
 | BusinessEvent | `businessevent` | An event the company runs or attends (conference, trade show): venue, dates, budget, attendees and results. |
 | EventProspect | `eventprospect` | A candidate event being evaluated; promoting it creates a BusinessEvent. |
 | EventExpense | `eventexpense` | An expense recorded against a business event, converted to the workspace currency. |
@@ -98,7 +100,7 @@ appear in `GET /v2/openapi/specification` but not here (see `prolibu-custom-fiel
 | CalendarEvent | `calendarevent` | A booking or event on a calendar, with its attendees, status and reminders. |
 | CalendarPolicy | `calendarpolicy` | Working-hour rules for a calendar, optionally for one user. |
 | CalendarException | `calendarexception` | Dates that are exceptions to a calendar's normal availability. |
-| CalendarGroup | `calendargroup` | — |
+| CalendarGroup | `calendargroup` | A named group of calendars (name and description); nothing else points to it. |
 | Attendee | `attendee` | A person attending a calendar event (contact or user). |
 
 ## Messaging and calls
@@ -159,7 +161,7 @@ appear in `GET /v2/openapi/specification` but not here (see `prolibu-custom-fiel
 | --- | --- | --- |
 | AiAgentProfile | `aiagentprofile` | An AI agent: the user it runs as, model, persona, instructions, skills and actions. |
 | Skill | `skill` | An AI skill: a prompt template, or instructions plus actions for an agent. |
-| AiAction | `aiaction` | A tool an AI agent can call (a platform tool, a script, a browser action). |
+| AiAction | `aiaction` | A tool an AI agent can call: a platform tool, a script, a browser action, a prompt or an HTTPS call. |
 | EventTrigger | `eventtrigger` | Runs an AI skill or agent on a schedule or when a record changes. |
 | McpSession | `mcpsession` | A session of an external AI client connected through MCP. |
 
@@ -188,20 +190,20 @@ appear in `GET /v2/openapi/specification` but not here (see `prolibu-custom-fiel
 | Role | `role` | A named set of permissions given to users. |
 | Team | `team` | A team of users. |
 | UserGroup | `usergroup` | A group of users for a purpose (contact assignment, ticket resolution, proposal wizard, record sharing, calendar load balancing), optionally with load balancing. |
-| UsersGroup | `usersgroup` | — |
+| UsersGroup | `usersgroup` | An older list of users (code, name, members) that nothing else points to. Use UserGroup. |
 | Workspace | `workspace` | A business unit inside the account; records belong to one. |
 | AuthenticationRule | `authenticationrule` | Sign-in rule that gives matching email domains or addresses their roles and workspaces. |
 | Token | `token` | An API key or session token, with its roles, scopes and expiry. |
 | OauthApp | `oauthapp` | An external application allowed to connect by OAuth. |
 | OauthGrant | `oauthgrant` | An authorization given to an OAuth application. |
 | ServiceCredential | `servicecredential` | Stored credentials for an external service (AI providers, Twilio, SendGrid, Google, Meta and others). |
-| SyncConnection | `syncconnection` | A two-way sync with an external system (for example HubSpot): objects, field and stage mappings. |
+| SyncConnection | `syncconnection` | A sync with an external CRM (for example HubSpot) for contacts, companies, deals, products and users, with a direction per object and field and stage mappings. |
 | ConfirmationCode | `confirmationcode` | A one-time verification code sent by email or WhatsApp. |
 | LoginActivity | `loginactivity` | A record of a sign-in attempt and its result. |
 | Log | `log` | A system log entry (submissions, script runs and others). |
 | Stage | `stage` | A pipeline stage, with color, order and the fields required to move into it. |
 | StageHistory | `stagehistory` | A record of a record moving from one stage to another. |
-| Group | `group` | A folder or project that groups records of one object, with its own stages and an optional shared timeline. |
+| Group | `group` | Groups records of one object (for example a project of tasks), with optional stages of its own, working days and a shared timeline. |
 | Tag | `tag` | A label for records. |
 | Category | `category` | A category, optionally nested, used to classify records. |
 | Comment | `comment` | A comment on a record, with attachments. |
@@ -209,8 +211,8 @@ appear in `GET /v2/openapi/specification` but not here (see `prolibu-custom-fiel
 | EventSubscription | `eventsubscription` | Which events notify a user. |
 | Email | `email` | One email sent from the platform, with delivery and view tracking. |
 | MessageTemplate | `messagetemplate` | A reusable email or WhatsApp message with variables. |
-| ContentTemplate | `contenttemplate` | A design used in proposals and documents: layout, content, snippet or certificate. |
-| Template | `template` | A design template (proposal layout, section, block, product snippet, email). |
+| ContentTemplate | `contenttemplate` | A design used in proposals and documents: layout, content, snippet, certificate or custom view. |
+| Template | `template` | A template the platform renders by name: system pages, notification emails, vCards. Proposal designs are ContentTemplate. |
 | Font | `font` | A font file available in the editors. |
 | Form | `form` | A web form or a mirrored ad lead form, and where its submissions go. See `prolibu-forms`. |
 | FormSubmission | `formsubmission` | One submission of a form and what it created. See `prolibu-forms`. |
@@ -233,13 +235,22 @@ appear in `GET /v2/openapi/specification` but not here (see `prolibu-custom-fiel
 | Plugin | `plugin` | An add-on package (bundle and assets) with its options. |
 | Poll | `poll` | A poll made of questions, with a closing date. |
 | Question | `question` | A poll question and its options. |
-| Vote | `vote` | A rating one person gives another (user or contact). |
+| Vote | `vote` | A rating of a user or contact, given by a user or contact, about a deal or a ticket. |
 | PaymentMethod | `paymentmethod` | A stored payment method (card or bank account) of a contact or company. |
 | ShortUrl | `shorturl` | A short link that redirects to a URL. |
 | HealthCheck | `healthcheck` | A monitor that checks a URL on an interval and alerts on failure. |
-| LiveStream | `livestream` | — |
+| LiveStream | `livestream` | Forwards the activity notifications of chosen users (publishers) to a list of subscriber users, for the events in its event subscription. |
 
-## Modules with no objects in the public API
+## Optional modules
 
-Inventory, Account subscriptions, Signatures and Signing certificates exist in the platform
-but expose no object through the `/v2/` API.
+Few accounts load these modules.
+
+| Object | API path | What it is for |
+| --- | --- | --- |
+| Branch | `branch` | Inventory: a location of the business (showroom, warehouse, or a channel without an address such as digital or fleet). Item stock points to its home and current branch. |
+
+The Subscriptions module (Account, Deployment, Pool, SubscriptionPlan) is Prolibu's own
+administration of customer accounts. Never use it through a skill.
+
+Signatures and signing certificates have no objects of their own: document signing goes
+through Contract.
