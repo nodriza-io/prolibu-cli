@@ -419,7 +419,7 @@ async function cmdPreview(client, [planArg], flags, ctx) {
     blockers: found,
     nextStep: found.length
       ? 'Blocked: tell the user why; do not apply.'
-      : 'Show this to the user. Only after an explicit yes, run apply with the same plan and --deal-version set to dealVersion.',
+      : 'Show this to the user. STOP HERE and end your turn; never write in the same turn as this preview. Only after the user answers with an explicit yes in a later message, run apply with the same plan and --deal-version set to dealVersion.',
   };
 }
 

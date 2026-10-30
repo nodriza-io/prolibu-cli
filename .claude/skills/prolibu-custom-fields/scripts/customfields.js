@@ -374,6 +374,8 @@ function buildRequest(record, next, { objectName, reactivate } = {}) {
   return { method: 'PATCH', path: `/v2/customfield/${record._id}`, body };
 }
 
+const LOAD_WRITE_WINDOW_MS = 120000;
+
 function statusKind(record) {
   if (!record) return 'none';
   const status = String(record.status || '');
@@ -611,7 +613,10 @@ async function prepare(client, ctx, plan) {
   if (kind === 'indexError' && plan.reactivate === true) {
     warnings.push('The last start failed on an index. Reactivating without fixing the repeated values switches it off again.');
   }
-  if (record && info && info.podBirth && record.updatedAt && Date.parse(record.updatedAt) > Date.parse(info.podBirth)) {
+  // When the servers start they write the load result (status) on the record, so an update
+  // right after the start is that write, not a pending change.
+  if (record && info && info.podBirth && record.updatedAt
+    && Date.parse(record.updatedAt) > Date.parse(info.podBirth) + LOAD_WRITE_WINDOW_MS) {
     blockers.push('The last change to this record has not been loaded yet (the servers have not restarted since). Wait and run preview again.');
   }
   const request = buildRequest(record, built.next, { objectName, reactivate: plan.reactivate });
@@ -738,7 +743,7 @@ async function cmdPreview(client, [planArg], flags, ctx) {
     blockers: p.blockers,
     nextStep: p.blockers.length
       ? 'Blocked: explain why to the user; do not apply.'
-      : 'Show the changes, the warnings and the restart to the user. Only after an explicit yes, run apply with the same plan and --version set to version.',
+      : 'Show the changes, the warnings and the restart to the user. STOP HERE and end your turn; never write in the same turn as this preview. Only after the user answers with an explicit yes in a later message, run apply with the same plan and --version set to version.',
   };
 }
 

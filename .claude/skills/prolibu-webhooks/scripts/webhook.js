@@ -320,9 +320,11 @@ async function call(client, method, path, opts) {
   return res.body;
 }
 
-// The account switch (Preferences → Integrations → Webhooks). Only admins can read it.
+// The account switch (Preferences → Integrations → Webhooks). Admins read the full
+// preferences; every user can read the switches at /v2/user/preferences.
 async function accountSwitch(client) {
-  const res = await client.request('GET', '/v2/preference/read');
+  let res = await client.request('GET', '/v2/preference/read');
+  if (!res.ok) res = await client.request('GET', '/v2/user/preferences');
   if (!res.ok) return 'unknown';
   const pref = (res.body && (res.body.preference || res.body)) || {};
   const enabled = pref.integrations && pref.integrations.webhooks && pref.integrations.webhooks.enabled;
@@ -550,7 +552,7 @@ async function cmdPreview(client, [planArg], flags, ctx) {
     blockers: p.blockers,
     nextStep: p.blockers.length
       ? 'Blocked: tell the user why; do not apply.'
-      : `Show this to the user. Only after an explicit yes, run apply with the same plan${plan.id ? ' and --webhook-version set to webhookVersion' : ''}.`,
+      : `Show this to the user. STOP HERE and end your turn; never write in the same turn as this preview. Only after the user answers with an explicit yes in a later message, run apply with the same plan${plan.id ? ' and --webhook-version set to webhookVersion' : ''}.`,
   };
 }
 

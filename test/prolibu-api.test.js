@@ -97,7 +97,7 @@ test('production warning', async () => {
   const code = await exec(['acme.example.com', 'POST', '/v2/form', '--data', '{}', '--confirmed']);
   expect(code).toBe(0);
   expect(err).toContain('WARNING: acme.example.com looks like a production account.');
-  expect(api.isLikelyProduction('dev12.example.com')).toBe(false);
+  expect(api.isLikelyProduction('dev42.example.com')).toBe(false);
   expect(api.isLikelyProduction('stg.example.com')).toBe(false);
 });
 
@@ -323,5 +323,37 @@ describe('createClient', () => {
 
   test('a missing profile fails before any request', () => {
     expect(() => api.createClient({ domain: 'dev98.example.com', rootDir, fetchImpl })).toThrow('No profile');
+  });
+});
+
+describe('requests that reach people', () => {
+  const D = 'dev99.example.com';
+
+  test('sending routes need --reaches-people on top of --confirmed', async () => {
+    for (const [m, p] of [['POST', '/v2/email'], ['PUT', '/v2/email/send'], ['PUT', '/v2/emailcampaign/sendCampaign'],
+      ['POST', '/v2/message/send'], ['POST', '/v2/message/retry'], ['POST', '/v2/notification/send']]) {
+      expect(await exec([D, m, p, '--data', '{}', '--confirmed'])).toBe(2);
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(err).toContain('--reaches-people');
+    expect(await exec([D, 'PUT', '/v2/emailcampaign/sendCampaign', '--data', '{}', '--confirmed', '--reaches-people'])).toBe(0);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test('reads and other writes are not affected', async () => {
+    expect(await exec([D, 'GET', '/v2/email?limit=1'])).toBe(0);
+    expect(await exec([D, 'POST', '/v2/emailcampaign', '--data', '{}', '--confirmed'])).toBe(0);
+    expect(await exec([D, 'PATCH', '/v2/messagetemplate/abc', '--data', '{}', '--confirmed'])).toBe(0);
+  });
+
+  test('createClient enforces it too', async () => {
+    const c = api.createClient({ domain: D, rootDir, fetchImpl, stderr: { write: () => {} } });
+    await expect(c.request('PUT', '/v2/email/send', { data: {}, confirmed: true })).rejects.toThrow('reaches-people');
+    await c.request('PUT', '/v2/email/send', { data: {}, confirmed: true, reachesPeople: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test('authorizationHeader values are masked', () => {
+    expect(api.redactFields({ authorizationHeader: 'Basic abc' })).toEqual({ authorizationHeader: '***' });
   });
 });

@@ -16,7 +16,7 @@ const METHODS = ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'];
 const WRITE_METHODS = ['POST', 'PATCH', 'PUT', 'DELETE'];
 const DOMAIN_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
 const NON_PROD_RE = /^(dev\d*|stg|staging|qa|test)$/;
-const SECRET_KEYS = new Set(['apikey', 'token', 'accesstoken', 'refreshtoken', 'password', 'secret', 'clientsecret']);
+const SECRET_KEYS = new Set(['apikey', 'token', 'accesstoken', 'refreshtoken', 'password', 'secret', 'clientsecret', 'authorizationheader']);
 
 class UsageError extends Error {
   constructor(message) {
@@ -30,11 +30,14 @@ function parseArgs(argv, rootDir = DEFAULT_ROOT) {
   let dataText;
   let dataFile;
   let confirmed = false;
+  let reachesPeople = false;
   let profile;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--confirmed') {
       confirmed = true;
+    } else if (arg === '--reaches-people') {
+      reachesPeople = true;
     } else if (arg === '--profile') {
       if (i + 1 >= argv.length) throw new UsageError('Missing value for --profile.');
       i += 1;
@@ -83,7 +86,7 @@ function parseArgs(argv, rootDir = DEFAULT_ROOT) {
       throw new UsageError('Invalid JSON in request body.');
     }
   }
-  return { domain, method, path: reqPath, data, confirmed, profile };
+  return { domain, method, path: reqPath, data, confirmed, reachesPeople, profile };
 }
 
 function hasControlChar(text) {
@@ -220,6 +223,23 @@ function isNonMutating(method, reqPath) {
   return NON_MUTATING.some((rule) => rule.method === method && rule.path.test(reqPath));
 }
 
+// Writes that e-mail, message or notify people the moment they run, and cannot be undone:
+// they need reachesPeople (--reaches-people) on top of --confirmed.
+const REACHES_PEOPLE = [
+  /^\/v2\/email\/?(\?|$)/, // creating an e-mail sends it by default
+  /^\/v2\/email\/(send|notify)(\/|\?|$)/,
+  /^\/v2\/emailcampaign\/sendCampaign(\/|\?|$)/,
+  /^\/v2\/message\/(send|retry)(\/|\?|$)/,
+  /^\/v2\/notification\/send(\/|\?|$)/,
+];
+
+function reachesPeopleRoute(method, reqPath) {
+  return WRITE_METHODS.includes(method) && REACHES_PEOPLE.some((re) => re.test(reqPath));
+}
+
+const REACHES_PEOPLE_MESSAGE = 'This request e-mails, messages or notifies people and cannot be undone. It needs '
+  + '--reaches-people on top of --confirmed, given only after the user said yes to exactly that send.';
+
 // Programmatic client for skill scripts, with the same guards as the command line:
 // host and path checks, --confirmed for writes, no redirects, 30 s timeout. The key
 // stays inside this closure; callers print only what they choose, through redact().
@@ -228,7 +248,7 @@ function createClient({
 } = {}) {
   const key = loadApiKey(domain, rootDir, profile);
 
-  async function request(method, reqPath, { data, confirmed = false } = {}) {
+  async function request(method, reqPath, { data, confirmed = false, reachesPeople = false } = {}) {
     const verb = String(method).toUpperCase();
     if (!METHODS.includes(verb)) throw new UsageError(`Unsupported method ${method}.`);
     validateTarget(domain, reqPath);
@@ -239,6 +259,7 @@ function createClient({
     if (isWrite && !confirmed) {
       throw new UsageError('Refusing to write without --confirmed. Show the user what will change and ask first.');
     }
+    if (reachesPeopleRoute(verb, reqPath) && !reachesPeople) throw new UsageError(REACHES_PEOPLE_MESSAGE);
     if (isWrite && isLikelyProduction(domain)) {
       stderr.write(`WARNING: ${domain} looks like a production account.\n`);
     }
@@ -281,8 +302,11 @@ async function run(argv, opts = {}) {
     if (isWrite && !args.confirmed) {
       throw new UsageError('Refusing to write without --confirmed. Show the user what will change and ask first.');
     }
+    if (reachesPeopleRoute(args.method, args.path) && !args.reachesPeople) throw new UsageError(REACHES_PEOPLE_MESSAGE);
     client = createClient({ domain: args.domain, rootDir, profile: args.profile, fetchImpl, stderr });
-    const res = await client.request(args.method, args.path, { data: args.data, confirmed: args.confirmed });
+    const res = await client.request(args.method, args.path, {
+      data: args.data, confirmed: args.confirmed, reachesPeople: args.reachesPeople,
+    });
     const printed = { status: res.status, body: redactFields(res.body) };
     stdout.write(`${hide(JSON.stringify(printed, null, 2))}\n`);
     return res.ok ? 0 : 1;
@@ -305,6 +329,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  parseArgs, validateTarget, loadApiKey, redact, redactFields, isLikelyProduction, isNonMutating, assertDataFileAllowed,
+  parseArgs, validateTarget, loadApiKey, redact, redactFields, isLikelyProduction, isNonMutating, reachesPeopleRoute, assertDataFileAllowed,
   createClient, run, UsageError, DEFAULT_ROOT,
 };

@@ -589,7 +589,7 @@ async function cmdPreview(client, [defArg], flags, ctx) {
   }
   result.nextStep = check.errors.length
     ? 'Fix the errors first; nothing can be saved like this.'
-    : `Show this to the user. Only after an explicit yes, run ${stored ? `update with --form-version ${stored.updatedAt}` : 'create'} with the same JSON and --confirmed.`;
+    : `Show this to the user. STOP HERE and end your turn; never write in the same turn as this preview. Only after the user answers with an explicit yes in a later message, run ${stored ? `update with --form-version ${stored.updatedAt}` : 'create'} with the same JSON and --confirmed.`;
   return result;
 }
 

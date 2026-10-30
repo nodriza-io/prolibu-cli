@@ -268,6 +268,20 @@ describe('commands', () => {
     expect(r.restart).toContain('restarts every server');
   });
 
+  test('the status the servers write right after starting is not a pending change; a later edit is', async () => {
+    // Seen live: the servers start, load the record and write its status 0.4 s later.
+    state.bootedAt = Date.parse('2026-10-30T11:58:00Z');
+    state.records[0].updatedAt = '2026-10-30T11:58:00.427Z';
+    expect(await run(['preview', D, plan({ add: [{ name: 'x', type: 'string', label: 'X' }] })])).toBe(0);
+    out = '';
+    state.records[0].updatedAt = '2026-10-30T11:59:30.000Z';
+    expect(await run(['preview', D, plan({ add: [{ name: 'x', type: 'string', label: 'X' }] })])).toBe(0);
+    out = '';
+    state.records[0].updatedAt = '2026-10-30T12:00:30.000Z';
+    expect(await run(['preview', D, plan({ add: [{ name: 'x', type: 'string', label: 'X' }] })])).toBe(3);
+    expect(json().blockers.join(' ')).toContain('not been loaded yet');
+  });
+
   test('a switched-off record blocks until the plan decides about reactivating', async () => {
     Object.assign(state.records[0], { active: false, status: 'Error: MongoNetworkError: closed' });
     expect(await run(['preview', D, plan({ add: [{ name: 'x', type: 'string', label: 'X' }] })])).toBe(3);

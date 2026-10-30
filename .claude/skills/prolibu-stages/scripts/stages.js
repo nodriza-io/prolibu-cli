@@ -441,11 +441,14 @@ async function loadStage(client, stageId) {
   return res.body;
 }
 
-// Account preferences are admin-only. Without them the script assumes the safe side.
+// Full preferences are admin-only; every user can read the stage rules at /v2/user/preferences.
+// Without either, the script assumes the safe side.
 async function loadPrefs(client) {
   const res = await client.request('GET', '/v2/preference/read');
-  if (!res.ok) return { prefs: {}, known: false };
-  return { prefs: (res.body && res.body.preference) || res.body || {}, known: true };
+  if (res.ok) return { prefs: (res.body && res.body.preference) || res.body || {}, known: true };
+  const pub = await client.request('GET', '/v2/user/preferences');
+  if (pub.ok && pub.body) return { prefs: pub.body.preference || pub.body, known: true };
+  return { prefs: {}, known: false };
 }
 
 function resolveTarget(to, stages, field, modelName) {
@@ -705,7 +708,7 @@ async function cmdMove(client, [model, idsArg], flags) {
       blockers: plans.flatMap((p) => p.blockers.map((b) => `${displayName(p.record, schema)}: ${b}`)),
       nextStep: blocked
         ? 'Blocked: explain each blocker to the user. Nothing was written.'
-        : 'Show this to the user. Only after an explicit yes, run the same command with --versions \'<versions>\' --confirmed'
+        : 'Show this to the user. STOP HERE and end your turn; never write in the same turn as this preview. Only after the user answers with an explicit yes in a later message, run the same command with --versions \'<versions>\' --confirmed'
           + (plans.some((p) => p.target.endFlowStage) ? ' --end-flow.' : '.'),
     };
   }

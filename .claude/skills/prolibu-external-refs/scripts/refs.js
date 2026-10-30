@@ -401,7 +401,7 @@ async function cmdPreview(client, [object, planArg], flags, ctx) {
   const plan = readPlan(planArg, ctx.rootDir);
   const { sync, decision, blockers, warnings } = await prepare(client, object, plan, flags);
   const expect = decision.action === 'create' ? 'create' : (decision.record && decision.record._id) || null;
-  let nextStep = `Show this to the user. Only after an explicit yes, run upsert with the same plan, --expect ${expect} and --confirmed.`;
+  let nextStep = `Show this to the user. STOP HERE and end your turn; never write in the same turn as this preview. Only after the user answers with an explicit yes in a later message, run upsert with the same plan, --expect ${expect} and --confirmed.`;
   if (decision.action === 'none') nextStep = 'Nothing to change: the record already holds these values.';
   if (blockers.length) nextStep = 'Blocked: explain why to the user; do not upsert.';
   return {

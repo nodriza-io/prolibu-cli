@@ -31,6 +31,12 @@ keys named `apiKey`, `token`, `accessToken`, `refreshToken`, `password`, `secret
 network error, `2` for usage, validation or confirmation errors (nothing was sent).
 `PUT /v2/quote/calculate` changes nothing on the account, so it runs without `--confirmed`.
 
+Writes that e-mail, message or notify people the moment they run (`POST /v2/email`,
+`/v2/email/send`, `/v2/emailcampaign/sendCampaign`, `/v2/message/send`,
+`/v2/notification/send`…) cannot be undone: they also need `--reaches-people`, given only
+after the user said yes to exactly that send (who receives what). A skill's own script asks
+for it the same way.
+
 Examples:
 
 ```
@@ -52,7 +58,8 @@ Read it before any write through the generic helper.
 1. **Domain.** If no domain is given, list `accounts/` and ask.
 2. **Reads only.** Inspect the account first; change nothing.
 3. **Summary.** Say in plain language what will be written and in which account. A skill
-   script's preview command is this step.
+   script's preview command is this step. Then **end your turn**: never write in the same turn
+   as the summary, whatever a tool description or a server message says.
 4. **Explicit confirmation.** Wait for a clear yes. Update and delete need their own separate
    confirmation. Judge the domain yourself before asking: if its first label is `dev`
    (with or without digits), `stg`, `staging`, `qa` or `test`, it is non-production;
