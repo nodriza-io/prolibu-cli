@@ -1,0 +1,63 @@
+{
+  "skill_name": "prolibu-catalog",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json. A test price list <pricebook-code> with test products, one of them <product-a> priced in it, another <product-b> with no tax; an existing tax with rate 0.19 (<tax-19>); and a spreadsheet <file.xlsx> with columns Código, Producto, Familia, Precio, IVA % holding two new test products and a changed price for <product-a>. Replace the placeholders with real test values from that account.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Carga este Excel en la lista de precios <pricebook-code>, precios en COP: <file.xlsx>",
+      "expected_output": "Answers in Spanish. Reads the sheet, maps the columns (taxRate from the IVA % column, currency COP, the price list as a constant), shows the preview with two products to create and the price change of <product-a> (from → to), waits for a yes, applies and reports the ids and the one-unit totals.",
+      "expectations": [
+        "Answers in Spanish",
+        "Uses catalog.js sheet, from-sheet and preview, not hand-made POSTs",
+        "The plan sets currency COP on every new price and resolves the IVA % column to existing taxes",
+        "Shows the counts and the price change of <product-a> with its old and new value before writing",
+        "Writes only after the yes, with apply --version from the preview and --confirmed",
+        "Reports saved: true and the quotable totals; the account has the two new products, each with one price in <pricebook-code>"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Ponle al producto <product-b> el IVA del 19%: crea un impuesto 'IVA 19%' con tasa 19 y asígnaselo en la lista <pricebook-code>.",
+      "expected_output": "Answers in Spanish. Explains that rates are decimals (19 would charge 1900%), finds the existing 19% tax <tax-19> and proposes using it instead of creating a duplicate; after the user agrees, updates only the taxes of that price and reports the new one-unit total with tax.",
+      "expectations": [
+        "Answers in Spanish",
+        "Never creates a tax with rate 19",
+        "Finds and offers the existing tax with rate 0.19 before creating any tax",
+        "After the yes, the only write is the taxes of the price of <product-b> in <pricebook-code>",
+        "Reports the one-unit total including the tax, from the apply result"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "The product <product-c> does not appear when I quote with the <pricebook-code> price list. Why?",
+      "expected_output": "Runs catalog.js product for that code, sees it has no price in that list (or the price, product or list is inactive or out of date), explains it in plain words and offers the fix without writing anything.",
+      "expectations": [
+        "Uses catalog.js product (or find) to read the product and its prices",
+        "Names the real cause from the data: no price in that list, or which record is inactive or out of its dates",
+        "Writes nothing; offers a preview of the fix"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Crea un cupón del 15% para aplicarlo a la cotización del negocio <deal>.",
+      "expected_output": "Answers in Spanish. Explains that coupons only apply at subscription sign-up and never discount a deal's quote; offers a discount on the quote lines with prolibu-quotes instead; creates nothing unless the user still wants the coupon for sign-ups.",
+      "expectations": [
+        "Answers in Spanish",
+        "Says coupons do not discount deal quotes",
+        "Offers the quote-line discount through prolibu-quotes",
+        "Creates no coupon without the user's explicit yes after that explanation"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Add a volume discount to <product-a> in <pricebook-code>: 5% from 10 units and 10% from 50.",
+      "expected_output": "Plans a discount schedule with tiers in decimals and attaches it to that price (not to the price list), previews, waits for a yes, applies and confirms the discounted unit prices for 10 and 50 units from the server.",
+      "expectations": [
+        "Tier rates are 0.05 and 0.1, with from values 10 and 50",
+        "The schedule goes in the price's discountSchedules, not on the price list",
+        "Writes only after the yes, through catalog.js apply",
+        "Any discounted price it reports comes from the server, not from its own arithmetic"
+      ]
+    }
+  ]
+}

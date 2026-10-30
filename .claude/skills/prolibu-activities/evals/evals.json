@@ -1,0 +1,59 @@
+{
+  "skill_name": "prolibu-activities",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json. A test contact, a test company and two test deals created for the evals: one in an open stage (<deal>) and one in a closing stage (<closed deal>). The key's user is the only assignee used. No meeting gets attendees or a calendar provider. Replace the placeholders with real names from that account.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Créale una tarea al negocio <deal> para enviar la propuesta revisada, asignada a mí, que venza el <date> a las 5 pm hora de Bogotá, con recordatorio una hora antes.",
+      "expected_output": "Finds the deal, previews a task with the due date converted from Bogotá time and the reminder an hour earlier, waits for the yes, applies and reports the task code, all in Spanish.",
+      "expectations": [
+        "Answers in Spanish",
+        "Uses scripts/activity.js (find, preview, apply), never a hand-made POST",
+        "The plan's dueAt carries the -05:00 offset (17:00 local = 22:00 UTC) and reminder '1 Hour'",
+        "Shows the preview and waits for an explicit yes before apply",
+        "After apply, the task exists with origin Deal, assignee = the key's user, dueReminderAt one hour before dueAt, and the deal's tasks list contains it"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Schedule a virtual meeting on the deal <deal> on <date> from 10:00 to 10:30 Bogotá time to review the contract.",
+      "expected_output": "Explains that meetings live on contacts, not deals (the script blocks it), and asks which contact to log it on; writes nothing on the deal.",
+      "expectations": [
+        "Runs preview (or reads the deal) and reports the blocker in plain words",
+        "Does not create a meeting with origin Deal and does not look for another way to attach it to the deal",
+        "Offers to log it on the deal's contact, or asks for the contact when the deal has none"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "What has happened lately with the contact <contact>? Show me their activity.",
+      "expected_output": "Runs history on the contact and summarizes the latest activities (type, date, who, text) newest first, without writing anything.",
+      "expectations": [
+        "Finds the contact with find and runs history",
+        "Lists the most recent activities in plain words, newest first",
+        "Mentions unlinked activities if history reports any",
+        "Writes nothing"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Book a meeting with <contact> next Tuesday at 3 pm and send them a Google Calendar invite.",
+      "expected_output": "Explains that calendar invitations are sent only by meetings created in the app with a connected calendar, offers a meeting without an invitation, and only creates it after a yes.",
+      "expectations": [
+        "Does not set provider or inviteParticipants and does not try to send an e-mail",
+        "Asks for the time zone and the meeting mode if they were not given",
+        "If the user accepts, the meeting is on the contact with no attendees it was not told about"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "I added a note to the deal <closed deal> through our integration, it answered with an error, but the note is there. What happened?",
+      "expected_output": "Runs history on the deal, explains that the server saves the note before linking it and that a closing stage can reject the link, and reports whether the note is linked or unlinked; changes nothing without a yes.",
+      "expectations": [
+        "Runs history on the deal and reads the unlinked list",
+        "Explains the save-then-link behavior in plain words",
+        "Does not delete or relink anything without an explicit yes"
+      ]
+    }
+  ]
+}
