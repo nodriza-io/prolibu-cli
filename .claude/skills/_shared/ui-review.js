@@ -12,7 +12,7 @@
 // is blocked, so a review never writes to the account.
 //
 //   node .claude/skills/_shared/ui-review.js <domain> <site folder>
-//        [--widths 1440,1024,390] [--height 900] [--wait 3000] [--profile <name>] [--no-session] [--out <dir>]
+//        [--widths 1920,1440,1024,390] [--height 900] [--wait 3000] [--profile <name>] [--no-session] [--out <dir>]
 
 const fs = require('fs');
 const os = require('os');
@@ -36,7 +36,7 @@ const CHROME_PATHS = [
 ].filter(Boolean);
 
 function parseArgs(argv) {
-  const opts = { widths: [1440, 1024, 390], height: 900, wait: 3000, session: true, profile: undefined, out: undefined };
+  const opts = { widths: [1920, 1440, 1024, 390], height: 900, wait: 3000, session: true, profile: undefined, out: undefined };
   const positional = [];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -69,7 +69,7 @@ function parseArgs(argv) {
       positional.push(arg);
     }
   }
-  if (positional.length !== 2) throw new UsageError('Usage: ui-review.js <domain> <site folder> [--widths 1440,1024,390] [--profile <name>] [--no-session] [--out <dir>]');
+  if (positional.length !== 2) throw new UsageError('Usage: ui-review.js <domain> <site folder> [--widths 1920,1440,1024,390] [--profile <name>] [--no-session] [--out <dir>]');
   const [domain, folder] = positional;
   validateTarget(domain, '/v2/');
   return { domain, folder, ...opts };
@@ -304,7 +304,39 @@ function auditPage(hueFamilySource) {
     findings.push({ rule: 'smallText', message: `${small.length} texts under 12px. Body text is 13–14px; secondary text 12px at least.`, elements: small.slice(0, 6).map(describe) });
   }
 
-  // 7) Text clipped without an ellipsis.
+  // 6b) A full-height side panel that does not touch the screen edge (a centered max-width
+  // around the whole layout leaves a blank strip beside it that reads as a cut).
+  const panels = light.filter((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.height < window.innerHeight * 0.85 || r.width > vw * 0.45 || r.width < 160) return false;
+    const cs = getComputedStyle(el);
+    const ruled = parseFloat(cs.borderLeftWidth) > 0 || parseFloat(cs.borderRightWidth) > 0;
+    const gapLeft = r.left;
+    const gapRight = vw - r.right;
+    return ruled && Math.min(gapLeft, gapRight) > 24 && (parseFloat(cs.borderLeftWidth) > 0 ? gapRight > 24 : gapLeft > 24);
+  });
+  if (panels.length) {
+    findings.push({
+      rule: 'floatingSidePanel',
+      message: 'A full-height side panel stops short of the screen edge, leaving a blank strip that looks cut. Let the layout span the full width so the panel touches the edge; put the max-width on the main content instead.',
+      elements: panels.slice(0, 4).map((el) => `${describe(el)} (${Math.round(vw - el.getBoundingClientRect().right)}px from the right edge)`),
+    });
+  }
+
+  // 7) Text clipped without an ellipsis, including the label inside a co-button.
+  // The label is a text node inside the shadow <button>: compare its measured width with the room inside the padding.
+  const clippedLabels = light.filter((el) => {
+    const button = el.tagName === 'CO-BUTTON' && el.shadowRoot && el.shadowRoot.querySelector('button');
+    if (!button) return false;
+    const range = document.createRange();
+    range.selectNodeContents(button);
+    const cs = getComputedStyle(button);
+    const room = button.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    return range.getBoundingClientRect().width > room + 1;
+  });
+  if (clippedLabels.length) {
+    findings.push({ rule: 'clippedButtonLabel', message: 'A button label does not fit its button and is cut. Give the button more room (stack the actions, widen the panel) or shorten the label.', elements: clippedLabels.slice(0, 6).map(describe) });
+  }
   const clipped = light.filter((el) => {
     const cs = getComputedStyle(el);
     return el.scrollWidth > el.clientWidth + 1 && cs.overflowX !== 'visible' && cs.textOverflow !== 'ellipsis'
