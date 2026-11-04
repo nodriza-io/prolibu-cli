@@ -67,7 +67,8 @@
         "index.html loads /ui/static/cobalt/tokens/tokens.css and /ui/static/cobalt/cobalt/cobalt.esm.js with root-relative paths",
         "Uses co-input for the search and co-card (or co-list-item) for the products; no plain <button>, <input> or <select>",
         "The page's CSS uses --co-semantic-* and --co-spacing-* tokens; #0f766e appears only as a --co-* override in :root",
-        "site.js preview reports no noCobalt, noCobaltTokens, hardcodedColors or plainControls warning, and nothing is published before the yes"
+        "site.js preview reports no noCobalt, noCobaltTokens, hardcodedColors or plainControls warning, and nothing is published before the yes",
+        "Runs _shared/ui-review.js on the folder before the preview, fixes its findings (cards the same height, one primary button, nothing cut at 390 px) and opens the screenshots"
       ]
     }
   ]

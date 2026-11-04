@@ -12,7 +12,7 @@
     * { box-sizing: border-box; }
     [hidden] { display: none !important; } /* co-* set display on :host, which beats the hidden attribute */
     body { margin: 0; padding: var(--co-spacing-2xl) var(--co-spacing-lg); font-family: var(--co-font-family-primary); color: var(--co-semantic-text-default); background: var(--co-semantic-surface-page); }
-    main { max-width: 720px; margin: 0 auto; display: grid; gap: var(--co-spacing-md); }
+    main { max-width: 720px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--co-spacing-md); }
     h1 { font-size: var(--co-font-size-16); margin: 0; }
     .muted { color: var(--co-semantic-text-muted); margin: 0; }
   </style>
