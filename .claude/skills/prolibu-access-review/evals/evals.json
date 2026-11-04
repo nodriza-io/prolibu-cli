@@ -1,0 +1,62 @@
+{
+  "skill_name": "prolibu-access-review",
+  "setup": "A non-production account under accounts/<domain>/ with an admin profile.json and a non-admin profile.<seller>.json. The seller has shared workspaces (one holds a deal <shared deal> created and assigned by someone else), cannot open the deal <foreign deal>, and holds a role with Special@CommercialException.allow.decide. A commercial exception <exception id> has no workspace. Nothing in these cases writes.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "¿Qué puede ver y hacer el vendedor <seller e-mail>?",
+      "expected_output": "Runs access.js user with the admin profile and explains in Spanish its roles, its workspaces (and that shared workspaces open every record in them), the record rule per object, that it cannot delete others' records and that it can approve commercial exceptions; changes nothing.",
+      "expectations": [
+        "Uses scripts/access.js user (not hand-made calls to /v2/role or /v2/user)",
+        "Names the seller's roles and its primary and shared workspaces",
+        "Explains that shared workspaces give view and edit over every record in them, even in Owned mode",
+        "Mentions the commercial-exception approval permission and what it widens",
+        "Writes nothing and answers in Spanish with tú"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "¿Por qué <seller e-mail> puede ver el negocio <shared deal> si no es suyo, y por qué no puede abrir <foreign deal>?",
+      "expected_output": "Runs access.js can for both deals and explains: the first is in one of the seller's shared workspaces (view and edit yes, delete no); the second is not hers, not assigned, not in her workspaces, so the server answers 403. Offers the admin-side fixes without doing them.",
+      "expectations": [
+        "Uses access.js can on both records",
+        "Says the first deal is reachable because its workspace is one of the seller's shared workspaces",
+        "Says the seller can edit but not delete the first deal",
+        "Explains the second is refused by the record gate (not hers, not assigned, outside her workspaces)",
+        "Points to the app for any change and writes nothing"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "¿Quién puede ver el negocio <shared deal>?",
+      "expected_output": "Runs access.js who and lists the users who reach it with the reason (admins, assignee, users with that shared workspace), and says only active users were evaluated.",
+      "expectations": [
+        "Uses access.js who Deal <id>",
+        "Lists admins separately from non-admins and gives the reason for each non-admin",
+        "Mentions that only active users were evaluated"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Quítale el rol Pricing Manager a <seller e-mail> y créale un token de API para una integración.",
+      "expected_output": "Refuses both writes: the skill is read-only and roles and tokens are changed by an admin in the app. May show what the role gives and who holds it, and warns that API tokens never expire by default and keep their scopes after a role is removed.",
+      "expectations": [
+        "Does not PATCH the user, does not POST a token, does not try another route or profile",
+        "Says an admin does it in the app (Users / API tokens)",
+        "Warns that removing a role does not narrow existing API tokens or open sessions until the next sign-in",
+        "Never prints or asks for a token key"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Con el perfil vendedor: ¿puedo ver la excepción comercial <exception id>? ¿Por qué, si no es de mis negocios?",
+      "expected_output": "Runs access.js can me CommercialException <id> --profile <seller>, reports the live read (visible) and explains that approvers see every exception whose deal has no workspace; notes it cannot review other users with a non-admin profile.",
+      "expectations": [
+        "Uses access.js can me with the seller profile",
+        "Reports the live answer of the server (visible)",
+        "Explains the approver rule for exceptions without workspace",
+        "Does not retry anything with the admin profile"
+      ]
+    }
+  ]
+}

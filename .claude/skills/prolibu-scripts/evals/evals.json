@@ -1,0 +1,61 @@
+{
+  "skill_name": "prolibu-scripts",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json (admin key), no git repo in that folder, and lifecycle hooks enabled on the account for Contact only. For eval 3, a deployed script <prefix>-dev whose index.js starts an async IIFE and ends with a console.log line. For eval 4, a deployed script <prefix>-dev that was run once by scriptCode, then fixed and redeployed. Replace <domain> and <prefix> in the prompts.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Create a script on <domain> that I can run on demand and that returns how many contacts the account has.",
+      "expected_output": "Lays out accounts/<domain>/scripts/<prefix>/ by hand from assets/index.js, asks for an API key for the variables, deploys to dev without prompts, checks status, and runs it by _id after a yes.",
+      "expectations": [
+        "Does not run ./prolibu script create, sync or test, and never --watch in the foreground",
+        "index.js requires the repo's lib with ../../../../lib/… and ends with the main() call that awaits Events.init()",
+        "Asks the user for the API key and puts it in config.json variables, not in the code",
+        "Deploys with ./prolibu script dev --domain <domain> --prefix <prefix> --no-git after a yes, and reads the output for 'Failed to PATCH'",
+        "Runs scripts/script.js status and then scripts/script.js run … --confirmed, and reports the count from output"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Hazme un script que, cada vez que se actualice un contacto en <domain>, guarde el nombre en mayúsculas.",
+      "expected_output": "Answers in Spanish. Checks that Contact is enabled for lifecycle hooks, writes a Contact.beforeUpdate handler that changes eventData.doc, warns that it fires on real records and about the dev and production copies, and deploys only after a yes.",
+      "expectations": [
+        "Answers in Spanish",
+        "Reads GET /v2/preference/read and confirms Contact is in integrations.lifecycleHooks.enabledEntities before writing anything",
+        "Puts \"Contact\" in config.json lifecycleHooks and uses Events.on('Contact.beforeUpdate', …) changing eventData.doc, not eventData.payload",
+        "Says the hook runs on real contacts as soon as it is deployed, and that only one copy should keep it",
+        "Changes the name only when it is not already uppercase, or otherwise explains how it avoids re-triggering itself"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "My script <prefix>-dev on <domain> returns output null and no error. What's wrong?",
+      "expected_output": "Reads the entry, sees the async work is not the last statement, explains the run ends when the last statement's promise settles, fixes it, redeploys and runs again.",
+      "expectations": [
+        "Explains that work not awaited by the last statement is cut off without an error",
+        "Moves the async call so it is the last statement (or awaits it from main) and keeps output assigned",
+        "Redeploys with the CLI, checks status, and runs with scripts/script.js run after a yes"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "I deployed a fix to <prefix>-dev on <domain>, but GET /v2/script/run?scriptId=<prefix>-dev still shows the old error.",
+      "expected_output": "Explains that a run by scriptCode serves cached old code, checks with status that the new code is on the account, and runs by _id.",
+      "expectations": [
+        "Says a run by scriptCode can execute code cached before the deploy, and that _id avoids it",
+        "Runs scripts/script.js status and confirms code.matchesBundle is true",
+        "Runs with scripts/script.js run (by _id), not with the scriptCode URL"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Schedule <prefix> on <domain> to run every weekday at 7 am Bogotá time.",
+      "expected_output": "Sets scheduledTask with periodicity and timeZone through the API helper on one copy's _id after a yes, notes that deploys keep it, and reads it back.",
+      "expectations": [
+        "Uses PATCH /v2/script/<_id> with scheduledTask {periodicity: '0 7 * * 1-5', timeZone: 'America/Bogota'} and --confirmed only after a yes",
+        "Does not try to put the schedule in config.json",
+        "Schedules only one copy and says the other must not carry the same trigger",
+        "Reads it back with scripts/script.js status (scheduledTask) and mentions GET /v2/script/schedulerStatus for checking the registration"
+      ]
+    }
+  ]
+}

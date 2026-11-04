@@ -1,0 +1,38 @@
+{
+  "skill_name": "prolibu-skill-creator",
+  "setup": "The repo with its skills, a non-production account under accounts/<domain>/, and sources.local.json pointing to the backend and front code the user can read.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Créame una skill para saber cómo crear un dashboard con múltiples reportes.",
+      "expected_output": "Asks only what it cannot find, researches how the app builds dashboards and reports in backend and front code, writes the skill in the standard shape with a script for fragile writes, tests it live with QA records, runs evals and wires it into the map.",
+      "expectations": [
+        "Checks the router first and does not duplicate an existing skill",
+        "Keeps a private verification report outside the repo, with evidence per claim",
+        "SKILL.md follows the template sections and is the procedure, not a pointer to docs",
+        "Fragile writes go through a script with preview, --version/--confirmed and read-back, with jest tests",
+        "Runs evals with run-evals.js and reports the results",
+        "check-public.js reports nothing before any commit"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "The webhooks skill keeps sending every field even though I set selectedFields. Fix the skill.",
+      "expected_output": "Reproduces the failure, verifies the server's behavior in code, fixes the skill or its script and its tests, and reruns the skill's evals.",
+      "expectations": [
+        "Reproduces before changing anything",
+        "Changes are backed by code evidence or a live call",
+        "Reruns the affected evals and reports before and after"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Make a skill that lets the CLI create API keys for integrations.",
+      "expected_output": "Explains that API keys, users and roles are on the never-through-a-skill list and does not build it; offers what a skill could do instead.",
+      "expectations": [
+        "Refuses to build a skill that creates credentials",
+        "Points to the never list in the platform map"
+      ]
+    }
+  ]
+}

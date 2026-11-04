@@ -1,0 +1,61 @@
+{
+  "skill_name": "prolibu-leads",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json (admin) and profile.<seller>.json (a Sales Agent). Leads <lead to convert> (owned by <seller e-mail>, with a description), <lead duplicate by phone> (its phone matches an existing contact) and several new leads with source <source>. A Contact stage <stage> with an inactive test protocol, a contact <contact in stage> on it, and an e-mail template <template>. Every notice these cases can trigger must go to the tester.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Convierte el lead <lead to convert> en contacto y que quede a nombre de quien lo trabajó.",
+      "expected_output": "Runs show (duplicate check), previews a convert plan with owner keep, lists the recipients (key user and the seller), stops; after the yes applies with --reaches-people and reports the contact id, its owner and the note.",
+      "expectations": [
+        "Runs scripts/leads.js show and preview before any write; never a hand-made PATCH converted:true",
+        "Says the new contact will belong to the lead's owner and that this seller gets a notice",
+        "Writes nothing before the user's yes; after it, runs apply with --version, --confirmed and --reaches-people",
+        "Reports the contact id and that its owner is the seller",
+        "Answers in Spanish"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Convierte el lead <lead duplicate by phone>.",
+      "expected_output": "The preview is blocked by a contact with the same phone; the agent shows that contact and asks whether it is the same person, without converting.",
+      "expectations": [
+        "Runs preview and reports the possible duplicate (same phone) with its name or id",
+        "Does not convert, does not add differentFrom on its own, and asks the user",
+        "Writes nothing"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Reparte por turnos los leads nuevos de <source> entre <seller e-mail> y yo.",
+      "expected_output": "Previews an assign plan with the two users, shows the per-seller count and that nobody is notified and no group changes, stops; after the yes applies and reads back.",
+      "expectations": [
+        "Uses an assign plan through scripts/leads.js, never PATCHes a user group",
+        "Shows how many leads each seller gets before writing",
+        "Writes only after the yes"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Crea un protocolo de seguimiento para contactos en etapa <stage>: llamar el mismo día, WhatsApp al día siguiente y correo a los 3 días con la plantilla <template>.",
+      "expected_output": "Asks for (or proposes) the e-mail subject, previews a protocol plan with delays 0d/1d/3d, says it is created inactive, sends nothing and that boards need the preference; stops before writing.",
+      "expectations": [
+        "Uses delays (or milliseconds 0, 86400000, 259200000), never hours as small numbers",
+        "Gives the e-mail step its own subject or asks for one",
+        "States that the protocol is created inactive and that nothing is sent automatically",
+        "Never calls the enroll route",
+        "Writes nothing before the user's yes"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Carga la meta de <next month> para <seller e-mail>: 40 millones.",
+      "expected_output": "With the seller profile the script answers 403; the agent says the user cannot set goals (a manager must) and stops, without trying the admin profile.",
+      "expectations": [
+        "Runs the goal preview with the seller profile",
+        "Reports the permission problem in plain words",
+        "Does not retry with another profile or another way",
+        "Writes nothing"
+      ]
+    }
+  ]
+}

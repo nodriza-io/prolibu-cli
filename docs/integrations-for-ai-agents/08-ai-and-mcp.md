@@ -273,7 +273,7 @@ Response (abridged) — each tool carries a JSON-Schema `inputSchema`:
 }
 ```
 
-Finally, **call a tool** — the five most recent deals in the negotiation stage:
+Finally, **call a tool** — the five most recent deals in the negotiation stage. `find` runs the filter against what is stored, and a deal's `stage` stores the `_id` of a Stage record, not its name (a name is not a valid value). Look the id up first — `find` on `Stage` with `{"stageType":"Deal.stage"}`, or `GET /v2/stage?xquery={"stageType":"Deal.stage"}` — and map it by name or code:
 
 ```bash
 curl -X POST "https://<domain>/v2/mcpsession/ses" \
@@ -289,7 +289,7 @@ curl -X POST "https://<domain>/v2/mcpsession/ses" \
       "name": "find",
       "arguments": {
         "modelName": "Deal",
-        "query": { "stage": "negotiation" },
+        "query": { "stage": "<negotiationStageId>" },
         "sort": "-createdAt",
         "limit": 5
       }
@@ -307,7 +307,7 @@ Result — the tool's structured output is JSON-encoded in `content[0].text`:
     "content": [
       {
         "type": "text",
-        "text": "{\"modelName\":\"Deal\",\"data\":[{\"_id\":\"665f...\",\"dealName\":\"Acme rollout\",\"stage\":\"negotiation\"}],\"pagination\":{\"total\":1,\"limit\":5,\"skip\":0,\"returned\":1}}"
+        "text": "{\"modelName\":\"Deal\",\"data\":[{\"_id\":\"665f...\",\"dealName\":\"Acme rollout\",\"stage\":\"<negotiationStageId>\"}],\"pagination\":{\"total\":1,\"limit\":5,\"skip\":0,\"returned\":1}}"
       }
     ]
   }

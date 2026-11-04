@@ -1,0 +1,59 @@
+{
+  "skill_name": "prolibu-virtual-tours",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json. One test Automotive tour created with this skill (code <tour code>), with one color and one 2D scene, whose folder accounts/<domain>/vt/<prefix>/virtualTours/<tour code>/ holds its _id. Change one setting of that tour in the app (or by PATCH) after its last push, so the folder no longer matches it. For eval 1, a folder <images folder> with one photo and one swatch image.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Create a virtual tour of the car <car name> in <domain> with the images in <images folder>: <photo> is the front view in red, and <swatch> is the red color.",
+      "expected_output": "Lays out the tour folder with the right names, previews a create, asks for a yes, pushes through the script and gives the viewer link.",
+      "expectations": [
+        "Builds accounts/<domain>/vt/<prefix>/virtualTours/<CODE>/ with _colors/external/<color>.png and external/<color>/2d_<name>.<ext>, and a _config.json with eventType Automotive and no _id",
+        "Runs scripts/vt.js preview, shows a create with one scene and one color, and waits for a yes",
+        "Pushes with scripts/vt.js push --version … --confirmed, never ./prolibu vt push or vt bulk directly",
+        "Reports the tour id and the https://<domain>/ui/spa/virtualTour/view/<id> link, and says the swatch hex is #000000 until set in the app"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Vuelve a subir el tour <tour code> desde su carpeta en <domain>.",
+      "expected_output": "Previews the update, explains in Spanish that every scene is replaced and which settings the push would reset, and pushes through the script only after the yes; colors stay linked.",
+      "expectations": [
+        "Answers in Spanish",
+        "Runs preview first and reports the scenes deleted and uploaded and every settingsChanged entry (the setting changed in the app goes back)",
+        "Waits for an explicit yes, then runs scripts/vt.js push with the preview's version",
+        "After the push the scene is still linked to its color (show, or scenesWithColor in the push output)"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Switch the theme of the virtual tour <tour code> on <domain> to cascade.",
+      "expected_output": "Treats it as a settings-only change: reads the tour, proposes a PATCH of config.theme through the generic helper, and does not push the scenes.",
+      "expectations": [
+        "Does not run vt push or scripts/vt.js push",
+        "Shows the current theme and the change, waits for a yes, then PATCHes /v2/virtualtour/<id> with {\"config\":{\"theme\":\"cascade\"}} and --confirmed",
+        "Reads the tour back and confirms the theme and the unchanged scene count"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Descarga todos los tours virtuales de la cuenta <domain>.",
+      "expected_output": "Runs vt pull non-interactively into a new prefix, reports the folders, and does not push anything.",
+      "expectations": [
+        "Answers in Spanish",
+        "Runs ./prolibu vt pull --domain <domain> --prefix <new prefix>, with both flags",
+        "Does not follow the CLI's hint to run vt bulk and pushes nothing",
+        "Lists the tours downloaded and where they are"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "I pushed my car tour <tour code> with the CLI and now the color picker is gone in the viewer. What happened?",
+      "expected_output": "Diagnoses the CLI's color drop on update from the tour's data, and offers to fix it with a preview and push through the script.",
+      "expectations": [
+        "Reads the tour with scripts/vt.js show and points to scenes without a color",
+        "Explains that the CLI re-uploads swatches, the upload is refused because the file exists, and the new scenes lose their color",
+        "Offers preview + push through the script (which re-links the colors) and writes nothing without a yes"
+      ]
+    }
+  ]
+}

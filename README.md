@@ -35,6 +35,32 @@ Key features:
 This README covers the **CLI**. For how the platform itself behaves — the REST API, objects, authentication, scripts, endpoints, forms and hosted sites — read the
 [Integration Guide for AI agents](docs/integrations-for-ai-agents/README.md). It is written for a third-party integrator or an AI agent parametrizing an account, and every claim in it is verified against a live account.
 
+### Working with Claude Code skills
+
+Open Claude Code inside this repo; the skills in `.claude/skills/` load automatically (the list
+and what each one is for is in [`AGENTS.md`](AGENTS.md)). Add an account first with
+`./prolibu account import` (or `accounts/<domain>/profile.json` with `{"apiKey": "…"}`; the
+`accounts/` folder is never committed).
+
+The skills work directly in that account: they publish sites and scripts, create forms,
+webhooks and custom fields, link external ids, edit deal quotes and move records through
+stages. Before every write they show you what will change and wait for your yes, then read the
+result back. Fragile writes go through each skill's own script (`.claude/skills/<skill>/scripts/`),
+which validates first and refuses to write without `--confirmed`.
+
+What actually protects the account is Claude Code's permission prompt: every call to the
+helper (`.claude/skills/_shared/prolibu-api.js`) or to a skill's script asks you first, so read
+the command before approving it. `--confirmed` only guards against accidental writes; it is
+not proof that you agreed.
+
+- Never add a wildcard allow rule for the helper or the skill scripts.
+- Do not use auto mode on any account with real data, not only production.
+- For fewer prompts, allow only reads: a rule that matches the helper with `GET` for one
+  domain, such as `Bash(node .claude/skills/_shared/prolibu-api.js example.prolibu.com GET:*)`
+  (check the rule syntax in the Claude Code permissions docs for your version).
+
+Skill tests: `npm run test:skills`.
+
 ---
 
 ## Requirements
@@ -413,6 +439,7 @@ prolibu-cli/
 │   │   │   ├── create.js   # Create script
 │   │   │   ├── run.js      # Run dev/prod
 │   │   │   ├── import.js   # Import from git
+│   │   │   ├── sync.js     # Deploy several scripts (interactive)
 │   │   │   └── test.js     # Run tests
 │   │   ├── site/
 │   │   │   ├── index.js    # Site command router
@@ -424,20 +451,19 @@ prolibu-cli/
 │   │       ├── create.js   # Create VT workspace
 │   │       └── bulk.js     # Bulk upload
 │   ├── builders/           # Build logic per object type
-│   │   ├── scriptBuilder.js # esbuild bundling for scripts
+│   │   ├── scriptBuilder.js # Not used by the script commands (see api/scriptClient.js)
 │   │   └── siteBuilder.js   # Zip creation for sites
 │   └── socketLog.js        # Real-time log streaming
 ├── api/
 │   ├── client.js           # Base API client (legacy)
-│   ├── scriptClient.js     # Script-specific API calls
+│   ├── scriptClient.js     # Script API calls and esbuild bundling
 │   └── siteClient.js       # Site-specific API calls
 ├── config/
 │   └── config.js           # Configuration management
 ├── templates/
-│   ├── script/             # Script templates
+│   ├── script/             # Script templates (config.json and settings.json are
+│   │   │                   #   created with defaults by the CLI, not copied)
 │   │   ├── index.js
-│   │   ├── config.json     # Model data (uploaded to API)
-│   │   ├── settings.json   # Build settings (local only)
 │   │   ├── .gitignore
 │   │   └── lib/
 │   ├── site/               # Site templates
@@ -468,12 +494,13 @@ prolibu-cli/
 │   └── <domain>/
 │       ├── profile.json    # Domain config (API key)
 │       ├── scripts/        # Script & hook projects
-│       │   └── <scriptName>/
+│       │   └── <scriptPrefix>/
 │       │       ├── index.js
 │       │       ├── config.json     # Model data (variables, hooks, git)
 │       │       ├── settings.json   # Build settings (minify, comments)
 │       │       ├── lib/
 │       │       ├── test/
+│       │       ├── dist/bundle.js  # What the last deploy uploaded as code
 │       │       └── README.md       # Synced to config.json.readme
 │       ├── sites/          # Site projects
 │       │   └── <siteName>/
@@ -831,7 +858,7 @@ Each script can have its own test suite for integration testing with external AP
 Tests are located in each script's folder:
 
 ```
-accounts/<domain>/<scriptPrefix>/test/
+accounts/<domain>/scripts/<scriptPrefix>/test/
 ├── index.test.js           # Default test file
 ├── <custom-name>.test.js   # Custom test files
 └── ...
@@ -901,16 +928,20 @@ const utils = require("./lib/utils/helper");
 const myVendor = require("./lib/vendors/custom");
 ```
 
-**Global project lib folder:**
+**Global project lib folder** (four levels up from `accounts/<domain>/scripts/<scriptPrefix>/index.js`; a bare `require("lib/…")` does not resolve):
 
 ```js
-const sleep = require("lib/utils/sleep");
-const SendGrid = require("lib/vendors/sendgrid/SendGrid");
-const Salesforce = require("lib/vendors/salesforce/Salesforce");
-const HubSpot = require("lib/vendors/hubspot/HubSpot");
-const UltraMsg = require("lib/vendors/ultramsg/UltraMsg");
-const DeviceApi = require("lib/vendors/prolibu/DeviceApi");
+const sleep = require("../../../../lib/utils/sleep");
+const { hmacSha256Hex, timingSafeEqual } = require("../../../../lib/utils/hmacSha256");
+const ProlibuApi = require("../../../../lib/vendors/prolibu/ProlibuApi");
+const SendGridApi = require("../../../../lib/vendors/sendgrid/SendGridApi");
+const SalesforceApi = require("../../../../lib/vendors/salesforce/SalesforceApi");
+const HubSpotApi = require("../../../../lib/vendors/hubspot/HubSpotApi");
+const UltraMsg = require("../../../../lib/vendors/ultramsg/UltraMsg");
+const DeviceApi = require("../../../../lib/vendors/prolibu/DeviceApi");
 ```
+
+Each deploy bundles these `require`s with esbuild, so they work in the script sandbox (which has no `require` at run time). Pure-JS npm packages are bundled the same way. Do not `require` a Node built-in (`crypto`, `fs`, `http`…) or `axios`: they stay as runtime `require`s and fail with `require is not a function`. Use the global `axios`, and `lib/utils/hmacSha256` for hashing.
 
 ### Available Vendor Integrations
 

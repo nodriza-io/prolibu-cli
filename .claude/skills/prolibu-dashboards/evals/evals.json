@@ -1,0 +1,72 @@
+{
+  "skill_name": "prolibu-dashboards",
+  "setup": "A non-production account under accounts/<domain>/ with an admin profile.json and the MCP integration turned on (the skill never turns it on). Deals with an assignee and a stage created this month, tasks, and Goal records per user. Two test reports built with the skill: <sales report> (Deal, page \"Ventas\") and <activities report> (Task, page \"Actividades\"), and a test dashboard <dashboard> that shows a page later removed from its report. Replace the placeholders with the names of those records.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Créame un tablero comercial \"QA Skills · <name>\" con las ventas del mes por asesor, el embudo por etapa y la meta contra lo real.",
+      "expected_output": "Reads the Deal and Goal fields, builds one Deal report (sales by advisor, funnel by stage, this month) and adds the goals as a dataset joined by assignee, previewing each write and saving only after a yes; answers in Spanish with the report link.",
+      "expectations": [
+        "Runs status first and uses scripts/dashboard.js for every write (preview, then apply with --version and --confirmed); no hand-made POST/PATCH to report, page, widget or dashboard",
+        "Reads fields of Deal and of the goals model before writing the plan; does not invent field names",
+        "The period goes in timeRange (this_month), not in filter",
+        "The saved report has a funnel widget grouped by stage and a widget grouped by advisor",
+        "The goals come from a dataset of the goals model related by assignee (or the agent says clearly that this step is pending and why), never a constant",
+        "Answers in Spanish and gives the viewer link by report code"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Make a dashboard called \"QA Skills · <name>\" that shows the sales page of <sales report> and the activities page of <activities report> together, for this year.",
+      "expected_output": "Builds a Dashboard (not a new report) with the two report pages pinned live and a this_year time range, after a preview and a yes.",
+      "expectations": [
+        "Uses buildDashboard with livePages (one per page), not new widgets rebuilt one by one",
+        "Previews, shows what will be created, waits for the yes, then applies",
+        "The dashboard read back has two livePage widgets pointing to the two reports",
+        "Gives the dashboard link by dashboard code"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Agrega la página de actividades de <activities report> al tablero <dashboard>.",
+      "expected_output": "Finds the dashboard and the report page, pins that page live with editDashboard pinPage below what is there, after a preview and a yes.",
+      "expectations": [
+        "Finds both records with dashboards/reports/show before planning",
+        "Uses editDashboard with one pinPage operation, not addWidget copies",
+        "Previews and applies only after the yes; the read-back lists the new livePage widget"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "El tablero <dashboard> muestra un recuadro vacío y algunos gráficos raros. ¿Qué le pasa?",
+      "expected_output": "Runs diagnose on the dashboard (and on its reports when needed), explains in plain Spanish that one live page no longer exists in its report and any issue the platform reports, and offers fixes without writing anything.",
+      "expectations": [
+        "Uses diagnose (no writes in this turn)",
+        "Names the widget whose source page was removed and explains it in business terms",
+        "Offers concrete fixes (remove that widget, or pin the page again) and waits for a yes"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Bórrame el reporte <sales report> y vuélvelo a crear igual pero con el gráfico por asesor en barras horizontales.",
+      "expected_output": "Does not delete the report: explains that deleting changes its id and breaks dashboards and links, and proposes an editReport updateWidget that changes the chart type, previewed and applied only after a yes.",
+      "expectations": [
+        "Does not call delete on the report, its pages or widgets",
+        "Proposes editReport updateWidget with chartType bar on the existing widget",
+        "Explains why in plain words and waits for a yes"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Créame un tablero en <domain> con las ventas por asesor de este mes",
+      "setup": "Most won deals of the account have no closeDate and none was won this month.",
+      "expected_output": "Runs dates on Deal filtered to the won stage before planning, picks the period's date by meaning, and tells the user in one line how many won deals that date leaves out and that this month opens in zeros, before asking for the yes.",
+      "expectations": [
+        "Runs dashboard.js dates with --where on the won stage code before the preview",
+        "Names the date field it chose and why in business words",
+        "Says how many won deals have no value on that date and whether this month will open in zeros",
+        "Writes nothing before the yes"
+      ]
+    }
+  ]
+}

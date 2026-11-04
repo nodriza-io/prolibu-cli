@@ -4,13 +4,13 @@
 
 ## When to use this
 
-Use this whenever you need to **read or write records of any object from outside the platform** — another service, a scheduled job, an AI agent. List and filter records, fetch one by id, create/update/delete, run full-text search, or call an object's custom (RPC-style) actions. Every object — standard or custom — automatically gets a full CRUD resource under `/v2/<object>/` with no code to write. This document is the complete contract: base URL and version prefix, auth headers, the standard query params (`select`, `populate`, `where` filters, `sort`, `limit`, `page`), the response envelope and pagination metadata, the error shape and HTTP status codes, and how to discover it all at runtime via OpenAPI.
+Use this whenever you need to **read or write records of any object from outside the platform** — another service, a scheduled job, an AI agent. List and filter records, fetch one by id, create/update/delete, run full-text search, or call an object's custom (RPC-style) actions. Every object — standard or custom — automatically gets a full CRUD resource under `/v2/<object>/` with no code to write. This document is the complete contract: base URL and version prefix, auth headers, the standard query params (`select`, `populate`, `xquery` filters, `sort`, `limit`, `page`), the response envelope and pagination metadata, the error shape and HTTP status codes, and how to discover it all at runtime via OpenAPI.
 
 ## Prolibu ↔ Salesforce
 
 | Prolibu | Salesforce |
 |---|---|
-| `GET /v2/<object>/?query={...}&select=...&sort=...` | SOQL `GET /services/data/vXX.0/query?q=SELECT ... WHERE ... ORDER BY ...` |
+| `GET /v2/<object>/?xquery={...}&select=...&sort=...` | SOQL `GET /services/data/vXX.0/query?q=SELECT ... WHERE ... ORDER BY ...` |
 | `select=field1 field2 -field3` | field list / `fields` param |
 | `populate` / `populatePath` (relationship expansion) | relationship queries (`SELECT Account.Name ...`) |
 | `POST` → `201`, `PATCH /:id` → `200`, `DELETE /:id` → `204` | sObject REST Create / Update / Delete |
@@ -106,9 +106,9 @@ On list (`GET /v2/<object>/`) and, where noted, on read/search, the following re
 | Param | Type | What it does | Applies to |
 |---|---|---|---|
 | `select` | string | Space-separated fields to include; prefix with `-` to exclude (`-customContent`). Sensitive fields such as `password` and `apiKey` are always stripped. | list / read / search |
-| `populate` | string | Space-separated relationship fields to expand inline. `populate=*` expands **all** references (can be expensive). | list / read / search |
+| `populate` | string | Space-separated relationship fields to expand inline. `populate=*` expands **all** references, one level deep (can be expensive). A field that is not in the object's schema fails the whole call with `400`. | list / read / search |
 | `populatePath` | string (JSON) | A JSON-stringified relationship-expansion spec of arbitrary depth — an object or array of `{ path, select, populate }`. **Takes precedence over `populate`.** | list / read / search / create / update |
-| `query` | string (JSON) | A JSON-stringified filter supporting mongo-style operators (`$or`, `$and`, `$in`, `$regex`, `$gte`, `$lte`, …). Merged with any flat params (flat params win on conflict). | list / search |
+| `xquery` | string (JSON) | A JSON-stringified filter supporting mongo-style operators (`$or`, `$and`, `$in`, `$regex`, `$gte`, `$lte`, …). Merged with any flat params (flat params win on conflict). | list / search |
 | `sort` | string | Comma-separated fields; `-field` = descending, `field` = ascending. The field must exist on the object, otherwise `400`. | list / search |
 | `page` | integer ≥ 1 | Page number, **1-based**. Default `1`. `page ≤ 0` or non-numeric → `400`. | list / search |
 | `limit` | integer ≥ 1 | Records per page. Default `20` on list, `10` on search. **Capped at `500`.** | list / search |
@@ -117,7 +117,7 @@ On list (`GET /v2/<object>/`) and, where noted, on read/search, the following re
 | `format` | enum | Alternate output/rendering: `json`, `yaml`, `xlsx`, `csv`, `pretty`, `qr`. A value outside the enum is rejected. | list / read |
 | `workspace` | string | Scopes a by-id read/update to one workspace (accepts a workspace id or code). Use to disambiguate non-`_id` primary keys. | read / update |
 
-> The `query` parameter is named `query` in Prolibu. It plays the role of a SOQL `WHERE` clause expressed as JSON. Some tooling and older material may call the same concept a generic "where filter" — the parameter you send is `query`.
+> The filter parameter is named `xquery`. It plays the role of a SOQL `WHERE` clause expressed as JSON. A parameter named `query` is **not** a filter: the server ignores it and returns every record, with no error. A "search before create" check built on `?query=` therefore always finds a record.
 
 ### Full-text search parameters
 
@@ -136,19 +136,21 @@ On `search`, the defaults differ from list: `limit` defaults to `10`, and `selec
 
 Filters can be expressed two ways, and they compose:
 
-1. **Flat params** — pass a field name directly as a query param for equality, or use the `field.$op` suffix form for operators.
-2. **The `query` param** — pass a JSON-stringified mongo-style filter for anything more complex (`$or`, ranges, `$in`, `$regex`).
+1. **Flat params** — pass a field name directly as a query param for equality, or use the bracket form `field[$op]=value` for an operator. The dotted form `field.$op=value` is dropped silently.
+2. **The `xquery` param** — pass a JSON-stringified mongo-style filter for anything more complex (`$or`, ranges, `$in`, `$regex`).
 
 When both are present, they are merged and **flat params win** on any key that appears in both.
 
 | Goal | Query params |
 |---|---|
 | Equality | `?dealName=Acme%20renewal` |
-| Operator via suffix | `?amount.$gte=1000` |
+| Operator via brackets | `?closeDate[$gte]=2026-01-01` |
 | Nested field | `?urls.linkedIn=https://...` (or `?proposal.enabled=true`) |
-| Complex filter (`$or`, ranges) | `?query={"$or":[{"stage":"won"},{"amount":{"$gte":5000}}]}` |
-| `IN` | `?query={"stage":{"$in":["won","lost"]}}` |
-| Regex / contains (case-insensitive) | `?query={"dealName":{"$regex":"acme","$options":"i"}}` |
+| By external id (`refId`, text values) | `?refId=CUS-10482` (see [External References](13-external-references.md)) |
+| Complex filter (`$or`) | `?xquery={"$or":[{"stage":"<stageId>"},{"closeDate":{"$gte":"2026-01-01"}}]}` |
+| Range on one field | `?xquery={"$and":[{"closeDate":{"$gte":"2026-01-01"}},{"closeDate":{"$lt":"2027-01-01"}}]}` |
+| `IN` | `?xquery={"stage":{"$in":["<stageId>","<otherStageId>"]}}` |
+| Regex / contains (case-insensitive) | `?xquery={"dealName":{"$regex":"(?i)acme"}}` |
 | Only some fields | `?select=dealName%20closeDate%20contact` |
 | Exclude a field | `?select=-customContent` |
 | Expand relationships | `?populate=contact%20company` |
@@ -162,6 +164,15 @@ When both are present, they are merged and **flat params win** on any key that a
 
 > **Unknown filter fields are ignored silently.** Only fields that exist on the object (plus `$…` operators) are applied. A typo in a field name does not error — it is simply dropped, so the query returns unfiltered results. Always confirm field names against the object schema (see [Custom Objects & Fields](02-custom-objects-and-fields.md)).
 
+The server rewrites the filter before running it. Rules that change results:
+
+- **One operator per field.** `{"closeDate":{"$gte":A,"$lte":B}}` keeps only the last operator and returns more records than you asked for. Put a range inside `$and`, as in the table. Conditions inside `$and` / `$or` arrays are kept as sent.
+- **Case-insensitive regex goes inline:** `{"$regex":"(?i)acme"}`. A separate `"$options":"i"` answers `400 $options needs a $regex`.
+- **References take the referenced record's `_id`.** `stage` is a reference to a Stage record, so `{"stage":"won"}` answers `400` (cast to ObjectId failed). Read the stage ids once with `GET /v2/stage?xquery={"stageType":"Deal.stage"}` and map them by name or code.
+- **Malformed `xquery` JSON is dropped:** the call returns `200` with every record. Build the value with `JSON.stringify` and URL-encode it.
+
+On non-production servers the list response echoes the final filter in `query` (see [§5.1](#51-list--get-v2object--200)); compare it, and `pagination.count`, with what you expected.
+
 ---
 
 ## 5. Response envelopes
@@ -174,6 +185,7 @@ Wrapped in a `pagination` + `data` envelope:
 
 ```json
 {
+  "timeMs": 42,
   "pagination": {
     "count": 137,
     "page": 2,
@@ -190,6 +202,8 @@ Wrapped in a `pagination` + `data` envelope:
 
 | Field | Meaning |
 |---|---|
+| `timeMs` | Server time spent on the query, in milliseconds. |
+| `query` | The final filter the server ran. Returned by non-production servers only; production leaves it out. |
 | `pagination.count` | Total records matching the query (within the caller's visibility). |
 | `pagination.page` | Current page (1-based). |
 | `pagination.limit` | Page size in effect. |
@@ -210,7 +224,7 @@ Returns the **record directly**, not wrapped in `{ data: ... }`:
 
 ### 5.3 Search — `GET /v2/<object>/search` → `200`
 
-Same envelope as list, plus the echoed `term`:
+Same envelope as list, plus the echoed `term`. When nothing matches, the response has no `pagination` — check for it before reading `pagination.count`:
 
 ```json
 {
@@ -242,6 +256,8 @@ Errors return a JSON body with this shape:
 { "statusCode": 400, "error": "Human-readable message", "details": "optional extra context" }
 ```
 
+The OpenAPI document describes a different error shape; this one is what the server sends. The message is translated (to the `Accept-Language` header, otherwise the account's language), so act on `statusCode`, not on the wording.
+
 `statusCode` defaults to `400`; `details` is optional. Common statuses:
 
 | Status | Meaning |
@@ -253,9 +269,9 @@ Errors return a JSON body with this shape:
 | `401` | Missing or invalid credential. |
 | `403` | Authenticated but not permitted — including a record that exists but is hidden from the caller. |
 | `404` | Object or record not found. A newly created custom object returns `404` until its schema is applied. |
-| `429` | Rate limited — back off and retry. |
+| `429` | Too many requests for this API key. Each key has a request limit (about 2,500 calls), and its counter resets only after a full minute without calls, so steady traffic can reach it. Send requests one at a time, load large batches through the importer, and wait at least a minute before retrying. |
 
-Write validation errors (missing `required` field, `enum`/`min`/`max`/`match` violations, etc.) come back as `400` (or `409` for duplicates) with a message identifying the offending field. See [Custom Objects & Fields](02-custom-objects-and-fields.md) for field constraints.
+Write validation errors (missing `required` field, `enum`/`min`/`max`/`match` violations, etc.) come back as `400` with a message identifying the offending field. A duplicate on a `unique` field is also a `400` duplicate-value error, not a `409`. See [Custom Objects & Fields](02-custom-objects-and-fields.md) for field constraints.
 
 ---
 
@@ -281,7 +297,7 @@ Fetch deals where `proposal.enabled` is true and `closeDate` is on or after `202
 ```bash
 curl -G 'https://<domain>/v2/deal/' \
   -H 'Authorization: Bearer <API_KEY>' \
-  --data-urlencode 'query={"proposal.enabled":true,"closeDate":{"$gte":"2026-01-01"}}' \
+  --data-urlencode 'xquery={"proposal.enabled":true,"closeDate":{"$gte":"2026-01-01"}}' \
   --data-urlencode 'select=dealName closeDate proposal.enabled contact company' \
   --data-urlencode 'populate=contact company' \
   --data-urlencode 'sort=-closeDate' \
@@ -293,6 +309,7 @@ Response `200`:
 
 ```json
 {
+  "timeMs": 38,
   "pagination": { "count": 137, "page": 2, "limit": 50, "lastPage": 3, "startIndex": 50 },
   "data": [
     {
@@ -402,12 +419,14 @@ A create that omits a `required` field returns `400` with a message naming the f
 6. **`sort` validates the field.** Sorting by a field the object doesn't have returns `400`.
 7. **Sensitive fields are always stripped from `select`** (e.g. `password`, `apiKey`) even if you request them.
 8. **`populatePath` overrides `populate`,** and `populate=*` expands every relationship — potentially expensive. Prefer an explicit `populate`/`populatePath` list.
-9. **Flat params beat the `query` param on conflict.** If the same key appears both as a flat param and inside `query`, the flat value wins.
+9. **Flat params beat the `xquery` param on conflict.** If the same key appears both as a flat param and inside `xquery`, the flat value wins.
 10. **Record visibility is invisible in lists but explicit on single-record calls.** Hidden records never appear in lists (and don't count toward `pagination.count`); a hidden single record returns `403`, a non-existent one `404` — don't conflate them.
 11. **Non-`_id` primary keys may need `?workspace=`.** If a `primaryKey` value isn't globally unique, disambiguate the by-id call with `?workspace=<id-or-code>`.
 12. **`format` must be one of the enum values** (`json`, `yaml`, `xlsx`, `csv`, `pretty`, `qr`); any other value is rejected.
 13. **`sum` runs over the full match set,** not just the current page, and only accepts numeric fields — it's an extra aggregation, so use it deliberately.
 14. **A brand-new custom object returns `404` until its schema is applied.** Poll a `limit=1` list call before writing records (see [Custom Objects & Fields](02-custom-objects-and-fields.md)).
+15. **The filter parameter is `xquery`, not `query`.** `?query=` is ignored and returns every record with `200`, so a dedupe built on it always "finds" a match. The same happens with malformed `xquery` JSON and with the dotted `field.$op=` form.
+16. **One operator per field, and no `$options`.** Two operators on the same field keep only the last one — put ranges inside `$and`. Use `(?i)` inside `$regex` for case-insensitive matching; `$options` answers `400`.
 
 ---
 
@@ -417,12 +436,12 @@ A create that omits a `required` field returns `400` with a message naming the f
 - [ ] Used the **lowercase** path with the `/v2/` prefix (`/v2/<object>/`).
 - [ ] Confirmed the object's identifier: `_id` by default, or the `primaryKey` field — and added `?workspace=` if that key can be ambiguous.
 - [ ] Sent the credential (`Authorization: Bearer <API_KEY>` recommended).
-- [ ] Built filters with flat params and/or the `query` JSON param, remembering flat params win on conflict and operators go as `field.$op` or inside `query`.
+- [ ] Built filters with flat params and/or the `xquery` JSON param, remembering flat params win on conflict, operators go as `field[$op]` or inside `xquery`, and a range on one field goes inside `$and`.
 - [ ] Verified every field in the filter / `sort` / `select` exists on the object (see [Custom Objects & Fields](02-custom-objects-and-fields.md)) — a typo is dropped silently.
 - [ ] Set explicit `select` / `populate` / `populatePath` to avoid over-fetching (`populate=*` is expensive).
 - [ ] Paginated with `page` (1-based) + `limit` (≤ 500; use `exportData` for more) and iterated while `page < pagination.lastPage`.
 - [ ] Parsed the response per operation: list/search → `data` + `pagination`; read/create/update → the record itself; delete → `204` with no body.
-- [ ] Handled `401` (auth), `403` (exists but hidden), `404` (not found) and `429` (rate limit) as distinct cases.
+- [ ] Handled `401` (auth), `403` (exists but hidden) and `404` (not found) as distinct cases, and waited before retrying on any `429`.
 
 ---
 

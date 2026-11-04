@@ -103,8 +103,9 @@ Set `authenticationRequired: true` on the site (via the API or the platform UI) 
 visitor is redirected to `/v2/auth/signin` and returned to the page after signing in.
 
 **Do not build a login form.** No email/password fields, no `POST /v2/auth/signin`, no MFA, no
-password reset — the platform's sign-in page already does all of it, branded for the account, and
-the flag routes visitors there for you. Write your bundle as if the visitor is already signed in.
+password reset — the platform's sign-in page already does all of it (password, Google, Microsoft
+and Okta sign-in, MFA), and the flag routes visitors there for you. Write your bundle as if the
+visitor is already signed in.
 
 ### Getting a token for API calls
 
@@ -117,21 +118,27 @@ The gate and your JavaScript use two different copies of the same session:
 
 The bridge is `localStorage`: the platform's sign-in page stores the key as
 `localStorage['apiKey']` on your account's origin — the same origin your site is served from.
+The current app stores it JSON-quoted (`"abc…"`) and the older one plain, so read it with
+`JSON.parse` and fall back to the raw value; a key sent with its quotes answers `401`.
 
 ```js
 const SIGNIN = () => '/v2/auth/signin?redirect=' +
   encodeURIComponent(location.pathname + location.search + location.hash)
 
+function readApiKey() {                                // JSON-quoted or plain: accept both
+  const raw = localStorage.getItem('apiKey')
+  try { const v = JSON.parse(raw); return typeof v === 'string' && v ? v : raw } catch { return raw }
+}
+
 async function api(path, options = {}) {
-  const apiKey = localStorage.getItem('apiKey')
+  const apiKey = readApiKey()
   if (!apiKey) { location.href = SIGNIN(); return }   // gate passed, no token on this browser
 
   const res = await fetch(`/v2${path}`, {
     ...options,
     headers: { 'Content-Type': 'application/json', ...options.headers, Authorization: `Bearer ${apiKey}` },
   })
-  if (res.status === 401) {                            // expired or revoked
-    localStorage.removeItem('apiKey')
+  if (res.status === 401) {                            // expired or revoked: sign-in cleans up itself
     location.href = SIGNIN()
     return
   }
@@ -140,6 +147,11 @@ async function api(path, options = {}) {
 
 const me = await api('/user/me')
 ```
+
+**Never call `localStorage.removeItem('apiKey')`** — not on a `401`, not to sign out. It is the
+app's session on this same origin, so removing it signs the user out of the app. To sign out,
+call `DELETE /v2/auth/signout` with the Bearer token and send the visitor to `/v2/auth/signin`;
+that ends the session in the app too, since the site shares it.
 
 Keep both redirect branches. The cookie and the `localStorage` copy can fall out of step — a
 visitor who cleared site data passes the page gate with no token — and bouncing through

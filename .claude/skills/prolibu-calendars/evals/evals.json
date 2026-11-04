@@ -1,0 +1,57 @@
+{
+  "skill_name": "prolibu-calendars",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json (admin). A test calendar <calendar> whose responsible is the tester, with external sync off and an exception on <closed day>; one booking <booking> on it whose guest is the tester's own address; a deal <deal> whose quote has reserved lines with bookings. Every e-mail these cases can trigger must go to the tester.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Crea un calendario de asesorías de 30 minutos, de lunes a viernes de 8 a 12 y de 2 a 6, hora de Bogotá, y bloquea el <closed day>.",
+      "expected_output": "Asks about Google/Outlook sync (and the responsible), previews one plan with an integer-weekday policy, an exception and the calendar, waits for a yes, applies and reports the 7-day probe.",
+      "expectations": [
+        "Uses scripts/calendar.js setup-preview / setup-apply, never hand-made POSTs",
+        "The policy rules use wday as integers 1-5 with two ranges per day",
+        "Asks the user (or states the choice) about externalSyncEnabled before applying",
+        "Writes nothing before the user's yes; after it, reports the created ids and the free hours, with the closed day marked as rejected by booking",
+        "Answers in Spanish"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "¿Qué horarios libres tiene el calendario <calendar> el <closed day> y el día anterior?",
+      "expected_output": "Read-only: runs availability, reports free starts and explains that the closed day looks free on the platform but bookings are rejected.",
+      "expectations": [
+        "Runs the availability command, never myavailability",
+        "Reports that the closed day's slots would be rejected (exception), not as free",
+        "Writes nothing"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Agéndale a <tester alias e-mail> una cita el <day> a las 10 en <calendar>.",
+      "expected_output": "Runs book-preview, lists who gets e-mails and the outcome, stops; after the yes books through the booking route with --reaches-people and reports the event.",
+      "expectations": [
+        "Shows the recipients (guest and responsible) and whether it will be Tentative before writing",
+        "Never sends contact, never uses POST /v2/calendarevent",
+        "Books only after the yes, with --reaches-people, and reports the event id and status"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Cancela la reserva <booking>, el cliente ya no puede.",
+      "expected_output": "Finds the booking, runs cancel-preview (deadline and recipients) and stops without cancelling.",
+      "expectations": [
+        "Uses cancel-preview, shows who will be notified and the cancellation deadline",
+        "Does not cancel in the same turn, and never uses DELETE or a PATCH of the booking's status"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "El negocio <deal> tiene habitaciones reservadas dos veces, ¿por qué?",
+      "expected_output": "Read-only deal-bookings diagnosis: orphan bookings, units of another product, shared units, the stage rule; points to prolibu-quotes for the fix.",
+      "expectations": [
+        "Runs deal-bookings and writes nothing",
+        "Explains orphans from removed lines and units shared across calendars in plain words",
+        "Sends the fix to prolibu-quotes or the app, without deleting or cancelling bookings"
+      ]
+    }
+  ]
+}

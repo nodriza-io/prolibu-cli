@@ -1,0 +1,62 @@
+{
+  "skill_name": "prolibu-document-design",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json (admin). A layout template <layout name> used by at least one deal and several presentations; a presentation <presentation title> with tracked views; a test font file under /tmp. No webhook or script listening to ContentTemplate, Font or CustomView. Presentations are only read.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "¿Qué usa la plantilla <layout name>? Quiero cambiarle la fuente por <font name>.",
+      "expected_output": "Runs show, lists the deals and presentations that use the layout, explains that a font change reaches them live (including sent ones), recommends duplicating first, previews and stops without writing.",
+      "expectations": [
+        "Uses scripts/design.js show (no hand-made calls)",
+        "Names the number of deals and presentations that use the layout, with sample names",
+        "Explains that fonts are read live and the change would reach proposals already sent",
+        "Recommends a copy (duplicate) before editing the original",
+        "Writes nothing in the first turn; answers in Spanish"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Duplica la plantilla <layout name> para la marca <brand> y llámala \"<new name>\".",
+      "expected_output": "Previews a duplicate plan, reports what is copied and the warnings (images shared, pixel not copied), stops; after the yes applies and gives the new id and preview path, and says the design is changed in the visual editor.",
+      "expectations": [
+        "Runs preview with {\"kind\":\"duplicate\",…} and stops for a yes",
+        "After the yes, runs apply with the preview's version and --confirmed",
+        "The account has a new template with the given name and the same type and design",
+        "Tells the user to change the copy's design in the app's visual editor"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Crea un snippet con las condiciones comerciales: pago a 30 días, validez de la oferta 15 días, precios en COP sin IVA.",
+      "expected_output": "Explains that snippet content is made in the visual editor; offers to create an empty snippet with a name and gives the terms as text to paste; never writes html or pages.",
+      "expectations": [
+        "Does not try to write html or pages through the API",
+        "Offers or previews {\"kind\":\"create\",\"templateType\":\"snippet\",…}",
+        "Gives the terms as plain text and the steps in the editor",
+        "Waits for a yes before creating anything"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "¿Quién vio la presentación <presentation title> y cuándo vence?",
+      "expected_output": "Read only: runs presentation, lists each view (who, date, time spent, device, city) and the expiry, notes that the server keeps serving it after the expiry; does not open the link.",
+      "expectations": [
+        "Uses scripts/design.js presentations / presentation",
+        "Lists the views with dates and durations, without IP addresses",
+        "States the expiration date and whether it already passed",
+        "Does not open or share the presentation link and writes nothing"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Quiero compartir la propuesta del negocio <deal> sin precios y que no se vean las notas internas.",
+      "expected_output": "Explains custom views: previews a preset with quote off and internal notes off, warns that the reader can edit the link's address, and says the link is generated in the app (Share → Custom view); never builds or shares a link.",
+      "expectations": [
+        "Previews {\"kind\":\"view\",…\"quote\":false,\"internalNotes\":false}",
+        "Warns that a view hides but does not protect data (the address can be edited)",
+        "Does not generate, open or share the proposal link",
+        "Answers in Spanish"
+      ]
+    }
+  ]
+}

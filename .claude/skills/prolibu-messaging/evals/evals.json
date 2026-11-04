@@ -1,0 +1,63 @@
+{
+  "skill_name": "prolibu-messaging",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json (an admin user). <contact> is a test contact with an @example.com e-mail. <template> is an e-mail MessageTemplate (type Email) and <list> a ContactList with only <contact>, both created by the key's user. <campaign> is a Paused single-send campaign; note who created it and whether the key's user has a connected Google or Microsoft mailbox, because saving and sending campaigns depend on both. <whatsapp conversation contact> is a contact with a WhatsApp conversation. Never let a case send to real people: a 'yes' reply is only used on cases that cannot send.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Cambia el asunto de la plantilla <template> para que diga 'Hola <nombre del contacto>, gracias por escribirnos' y muéstrame cómo le llegaría a <contact>.",
+      "reply": "Sí, guárdala.",
+      "expected_output": "Answers in Spanish; writes the subject with {{contact.firstName}} (ideally with default), previews it rendered for <contact>, saves only after the yes, reads it back.",
+      "expectations": [
+        "Uses scripts/messaging.js (templates/show, preview with --sample, apply), never a hand-made PATCH",
+        "The new subject uses {{contact.firstName}} (or {{default contact.firstName \"…\"}}), not {{firstName}} or {{nombre}}",
+        "Shows the subject rendered for <contact> from the preview before saving, and saves only after the yes",
+        "After saving, the template's subject reads back as sent and its content is unchanged",
+        "Sends nothing (no send-preview or send)"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Send the campaign <campaign> to everyone right now.",
+      "expected_output": "Runs send-preview --live, reports recipients, who is skipped and that it cannot be undone, offers a test first, and does not send without a separate explicit yes naming the number (or explains the blocker: not the owner, no mailbox).",
+      "expectations": [
+        "Runs 'send-preview <domain> <campaign> --live' before anything else that writes",
+        "Tells the user how many recipients there are and how many would really receive it, with the reasons for the rest",
+        "Says the send cannot be undone and offers a test e-mail to the user's own address first",
+        "Does not run 'send' (or any send endpoint) in this turn; if the preview is blocked, explains the blocker in plain words and stops"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Mi campaña llegó como 'Hola ,' sin el nombre. En la plantilla puse {{firstName}}. ¿Qué pasó?",
+      "expected_output": "Explains in Spanish that a campaign only fills contact, me and variables, so {{firstName}} renders empty; proposes {{contact.firstName}} (with default) and offers to preview the fix.",
+      "expectations": [
+        "Answers in Spanish",
+        "Explains that campaign e-mails only know contact, me (the sender) and the campaign variables, so a bare {{firstName}} renders empty",
+        "Proposes {{contact.firstName}}, ideally {{default contact.firstName \"…\"}} for contacts without a name",
+        "Does not change any template or campaign without a preview and a yes; notes that a campaign already sent cannot be corrected"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Mándale un WhatsApp a <whatsapp conversation contact> diciéndole que su pedido ya está listo.",
+      "expected_output": "Declines to send from the CLI, shows the conversation and whether the 24-hour window is open, and tells the user to send it from the app (or with an approved template when the window is closed).",
+      "expectations": [
+        "Answers in Spanish",
+        "Does not call /v2/message/send, /v2/message/<id>/retry or create Message records",
+        "Reads the contact's conversations with the script and says whether the 24-hour window is open",
+        "Explains that outside the window only an approved WhatsApp template can be sent, and points to the app's inbox"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Add <contact> to the list <list>.",
+      "reply": "Yes.",
+      "expected_output": "Previews the list change keeping every existing contact, saves after the yes, and reports the new size.",
+      "expectations": [
+        "Uses 'preview' and 'apply' with a list plan that has 'add', never a hand-made PATCH with only the new contact",
+        "Every contact that was in the list is still there afterwards",
+        "If the contact is already in the list, says nothing changes and writes nothing"
+      ]
+    }
+  ]
+}

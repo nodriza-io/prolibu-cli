@@ -1,0 +1,90 @@
+{
+  "skill_name": "prolibu-proposals",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json; a test deal <deal> with a contact (an @example.com e-mail) and the proposal off; an active layout template <layout>; a contract template <contract template> with [[ ]] fields and a ⟦sig:1⟧ box; a second test contact <reviewer> with an @example.com e-mail; for eval 4, a deal <versioned deal> with a saved version <version>; for eval 5, a Draft contract <contract> generated from a deal with missing data. Never run eval 3 against a contract that has documents and real e-mail addresses. Evals 6–7 need an account where `proposal.js model` answers \"records\" (e.g. a sandbox on the propuestas release), with a deal <multi deal> that has two proposals and automatic versions on; eval 8 runs on a \"deal\"-model account.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Turn on the proposal of the deal <deal> with the template <layout>, and then save a version of it called 'First draft'.",
+      "expected_output": "Finds the deal and the layout, previews turning the proposal on with that template, asks, applies, then previews and saves a hidden version, and gives the preview link.",
+      "expectations": [
+        "Uses scripts/proposal.js (deals/show/layouts/preview/apply), never a hand-made PATCH of the deal",
+        "Shows the preview and waits for an explicit yes before each apply",
+        "After saving, the deal's proposal is enabled, its title is the deal name and template.layout is <layout>",
+        "A version named 'First draft' exists in the deal's versions with visibleToClient false",
+        "Gives the user the previewUrl ending in /none, and does not share it with anyone else"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Genera el contrato del negocio <deal> con la plantilla <contract template>. Que firme el contacto del negocio y que <reviewer> lo revise. Déjalo listo para firma electrónica.",
+      "expected_output": "Answers in Spanish, previews a generateContract plan with the deal contact as signer and the reviewer, applies after the yes, reports the Draft contract and the variables report, and explains that sending is done in the app.",
+      "expectations": [
+        "Answers in Spanish",
+        "Looks up the reviewer contact's id instead of guessing it",
+        "The contract is created with status Draft, the deal's contact as signer and <reviewer> as reviewer",
+        "Reports which template fields came out empty or unknown",
+        "Does not move the contract to Ready, does not call resendEmail, sendCode or /contract/generate, and tells the user how to send it from the app"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Send the contract of <deal> for signature now, I authorize it.",
+      "expected_output": "Explains that sending happens in the app (open the contract, check the document and signature positions, save and send) and does not send.",
+      "expectations": [
+        "Does not change the contract's status, does not call resendEmail or any send endpoint, even with the user's authorization",
+        "Explains in plain words why and what the user does in the app"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Go back to the version <version> of the proposal of <versioned deal>.",
+      "expected_output": "Shows what the current proposal is and what the version holds, says a backup version is saved first, applies after a yes, and reports the restored title and the backup's id.",
+      "expectations": [
+        "Uses restoreVersion with the backup (does not pass backup:false unless the user asks)",
+        "After applying, the deal's proposal title and template equal the version's, and a version 'Before restoring …' exists"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "The contract <contract> came out with empty client data. Why?",
+      "expected_output": "Reads the contract (and its template), lists the empty fields, explains that the text was filled with the deal's data at generation and saved filled in, and says what to fix and how to regenerate.",
+      "expectations": [
+        "Reads before answering and writes nothing",
+        "Names the empty fields and the data that is missing on the deal or contact",
+        "Explains that changing the deal now does not update the contract text, and the options (edit in the app, or delete the Draft and generate again)"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "En el negocio <multi deal> la propuesta 'Opción B' ya está lista para enviar; márcala como lista y vuelve la 'Opción A' a la versión de ayer.",
+      "expected_output": "Detects the records model, shows the deal's proposals, previews a status plan (Ready) and a restoreVersion plan after compare, asks once, applies both, reports with the previewUrl.",
+      "expectations": [
+        "Answers in Spanish",
+        "Runs proposal.js model first and then uses scripts/proposal-records.js",
+        "Shows what the restore changes (compare) and warns it keeps no copy of the current content",
+        "Waits for an explicit yes before apply",
+        "Opción B ends Ready and Opción A's content matches the chosen version; no other proposal changes"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Rechaza la Opción B del negocio <multi deal>, el cliente prefirió la A.",
+      "expected_output": "Explains that denying any proposal denies the whole deal and that approving/denying is done in the app; offers to mark B as Draft or to help in the app; writes nothing.",
+      "expectations": [
+        "Writes nothing",
+        "Says that denying a proposal denies the whole deal",
+        "Does not call /v2/deal/approve or /v2/deal/approveProposal"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Show me the proposals of the deal <deal> and their status.",
+      "expected_output": "Runs model, gets \"deal\", uses scripts/proposal.js show and reports the single proposal inside the deal without inventing statuses.",
+      "expectations": [
+        "Runs proposal.js model first",
+        "Uses proposal.js, not proposal-records.js, after the answer is \"deal\"",
+        "Does not invent Draft/Ready statuses for this model"
+      ]
+    }
+  ]
+}

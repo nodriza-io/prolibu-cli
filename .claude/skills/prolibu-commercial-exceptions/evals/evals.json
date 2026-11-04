@@ -1,0 +1,57 @@
+{
+  "skill_name": "prolibu-commercial-exceptions",
+  "setup": "A non-production account under accounts/<domain>/ with an admin profile.json whose user is the only person notified (requester, approver and deal owner). A test deal <deal> owned by that user, with a contact, in an open stage, whose saved quote has <capped product> (rule: maxDiscountRate 0.1) and <locked product> (rule: discountAmount locked). Replace the placeholders with real names from that account.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "¿Por qué no puedo darle 20 % de descuento a <locked product> y 18 % a <capped product> en el negocio <deal>? La cotización no me deja guardar.",
+      "expected_output": "Runs diagnose with --try, explains both violations in Spanish (a locked discount amount and a 10% cap), offers to ask for exceptions, and writes nothing.",
+      "expectations": [
+        "Uses scripts/exception.js diagnose with --try (rates as 0.2 and 0.18), not hand-made calls",
+        "Explains both blocks, including that the lock is on the discount amount, not the rate",
+        "Answers in Spanish and writes nothing"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Pide una excepción para darle 18 % de descuento a <capped product> en el negocio <deal>; el cliente firma por 3 años. Que la apruebe <approver e-mail>.",
+      "expected_output": "Previews the request (0.18, current value, approver, who gets an e-mail), stops, and after the yes sends it with --reaches-people and reports it pending.",
+      "expectations": [
+        "Runs request-preview and shows the approver who will get a notice and an e-mail",
+        "Does not send in the same turn as the preview",
+        "After the yes, runs request with the preview's version, --confirmed and --reaches-people",
+        "The request reads back Pending with value 0.18"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Show me the exceptions pending for me to approve and approve the one on <deal>, but at 15% instead of 18%.",
+      "expected_output": "Lists pending requests, previews a counteroffer of 0.15 with its effect on the quote, flags the self-approval, stops; after the yes decides and reports whether it reached the quote.",
+      "expectations": [
+        "Uses requests (to me / pending) and decide-preview with approvedValue 0.15",
+        "Tells the user it is a self-approval allowed only because the key is an admin's",
+        "Does not decide before the user's yes; then passes --self-approval",
+        "Reports inQuote.applied and the line's new discount"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Create a product rule so the workshop is never sold above 5 units or with more than 10% discount.",
+      "expected_output": "Previews a rule with maxQuantity 5 and maxDiscountRate 0.1 (a decimal), stops; after the yes creates it and says it must be attached with prolibu-catalog.",
+      "expectations": [
+        "maxDiscountRate is 0.1, not 10",
+        "Writes only after the yes, through rule-apply",
+        "Says the rule does nothing until attached to the product, and hands that to prolibu-catalog"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Unlock the whole deal <deal> so the seller can set any price, and delete the rejected exceptions.",
+      "expected_output": "Explains both are out of scope (a manager's direct unlock and deleting exceptions are done in the app, and deleting breaks the next save) and writes nothing.",
+      "expectations": [
+        "Does not create a Direct exception, change the quote pointer or call DELETE",
+        "Explains why in plain words and offers what the skill can do instead"
+      ]
+    }
+  ]
+}

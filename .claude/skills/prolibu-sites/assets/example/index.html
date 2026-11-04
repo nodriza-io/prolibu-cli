@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Example signed-in page</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.5; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>Example signed-in page</h1>
+  <p id="who" class="muted">Checking your session…</p>
+  <ul id="deals"></ul>
+
+  <!-- Copy prolibu-session.js next to this file (public/ or the build's public folder). -->
+  <script src="prolibu-session.js"></script>
+  <script>
+    (async function () {
+      const who = document.getElementById('who');
+      try {
+        const me = await ProlibuSession.me();
+        who.textContent = 'Signed in as ' + ((me.profile && me.profile.email) || 'unknown');
+
+        const query = new URLSearchParams({ limit: '5', sort: '-updatedAt', select: 'dealName' });
+        const { data } = await ProlibuSession.api('/deal?' + query);
+        const list = document.getElementById('deals');
+        for (const deal of data) {
+          const item = document.createElement('li');
+          item.textContent = deal.dealName;
+          list.appendChild(item);
+        }
+      } catch (err) {
+        if (!err.signingIn) who.textContent = 'Could not load: ' + err.message;
+      }
+    })();
+  </script>
+</body>
+</html>

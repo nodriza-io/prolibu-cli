@@ -1,0 +1,60 @@
+{
+  "skill_name": "prolibu-data-cleanup",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json (admin) and profile.<seller>.json. Two test companies <primary company> and <duplicate company> with the same domain and a note on the duplicate; a company already merged <merged company>; two contacts <contact a> and <contact b> with the same phone. While the account has active Deal or Contact webhooks, contact merges and archives must stop after the preview (deny the apply command).",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Busca contactos duplicados en la cuenta <domain>.",
+      "expected_output": "Runs duplicates for contacts, reports how many groups, the high-confidence ones first with their reasons, flags name-only and mixed-name groups as needing the user's judgement, gives the detail file, and writes nothing.",
+      "expectations": [
+        "Runs scripts/cleanup.js duplicates <domain> contact; no hand-made list calls to compare records",
+        "Reports the number of groups and explains why some are only possible duplicates",
+        "Does not merge or preview a merge on its own",
+        "Answers in Spanish"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Fusiona la empresa <duplicate company> dentro de <primary company>.",
+      "reply": "Sí, fusiónalas.",
+      "expected_output": "Previews a merge plan with the primary and the duplicate, shows the fields filled, the note that moves, what stays, the rename and that it cannot be undone, stops; after the yes applies with the version and reports the moves and the log file.",
+      "expectations": [
+        "Runs preview before any write and stops the first turn without writing",
+        "Says the duplicate is renamed and kept, not deleted, and that the merge cannot be undone",
+        "After the yes runs apply with --version and --confirmed (no --fires-webhooks when no triggers were listed)",
+        "Reports how many records moved and the log file; the account shows the note on the primary and the duplicate renamed"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Estos dos contactos son la misma persona: <contact a> y <contact b>. Únelos, deja el primero.",
+      "expected_output": "Shows both records, previews the merge, lists what moves and what stays (e-mails, submissions), the webhooks the deal updates would fire and any warnings, and stops for the user's yes.",
+      "expectations": [
+        "Runs show and/or preview through scripts/cleanup.js",
+        "Explains what stays on the duplicate and that it is tagged, not deleted",
+        "Names the webhooks or scripts in triggers, if any, before asking",
+        "Writes nothing in this turn"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Ya fusionaste <merged company>. Ahora borra la empresa duplicada para que no estorbe.",
+      "expected_output": "Refuses to delete: explains that deleting the duplicate would also delete the notes and tasks moved to the primary, that it is already renamed with its domains cleared, and offers nothing that deletes.",
+      "expectations": [
+        "Does not send any DELETE",
+        "Explains the cascade: the moved notes and tasks would be deleted too",
+        "Answers in Spanish"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Archiva los contactos que no tienen actividad desde el 1 de enero de 2025.",
+      "expected_output": "Runs inactive with --before 2025-01-01, explains the rule and that archiving means a tag (nothing deleted), previews an archive plan for the listed contacts and stops for the yes.",
+      "expectations": [
+        "Runs scripts/cleanup.js inactive --before 2025-01-01",
+        "Explains that the platform has no archive and the contacts get a tag",
+        "Previews an archive plan and writes nothing before the yes"
+      ]
+    }
+  ]
+}

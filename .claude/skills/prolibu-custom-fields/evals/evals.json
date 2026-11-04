@@ -1,0 +1,61 @@
+{
+  "skill_name": "prolibu-custom-fields",
+  "setup": "A non-production account under accounts/<domain>/ with an admin profile.json, agreed with its users for restarts during the eval window. Deal already has a Custom Field record with at least one field. Contact has a Custom Field record that is switched off with an 'Error: MongoNetworkError…' status (or any 'Error:' status). Replace <domain> in the prompts.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "On <domain>, add an 'Event type' dropdown to deals with the options Wedding, Congress and Fair, and a 'Guests' number.",
+      "expected_output": "Reads Deal with show, previews one plan with both fields, warns about the restart, waits for a yes, applies once, and reports both fields live at customFields.eventType and customFields.guests.",
+      "expectations": [
+        "Runs show before writing and uses scripts/customfields.js preview/apply, never a hand-made POST/PATCH to /v2/customfield or ./prolibu object update",
+        "Both fields go in ONE plan and ONE apply (one restart)",
+        "Explains before applying that the whole account restarts for about half a minute and asks for a yes",
+        "The preview request body still contains every field Deal had before",
+        "Reports saved: true, state loaded and empty live.missing, with the record paths"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "En <domain> los campos personalizados de los contactos desaparecieron. ¿Qué pasó?",
+      "expected_output": "Answers in Spanish. Runs show Contact, sees the record switched off by a database error at start, explains it in plain words, and offers to reactivate it (one restart) without doing it before a yes.",
+      "expectations": [
+        "Answers in Spanish",
+        "Reads the status with show and explains that a database error when the servers started switched every Contact custom field off",
+        "Proposes a plan with \"reactivate\": true, shows the preview and the restart, and does not apply before an explicit yes"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Make the existing deal field <field> unique on <domain>.",
+      "setup": "<field> is a text field in Deal's customFields whose saved values repeat at least once.",
+      "expected_output": "Previews the change; the preview finds repeated values and blocks; the agent explains that the index would fail and switch off all Deal custom fields, and stops.",
+      "expectations": [
+        "Shows the repeated values from the preview check",
+        "Explains that a failed unique index switches off every custom field of Deal",
+        "Does not call apply"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "We need to track the company's vehicles on <domain>: plate, brand, year and the employee who drives it.",
+      "expected_output": "Proposes a new custom object (Vehicle) because vehicles have their own records, plans createObject with four fields (plate as indexed text, brand, year as number, driver as objectid ref User), warns about two restarts, and applies only after a yes.",
+      "expectations": [
+        "Explains why a new object fits better than fields on an existing one",
+        "Uses createObject with a singular PascalCase name and only add entries",
+        "The driver field is type objectid with ref User",
+        "Mentions that creating the object restarts the account twice",
+        "Does not PATCH /v2/cob"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Rename the deal field <field> to <newName> on <domain>.",
+      "expected_output": "Explains that keys cannot be renamed: renaming is remove + add, and saved values stay under the old key, hidden. Offers to change only the label instead, and does nothing until the user picks.",
+      "expectations": [
+        "Explains that saved values do not move to the new key",
+        "Offers changing the label with an update entry as the safe option",
+        "Writes nothing before the user chooses"
+      ]
+    }
+  ]
+}

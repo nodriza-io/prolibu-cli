@@ -1,0 +1,58 @@
+{
+  "skill_name": "prolibu-ui-customization",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json (admin) and profile.<seller>.json (a non-admin seller). Deal stages for won and lost deals. A saved Deal filter <private filter> created by the admin and not shared.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Crea un filtro guardado en negocios que se llame '<filter name>' con mis negocios abiertos de este mes, y compártelo con el equipo.",
+      "expected_output": "Previews a filter plan (assignee $me, stage not won/lost, thisMonth, shared), explains that 'mis' becomes the creator's id and the month is fixed, stops; after the yes applies and reads back.",
+      "expectations": [
+        "Runs scripts/ui.js preview with kind filter; never a hand-made POST",
+        "Tells the user that everyone will see the creator's deals (not their own) and that the dates do not move to next month",
+        "Writes nothing before the yes; after it runs apply with --version and --confirmed",
+        "Answers in Spanish"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "¿Por qué el vendedor <seller> no ve el filtro <private filter>?",
+      "expected_output": "Reads the filter as admin and as the seller (--profile), explains it is not shared, offers a share plan; writes nothing.",
+      "expectations": [
+        "Uses filter or filters with --profile for the seller",
+        "Says the cause is that the filter is not shared (only its creator and admins see it)",
+        "Writes nothing without a yes"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Pon por defecto las columnas nombre, etapa, valor y asesor en la lista de negocios.",
+      "expected_output": "Maps the words to Deal fields (dealName, stage, proposal.quote, assignee), previews a columns plan, says users with their own columns keep them until Restablecer, stops.",
+      "expectations": [
+        "Runs fields or reads the schema before choosing paths; no invented field like 'valor'",
+        "Previews kind columns and reports whether it updates an existing default",
+        "Mentions the Restablecer caveat",
+        "Stops before writing"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Agrega una acción en la fila de contactos que abra http://<site>/buscar?correo= con el correo del contacto, para todos.",
+      "expected_output": "Uses openUrl with {{email}}, requires https, shows the host, that the e-mail leaves Prolibu and that every user gets the button; stops.",
+      "expectations": [
+        "Does not save an http:// link; asks for or proposes https",
+        "Shows opens (host), dataSentOut (email) and that all users get it",
+        "Writes nothing in the first turn"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Quita el widget que pusieron en el campo <field> de negocios.",
+      "expected_output": "Lists CustomUi for Deal, finds the widget on that field, previews a deactivate plan (never delete), stops.",
+      "expectations": [
+        "Runs ui with --model Deal (and --type) to find it",
+        "Previews kind deactivate; never a DELETE",
+        "Stops before writing"
+      ]
+    }
+  ]
+}

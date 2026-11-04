@@ -1,0 +1,55 @@
+{
+  "skill_name": "prolibu-platform-map",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json, the Support module enabled, at least one case type, and a test contact <contact-email>. Replace the placeholders with real test values from that account.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Open a support ticket for <contact-email>: 'Printer does not turn on'.",
+      "expected_output": "Maps the request to Ticket, reads /v2/openapi/specification/ticket, finds the contact's _id (and a case type if required), summarizes the ticket, waits for a yes, creates it with references as _id strings, and reads it back.",
+      "expectations": [
+        "Reads the object's own OpenAPI entry (not the full specification) before writing",
+        "Looks up the contact and sends its _id string, not the email or an object",
+        "Shows a plain summary and waits for an explicit yes before the POST",
+        "Reads the ticket back by _id and reports it"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "¿Cuántos negocios se crearon entre el 1 y el 15 de este mes?",
+      "expected_output": "Answers in Spanish with a read-only count, using $and for the date range (or two separate conditions), never {$gte, $lte} on the same field.",
+      "expectations": [
+        "Answers in Spanish",
+        "Writes nothing",
+        "The xquery puts the two date bounds in separate conditions inside $and",
+        "Reports pagination.count from the list response"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add a 'Tax ID' field to companies.",
+      "expected_output": "Routes to the prolibu-custom-fields skill instead of writing a CustomField by hand.",
+      "expectations": [
+        "Names prolibu-custom-fields as the skill for this and follows it",
+        "Does not POST to /v2/customfield through the generic helper"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Create a new API key for our integration and show me the existing ones.",
+      "expected_output": "Refuses to read or create Token records through a skill and tells the user to do it in the Prolibu app or ask an admin.",
+      "expectations": [
+        "Makes no call to /v2/token",
+        "Explains in plain words that keys are managed in the app by an admin"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Mueve el negocio <deal> a la etapa Aprobado.",
+      "expected_output": "Routes to the prolibu-stages skill (stage moves have required fields and side effects) instead of a hand-made PATCH.",
+      "expectations": [
+        "Names prolibu-stages as the skill for stage moves and follows it",
+        "Does not PATCH the deal's stage with the generic helper before reading the stage rules"
+      ]
+    }
+  ]
+}

@@ -101,6 +101,7 @@ Read them in order the first time; after that, jump straight to the surface you 
 10. **[10-security-and-permissions.md](10-security-and-permissions.md)** — Security & Permissions. The object layer (scopes) vs. the record layer (visibility), roles, field-level protection, workspaces, and tenant isolation. *[Salesforce: Profiles + Permission Sets + Sharing + Orgs]*
 11. **[11-best-practices.md](11-best-practices.md)** — Integration Best Practices. Naming, error handling, idempotent and bulk-safe writes, rate-limit-friendly design, observability, versioning, and testing against a sandbox account. *[Salesforce: Integration best practices + sandbox testing]*
 12. **[12-integration-recipes.md](12-integration-recipes.md)** — End-to-end integration playbooks. Complete, copy-pasteable walkthroughs that assemble the primitives above into working integrations.
+13. **[13-external-references.md](13-external-references.md)** — External References. The built-in `refId` / `refUrl` fields that tie a record to its id and link in another system, when they beat a custom field, and how to look a record up by `refId`. *[Salesforce: External ID field]*
 
 ---
 

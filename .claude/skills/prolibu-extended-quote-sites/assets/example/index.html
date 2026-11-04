@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Extended quote</title>
+  <style>
+    :root { --ink: #1f1c1b; --muted: #6b6866; --line: #e6e3e0; --accent: #2563eb; --error: #aa2e1b; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; font: 14px/1.4 system-ui, sans-serif; color: var(--ink); background: #fff; }
+    h1 { font-size: 16px; margin: 0 0 4px; }
+    .muted { color: var(--muted); }
+    .error { color: var(--error); }
+    input, button { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+    button { cursor: pointer; background: var(--ink); color: #fff; border-color: var(--ink); }
+    button.secondary { background: #fff; color: var(--ink); border-color: var(--line); }
+    button:disabled { opacity: .45; cursor: default; }
+    #term { width: 100%; margin: 12px 0 8px; }
+    ul { list-style: none; margin: 0; padding: 0; }
+    li { display: flex; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+    li .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    li input[type=number] { width: 72px; }
+    footer { position: sticky; bottom: 0; display: flex; gap: 8px; justify-content: flex-end; padding-top: 12px; background: #fff; }
+  </style>
+</head>
+<body>
+  <h1 id="title">Loading deal…</h1>
+  <div id="meta" class="muted"></div>
+
+  <label id="dayField" hidden>Event day <input id="day" type="date"></label>
+  <input id="term" type="search" placeholder="Search a product by name or code (2 letters or more)" autocomplete="off" disabled>
+  <div id="status" class="muted"></div>
+  <ul id="results"></ul>
+
+  <h2 style="font-size:14px;margin:16px 0 4px">To add to the quote</h2>
+  <ul id="picked"></ul>
+
+  <footer>
+    <button id="cancel" class="secondary">Cancel</button>
+    <button id="apply" disabled>Apply to the quote</button>
+  </footer>
+
+  <!-- In the package, prolibu-extended-quote.js sits NEXT TO this index.html (copy it from the skill's assets). -->
+  <script src="./prolibu-extended-quote.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id)
+    const host = ProlibuQuote.connect()
+    const picked = [] // REAL lines returned by lineItemFromEntry
+    let currency = null
+    let isEvents = false
+    // Events lines are stamped in the user's time zone. The profile's comes from the API; when it is
+    // empty the account's applies, which only admins can read: set ACCOUNT_TIME_ZONE for this site.
+    const ACCOUNT_TIME_ZONE = 'America/Bogota'
+    let timeZone = null
+    let searchTimer = null
+    let searchController = null
+
+    function setStatus (text, isError = false) {
+      $('status').textContent = text
+      $('status').className = isError ? 'error' : 'muted'
+    }
+
+    function el (tag, props = {}, children = []) {
+      const node = Object.assign(document.createElement(tag), props)
+      node.append(...children)
+      return node
+    }
+
+    // 1) First message AS SOON AS the page loads: the editor's modal errors out if we stay silent for 15 s.
+    host.getDeal().then((deal) => {
+      const quote = host.quote()
+      currency = quote.quoteCurrency || null
+      isEvents = quote.quoteMode === 'Events'
+      $('dayField').hidden = !isEvents
+      if (isEvents) ProlibuQuote.userTimeZone().then((tz) => { timeZone = tz || ACCOUNT_TIME_ZONE }).catch(() => { timeZone = ACCOUNT_TIME_ZONE })
+      $('title').textContent = deal.dealName || 'New deal'
+      $('meta').textContent = `${quote.lineItems.length} line(s) in the quote · currency ${currency || 'not set'}`
+      $('term').disabled = false
+      $('term').focus()
+    }).catch((err) => setStatus(err.message, true))
+
+    // 2) Search with the editor's endpoint (debounced, and the previous request is cancelled).
+    $('term').addEventListener('input', (event) => {
+      clearTimeout(searchTimer)
+      searchTimer = setTimeout(() => search(event.target.value), 300)
+    })
+
+    async function search (term) {
+      searchController?.abort()
+      searchController = new AbortController()
+      $('results').replaceChildren()
+      if (term.trim().length < 2) return setStatus('')
+      setStatus('Searching…')
+      try {
+        const { items, total } = await ProlibuQuote.searchProducts(term, { currency, signal: searchController.signal })
+        setStatus(items.length ? `${items.length} result(s) from ${total} product(s)` : 'No results in the quote currency')
+        $('results').replaceChildren(...items.map(resultRow))
+      } catch (err) {
+        if (err.name === 'AbortError') return
+        setStatus(err.code === 'TOO_MANY' ? 'Too many results: type more letters.' : err.message, true)
+      }
+    }
+
+    function resultRow (item) {
+      const qty = el('input', { type: 'number', min: 1, value: 1 })
+      const add = el('button', { textContent: 'Add' })
+      add.addEventListener('click', async () => {
+        if (isEvents && !$('day').value) return setStatus('Pick the event day before adding.', true)
+        add.disabled = true
+        try {
+          // 3) The SERVER builds the line: pricebookEntry, product, pricebook, taxes, lineId.
+          //    In an events quote each line carries the dates of its day.
+          const overrides = { quantity: Math.max(1, Number(qty.value) || 1) }
+          if (isEvents) Object.assign(overrides, ProlibuQuote.eventDay($('day').value, timeZone || ACCOUNT_TIME_ZONE))
+          const line = await ProlibuQuote.lineItemFromEntry(item.entryId, overrides)
+          picked.push(line)
+          renderPicked()
+        } catch (err) {
+          setStatus(err.message, true)
+        } finally {
+          add.disabled = false
+        }
+      })
+      const label = `${item.productName} · ${item.productCode || ''} · ${item.price} ${item.currency} · ${item.pricebookName}`
+      return el('li', {}, [el('span', { className: 'name', textContent: label, title: label }), qty, add])
+    }
+
+    function renderPicked () {
+      $('picked').replaceChildren(...picked.map((line, index) => {
+        const remove = el('button', { className: 'secondary', textContent: 'Remove' })
+        remove.addEventListener('click', () => { picked.splice(index, 1); renderPicked() })
+        return el('li', {}, [el('span', { className: 'name', textContent: `${line.quantity} × ${line.productName}` }), remove])
+      }))
+      $('apply').disabled = picked.length === 0
+    }
+
+    // 4) Apply = the FULL list (what was there + the new lines). The host replaces, it does not add.
+    $('apply').addEventListener('click', () => {
+      try {
+        host.applyLineItems([...host.quote().lineItems, ...picked])
+        host.close()
+      } catch (err) {
+        setStatus(err.message, true)
+      }
+    })
+    $('cancel').addEventListener('click', () => host.close())
+  </script>
+</body>
+</html>

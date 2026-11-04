@@ -4,7 +4,7 @@
 
 /* global eventName, eventData, env, axios, variables, setVariable */
 
-const Events = require('../../../lib/vendors/prolibu/EventManager');
+const Events = require('../../../../lib/vendors/prolibu/EventManager');
 
 console.log('🚀 Script started');
 

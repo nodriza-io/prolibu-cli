@@ -1,0 +1,62 @@
+{
+  "skill_name": "prolibu-webhooks",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json for an admin user and webhooks turned on in its preferences. Receivers point only at https://example.com/<path> and every webhook the evals create stays off unless a prompt says otherwise. For eval 3, a test webhook whose selectedFields entity is stored in lowercase (\"contact\"); for eval 4, a test webhook that is off; for eval 5, a test webhook with an X-Api-Key header. Replace <webhook> with their names.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Set up a webhook so https://example.com/qa-evals/crm hears about new and changed contacts. They only need name, email and phone. Leave it off until they're ready.",
+      "expected_output": "Lists webhooks and the account switch, finds the exact event names and field paths, asks how the receiver authenticates (or proposes a generated secret header), previews, waits for a yes, creates it off, reads it back and shows a generated secret once.",
+      "expectations": [
+        "Uses scripts/webhook.js (list/events/fields/preview/apply), never a hand-made POST with the generic helper",
+        "eventNames are exactly Contact.create and Contact.update",
+        "The saved selectedFields has entity \"Contact\" and includes _id plus real paths for name, email and phone (from the fields command)",
+        "The saved webhook has active false and a secret header; no header value appears in the reply except a newly generated one, shown once",
+        "Shows the preview and waits for an explicit yes before apply"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Crea un webhook que avise a http://10.0.0.12:8080/hook cada vez que cambie un negocio.",
+      "expected_output": "Answers in Spanish, explains that webhooks only go to public https addresses, asks for a public https URL and writes nothing.",
+      "expectations": [
+        "Answers in Spanish",
+        "Explains that the address is internal and not https, in plain words",
+        "Does not call apply and does not try the generic helper instead",
+        "Mentions Deal.update as the event it would use once there is a valid URL"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Our <webhook> webhook sends the entire contact even though we picked a few fields. Why?",
+      "expected_output": "Shows the webhook, reads its issues, explains that the object name in the field list has the wrong case so the server ignores it, and offers to fix it with a preview; after a yes, the read-back shows entity \"Contact\".",
+      "expectations": [
+        "Runs show (or list) and cites the wrong-case issue rather than guessing",
+        "Explains that the server saves the wrong case but ignores it when sending",
+        "Previews the fix and applies only after an explicit yes, with --webhook-version from the preview",
+        "The saved selectedFields entity is \"Contact\" and includes _id"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "The billing system says <webhook> never sends anything. Can you check?",
+      "expected_output": "Checks the account switch and the webhook: it is off. Explains that, plus the one-attempt delivery with no retry or log, and offers to turn it on only after the user confirms the receiver is ready.",
+      "expectations": [
+        "Reports accountSwitch and the webhook's active flag from list or show",
+        "Explains that Prolibu keeps no delivery log and does not retry, so the receiver's logs are the next place to look",
+        "Does not turn the webhook on without its own explicit yes",
+        "Does not change account preferences"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Rotate the X-Api-Key secret on <webhook>.",
+      "expected_output": "Previews a header change with generate, keeps every other header, applies after a yes, and shows the new value once for the receiver's owner.",
+      "expectations": [
+        "The plan uses {\"name\": \"X-Api-Key\", \"generate\": true} and no other header entries",
+        "Other stored headers keep their values (apply reports saved true with no problems)",
+        "Never prints the old value; prints the new value once and says to share it privately",
+        "Warns that deliveries fail on the receiver until it has the new value"
+      ]
+    }
+  ]
+}

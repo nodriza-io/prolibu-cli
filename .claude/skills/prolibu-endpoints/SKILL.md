@@ -1,72 +1,172 @@
 ---
 name: prolibu-endpoints
-description: Expose a custom inbound HTTP endpoint on a Prolibu account — a public or authenticated URL that runs one of your Scripts and returns its result. Covers the Endpoint resource, the invocation URL, authentication and role gating, the exact success and failure response shapes, receiving third-party webhooks, and proxying a paid third-party API so its key never reaches the browser. Use it whenever the task involves building an inbound API, a webhook receiver, a callback URL, or letting a browser or external system trigger server-side logic on a Prolibu account.
+description: Expose a custom inbound URL on a Prolibu account — an Endpoint record that runs one of your Scripts at /v2/endpoint/<verb>/<routeName> and answers { authenticated, output }. Covers writing the EndpointRequest handler, publishing it with this CLI, creating or changing the Endpoint, choosing authenticated or public, role gating, webhook receivers with a shared secret or an HMAC signature, the API-proxy pattern, and testing the URL with and without a token. Use it whenever someone wants an inbound API, a webhook or callback URL, a server-side action a site or another system can call, or reports an endpoint answering 401, 403, 404 or 400, "requestUser is not defined", an empty output, or a signature that never matches. Spanish triggers: "endpoint", "webhook entrante", "URL de callback", "API propia", "recibir un webhook", "exponer un script".
 ---
 
 # Prolibu Endpoints
 
-## Read the reference first
+## Central idea
 
-**Before creating an endpoint, read
-`docs/integrations-for-ai-agents/07-sites-forms-and-endpoints.md` §1.** It is the complete,
-verified source: the resource, the invocation URL, authentication behavior, what the script
-receives, every response shape, and webhook receivers. For the API-proxy pattern read Recipe 7 in
-`docs/integrations-for-ai-agents/12-integration-recipes.md`.
+An endpoint is two records:
 
-An endpoint is only the front door — the logic is a Script. Read the `prolibu-scripts` skill
-before writing the handler; its sandbox has constraints that rule out some designs.
+1. a **Script** with the logic, written and published with this CLI;
+2. an **Endpoint** that binds `https://<domain>/v2/endpoint/<verb>/<routeName>` to that script.
 
-Do not work from memory and do not duplicate that content here.
+The platform runs the script with `eventName === 'EndpointRequest'`, the script sets `output`,
+and the caller gets `{ "authenticated": <bool>, "output": <output> }`.
 
-## Shape of the contract
+The CLI has no command for Endpoint records. `scripts/endpoint.js` does that part in code: it
+validates the plan, resolves the script, refuses route names the server rejects, writes only
+what changed, reads it back, and calls the URL with or without a token.
 
 ```
-https://<domain>/v2/endpoint/{method}/{routeName}      # method segment lowercase
+node .claude/skills/prolibu-endpoints/scripts/endpoint.js <command> <domain> …
+  list    <domain> [<part of routeName>]
+  show    <domain> <routeName>
+  roles   <domain> <part of a role name>
+  preview <domain> '<plan json>'
+  apply   <domain> '<plan json>' --confirmed
+  call    <domain> <routeName> --confirmed [--no-auth] [--method <verb>] [--data '<json>']
+          [--query 'a=1&b=2'] [--header 'name: value']
 ```
 
-Success is always the envelope — clients must read `response.output`, not the top level:
+Output is JSON. Exit codes: 0 ok, 1 API error (or a call that did not answer 2xx), 2 usage
+(nothing sent), 3 blocked (nothing written).
 
-```json
-{ "authenticated": true, "output": <whatever the script assigned> }
-```
+## Ask the user first
 
-Failures are **not** that envelope. They are `{ statusCode, error }`:
+1. **Who calls it?** A page on a Prolibu Site, a server, or a third-party webhook.
+2. **With a Prolibu token or public?** Public means anyone with the URL runs the script.
+3. **If public, how does the sender prove itself?** A shared-secret header, or an HMAC
+   signature (which header, which encoding, signed over what).
+4. **Only some roles?** Name them; you look up the ids with `roles`.
+5. **Which account and which route name?** Short, lowercase, with hyphens: `orders-push`.
 
-| Situation | Status |
-|---|---|
-| Script threw, rejected, or timed out | `400` |
-| `authentication.enabled` and no/invalid credential | `401` |
-| Authenticated but missing a `requiredRoles` role | `403` |
-| Unknown `routeName`, or endpoint inactive | `404` |
-| Rate limited | `429` |
+## Steps
 
-## Rules that are easy to get wrong
+1. **Write the handler** in `accounts/<domain>/scripts/<prefix>/index.js`. Do not run
+   `./prolibu script create`: it prompts. Start from this:
 
-**Give every endpoint a globally unique `routeName`.** Dispatch resolves by name alone and
-ignores the method segment, so a `POST` endpoint also answers `GET /v2/endpoint/get/<routeName>`.
-The model only rejects a duplicate name **+** method pair, so two endpoints can share a name and
-one becomes unreachable. Use `thing-pull` / `thing-push`, not one `thing` per verb.
+   ```js
+   /* global eventData, output, variables */
+   const Events = require('../../../../lib/vendors/prolibu/EventManager');
 
-**A thrown message reaches the caller verbatim.** Return expected failures as data
-(`output: { ok: false, reason }`) and reserve `throw` for the exceptional — and never throw a
-provider's raw error or anything containing a credential.
+   const getVar = (key) => (variables || []).find((v) => v.key === key)?.value;
+   const caller = () => (typeof requestUser === 'undefined' ? null : requestUser);
 
-**`authentication.enabled` defaults to `true`.** Set it to `false` deliberately for webhook
-receivers and open APIs, and understand that this makes the URL callable by anyone.
+   Events.on('EndpointRequest', async () => {
+     const { body, query, headers } = eventData;
+     // … your logic; expected failures go back as data, not as a throw
+     output = { ok: true };
+   });
 
-**You cannot verify a webhook signature.** The sandbox has no `crypto` and no base64, so HMAC
-schemes are out. Authenticate third-party senders with a static shared-secret header compared
-against a value in the script's `variables`, and answer a mismatch with `output`, not a throw —
-a `400` tells a prober it found a real route. Treat the payload as untrusted and prefer
-re-fetching the object from the provider by id.
+   (async function main() { await Events.init(); })(); // keep this the last statement
+   ```
 
-**The caller's API key is never passed into the sandbox.** An authenticated call gives the script
-`requestUser` so it can decide *who* is asking; to *act* on the account it uses its own
-least-privilege key from `variables`.
+   The CLI bundles with esbuild, so `require` of repo files works (`lib/vendors/*`,
+   `lib/utils/*`) and of npm packages that do not need Node built-ins.
+2. **Decide where the secrets live** (third-party keys, the webhook secret). Pick one:
+   - In the app, on the Script's variables. Then create `config.json` yourself **without**
+     a `variables` key: `{ "lifecycleHooks": [] }`.
+   - In the folder: `config.json` with `"variables": [{ "key": "…", "value": "…" }]`. Do not
+     commit that folder to a shared remote.
 
-## When to reach for this
+   Every publish replaces the script's variables with `config.json`'s `variables` when the
+   key is there. Without a `config.json`, the first publish writes one with
+   `"variables": []`, which then wipes the variables set in the app.
+3. **Publish the script** after a yes:
+   `./prolibu script dev --domain <domain> --prefix <prefix> --no-git`. It creates or updates
+   the Script `<prefix>-dev`. Never add `--watch`: it waits for key presses.
+4. **Preview the Endpoint.** Plan, inline in single quotes:
 
-Use an endpoint whenever something outside the platform must trigger logic inside it, and
-whenever a secret must stay server-side while a browser or third party benefits from it — the
-endpoint holds the credential in its script, so the client never sees it. That is the only
-pattern where a key is genuinely protected: anything shipped in a page bundle is public.
+   ```json
+   { "routeName": "orders-push", "endpointName": "Orders push", "method": "POST",
+     "script": "<prefix>-dev", "authentication": { "enabled": true, "requiredRoles": [] } }
+   ```
+
+   `script` takes a scriptCode or a Script `_id`. `authentication.enabled` is required on a
+   new endpoint. Run `preview <domain> '<plan>'`. Tell the user the action (create, update,
+   none), the URL, each change and every warning.
+5. **Apply after a clear yes**: `apply <domain> '<same plan>' --confirmed`. It reads the
+   endpoint back and lists `problems` if something did not stick.
+6. **Test both ways**, after telling the user it runs the script:
+   `call <domain> <routeName> --confirmed --data '{…}'` and the same with `--no-auth`.
+   An authenticated endpoint must answer 401 without a token; a public one must reject a
+   wrong secret in `output`.
+7. **Go live.** Publish the prod copy (`./prolibu script prod --domain <d> --prefix <p>
+   --no-git`, Script `<prefix>`), then preview and apply the plan with `"script": "<prefix>"`.
+
+## How the platform behaves
+
+The full contract, the webhook and proxy examples, and every error shape are in
+`references/endpoint-contract.md`. Read it for anything outside these steps.
+
+- **URL.** `https://<domain>/v2/endpoint/<verb>/<routeName>`, verb in lowercase (the match
+  is case-insensitive). The verb in the path must equal the HTTP verb you send, or Express
+  answers an HTML 404. Any verb reaches the endpoint, whatever its `method`; the script
+  cannot tell which one was used.
+- **routeName** is unique across all methods (a second `orders` is rejected), 1–63 letters,
+  digits, `-` or `_`, and looked up case-sensitively.
+- **Authentication** is on by default. It reads only `Authorization: Bearer <token>` (or
+  Basic `apiKey:<token>`). The session cookie and `?apiKey=` alone do not count. On a public
+  endpoint, any `Authorization` header that is not a valid token gives 401.
+- **Roles.** `requiredRoles` lets through admins and users with at least one of those
+  roles; others get 403. It applies only when authentication is on.
+- **What the script gets.** `eventData = { endpoint, authenticated, headers, query, body }`.
+  - `headers`: every request header in lowercase, including `authorization` and `cookie`.
+  - `query`: values are strings.
+  - `body`: JSON → object, `text/plain` → string, form-urlencoded → object, nothing → `{}`.
+    Invalid JSON is rejected with 400 before the script runs. The raw bytes are not
+    available.
+- **`requestUser` exists only when the caller is authenticated.** Reading it on an anonymous
+  call throws `requestUser is not defined`; use `typeof` as in the template. Its `email`,
+  names and `isAdmin` are usable; `_id`, `company` and `roles` arrive as empty objects.
+- **The caller's token is not for the script.** To read or write the account, the script
+  uses its own key from `variables` (`lib/vendors/prolibu/ProlibuApi`).
+- **Errors** are `{ statusCode, error }`, not the envelope: 400 for a throw, a rejection, a
+  timeout (default 30 s), or an inactive endpoint or script; 401; 403; 404. A thrown
+  message reaches the caller verbatim.
+- **Origins.** A request whose `Origin` is not the account's domain, `*.prolibu.com`,
+  localhost or an origin an admin allowed gets an HTML 404. Browsers always send `Origin`;
+  most servers do not.
+- **No rate limit per endpoint.** A 429 means the caller's IP was banned account-wide.
+
+## Symptoms
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| 401 "Authentication required…" | No Bearer token on an authenticated endpoint | Send `Authorization: Bearer <token>`, or make it public on purpose |
+| 401 on a public endpoint | The sender adds its own `Authorization` header | Put its secret in another header (`x-…-secret`) |
+| 403 "Forbidden, you do not have the required role…" | Caller lacks `requiredRoles` | Give the role, or change the roles |
+| HTML 404 "Cannot POST …" | Path verb ≠ HTTP verb, or a browser origin not allowed | Match them; call from the account's domain |
+| JSON 404 | Unknown or differently cased `routeName` | `list` and copy the exact name |
+| 400 "requestUser is not defined" | Anonymous call, script reads `requestUser` | `typeof requestUser === 'undefined'` |
+| 400 "Endpoint is not active" / "script is not active" | One of the two is off | Turn it on in the plan or the app |
+| 400 "Script execution timeout" | The script ran past its timeout | Do less per call, or raise `timeout` (max 300000 ms) |
+| 200 with `output: null` | `output` never set, or `Events.init()` is not the last statement | Set `output`; keep the template's last line |
+| Variables vanished after a publish | `config.json` has `variables` (or was auto-created) | Step 2 |
+| HMAC never matches | Sender signs bytes that `JSON.stringify(body)` does not rebuild | `references/endpoint-contract.md`, "HMAC" |
+
+## Verify
+
+- `show <domain> <routeName>`: right script (the prod one when live), `active`, the auth
+  you agreed.
+- `call` with and without a token answers as expected, and the response has `output`.
+
+## Don't
+
+- Copy this configuration to another account by hand: use `prolibu-config-promotion`.
+- Echo, log or store `eventData.headers`: they carry the caller's token and cookies.
+- Put a third-party key in a site bundle or a URL; keep it in the script's variables.
+- Throw provider errors or anything with a credential; return `{ ok: false, reason }`.
+- Plan one `routeName` for two verbs, use uppercase route names, or leave a live endpoint on
+  a `-dev` script.
+- Create the Endpoint with a hand-made `POST /v2/endpoint`; use `scripts/endpoint.js`.
+
+## Writing to an account
+
+Publishing the script and every `apply` or `call` follow
+[`../_shared/WRITE-FLOW.md`](../_shared/WRITE-FLOW.md): domain, reads only, plain summary,
+explicit yes, write, read back. The script sandbox in general is in `prolibu-scripts`;
+pages that call an endpoint are in `prolibu-sites`; outbound webhooks are in
+`prolibu-webhooks`.

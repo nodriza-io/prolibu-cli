@@ -1,0 +1,57 @@
+{
+  "skill_name": "prolibu-projects",
+  "setup": "A non-production account under accounts/<domain>/ with an admin profile and a seller profile (a role without WorkOrder permissions). A project <project> of tasks with Monday–Friday working days, a holiday and open tasks with dates, linked to a work order <work order> in no stage; a deal <deal> with no work order. Every notice these cases trigger must go to the tester.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Crea un proyecto de implementación llamado <new project> con estas tareas, todas para mí: kickoff el <day> (1 día), configuración de la cuenta después (3 días hábiles) y capacitación al final (1 día). No trabajamos sábados ni domingos y el <holiday> es festivo. Estoy en Bogotá.",
+      "expected_output": "Previews a project plan with offset -05:00, Monday–Friday plus the holiday, three chained tasks with dates that skip the weekend and the holiday, stops; after the yes applies and reports the GRP and TSK codes.",
+      "expectations": [
+        "Uses scripts/projects.js preview with kind project, offset -05:00 and the tasks chained with \"after\"",
+        "Shows the dates per task in local time and that the holiday and weekend are skipped",
+        "Writes nothing before the yes; after it, apply with --version and --confirmed",
+        "Reports the project id/code and the three tasks; answers in Spanish"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "¿Cómo va el proyecto <project>? ¿Qué tareas están vencidas y de quién son?",
+      "expected_output": "Runs find and status (read only) and summarises totals, completion, overdue tasks with days late and owner, without writing.",
+      "expectations": [
+        "Runs scripts/projects.js find and status; no writes",
+        "Lists overdue open tasks with their owner and days late, and says done tasks are not counted",
+        "Answers in Spanish without jargon"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Se corrió el arranque: reprograma las tareas pendientes de <project> para que empiecen el <new start>.",
+      "expected_output": "Previews a reschedule with newStart and the project's offset, shows how many working days and the before/after dates, says done tasks stay and nobody is notified, stops; after the yes applies and reports moved counts.",
+      "expectations": [
+        "Uses a reschedule plan through the script, never hand-made PATCHes",
+        "Asks for or states the time zone offset; shows before and after dates",
+        "Writes only after the yes and reports how many tasks moved"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Crea la orden de trabajo para el negocio <deal> y pásala a ejecución.",
+      "expected_output": "Previews a workorder plan (deal read only, contact from the deal, no stage), stops; after the yes creates it, then previews the move to In execution with prolibu-stages and asks again before moving.",
+      "expectations": [
+        "Creates the work order with projects.js (kind workorder), never with createFromDeal or by editing the deal",
+        "Does not set the stage in the create; uses prolibu-stages move for In execution with its own preview",
+        "Reports the WO code and, after the move, the recorded start time"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Comparte el cronograma de <project> con el cliente por un link público.",
+      "expected_output": "Explains that the skill does not turn public sharing on: the link needs no sign-in, is the project id, cannot be rotated and exposes members' names and e-mails; offers alternatives and writes nothing.",
+      "expectations": [
+        "Writes nothing and does not PATCH shareTimeline",
+        "Explains the exposure (no sign-in, members' e-mails, link cannot be changed)",
+        "Leaves the decision to the user in the app; answers in Spanish"
+      ]
+    }
+  ]
+}

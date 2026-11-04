@@ -31,7 +31,7 @@ There are two distinct configuration resources. Pick based on whether you need a
 
 Both are defined as configuration data. A field's `type` is written as a **string** (for example `"string"`, `"number"`, `"objectid"`). When you create or update either resource, the configuration is validated immediately, and the new/updated schema is provisioned as part of applying the change.
 
-> **Activation is not instantaneous.** Creating or updating a Custom Object or Custom Field validates and persists your configuration, then schedules the schema to be applied. The new object's endpoints (or the new fields on an existing object) become usable **once the change has been applied** — not on the same millisecond the `POST` returns. Do not immediately `POST` records to a brand-new object; poll for readiness first (see [Common pitfalls](#7-common-pitfalls)).
+> **Every schema change restarts the account's servers.** Creating, updating or deleting a Custom Object or a Custom Field validates and persists your configuration, then restarts every server of the account so the new schema is loaded; the restart takes about half a minute on a dev account and may be longer on production, so watch for the new servers (see [Common pitfalls](#7-common-pitfalls)) instead of sleeping a fixed time. Requests sent during that window, by you or by anyone using the account, can fail with a connection error or a `5xx`. The new object's endpoints (or the new fields on an existing object) become usable **only after the restart** — not when the `POST` returns. Do not immediately `POST` records to a brand-new object; poll for readiness first (see [Common pitfalls](#7-common-pitfalls)). Batch schema changes and avoid busy hours on a production account.
 
 ### Field types available to integrators
 
@@ -80,6 +80,8 @@ The REST path is always the lowercased `modelName`: `Car` → `/v2/car`.
 
 > Some object names are **reserved** by the platform and cannot be used as a `modelName`. If you pick a reserved name, or a name already taken by an existing object, the create call fails with `400`. Read the error message and choose another name — there is no need to know the full reserved list in advance.
 
+> **An active Custom Object cannot be edited.** Every `PATCH /v2/cob/<id>` on an active object answers `400` ("The model name '…' is already used by an existing model"), so fields declared inline in the create payload cannot be changed later through `/v2/cob`. The app avoids this: it creates the object with only `modelName` and `active`, waits for it to be live, then adds the object's fields as `overrides` on its Custom Field record ([§4](#4-custom-fields--extending-an-existing-object)), where they can be changed. Do the same whenever the fields may evolve.
+
 ### Field descriptors
 
 Each field is an object keyed by the field name, with a string `type` plus optional constraints. These are the constraints exposed to integrators:
@@ -107,7 +109,7 @@ Each field is an object keyed by the field name, with a string `type` plus optio
 
 It populates like any built-in reference: `?populate=assignee`, `?populate=*`, or a JSON `populatePath`.
 
-**Validation errors** map to the standard error response shape (see [REST API](03-rest-api.md)). For example, omitting a `required` field, breaking a `min`/`max`, `enum`, `minLength`/`maxLength`, `match`, or violating `unique` each returns a `400` (or `409` for duplicates) with a descriptive message and the offending field.
+**Validation errors** map to the standard error response shape (see [REST API](03-rest-api.md)). For example, omitting a `required` field, breaking a `min`/`max`, `enum`, `minLength`/`maxLength`, `match`, or violating `unique` each returns a `400` with a descriptive message and the offending field (a duplicate on a `unique` field returns `400` with `Duplicated value`).
 
 **Undeclared fields are dropped silently.** The generated object only stores fields you declared. Sending an attribute you never defined does not error — the value is simply discarded. **Declare every field you intend to persist.**
 
@@ -118,9 +120,9 @@ Once applied, a Custom Object named `Car` exposes a full CRUD resource at `/v2/c
 | Method + Path | Purpose |
 |---|---|
 | `POST /v2/car` | Create a record |
-| `GET /v2/car` | List records (supports `select`, `populate`, `where`/`query`, `sort`, `limit`, `page`) |
+| `GET /v2/car` | List records (supports `select`, `populate`, `xquery`, `sort`, `limit`, `page`) |
 | `GET /v2/car/search?term=...` | Full-text search across text-indexed fields |
-| `GET /v2/car/{idOrKey}` | Read one — by `_id` **or** by the field marked `primaryKey`/`displayName` |
+| `GET /v2/car/{idOrKey}` | Read one — by `_id` **or** by the value of the field marked `primaryKey` |
 | `PATCH /v2/car/{idOrKey}` | Update |
 | `DELETE /v2/car/{idOrKey}` | Delete |
 
@@ -165,9 +167,11 @@ Response `201` — the persisted configuration (note `modelName` came back norma
 }
 ```
 
+This inline form creates the object, but its fields cannot be edited afterwards through `/v2/cob` (see [§2](#2-custom-objects)). If they may change, create the object with only `modelName` and put its fields on its Custom Field record instead.
+
 ### Step 2 — wait until the resource is live
 
-The object's schema is applied asynchronously. Until it is, `GET/POST /v2/car` returns `404`. Poll a lightweight list call until it stops returning `404`:
+The object's schema is loaded when the account's servers restart (about half a minute on a dev account; may be longer on production). Until then, `GET/POST /v2/car` fails: `404` before the restart, then connection errors or `5xx` while the servers come back. Poll a lightweight list call until it succeeds:
 
 ```bash
 until curl -sf -o /dev/null "https://<domain>/v2/car?limit=1" -H "Authorization: Bearer $TOKEN"; do
@@ -196,7 +200,7 @@ curl "https://<domain>/v2/car/CYM783" -H "Authorization: Bearer $TOKEN"
 curl "https://<domain>/v2/car/CYM783?populate=assignee" -H "Authorization: Bearer $TOKEN"
 
 # List with projection + pagination
-curl "https://<domain>/v2/car?select=_id,brand&page=2&limit=10" -H "Authorization: Bearer $TOKEN"
+curl "https://<domain>/v2/car?select=_id%20brand&page=2&limit=10" -H "Authorization: Bearer $TOKEN"
 
 # Update
 curl -X PATCH "https://<domain>/v2/car/CYM783" \
@@ -239,15 +243,30 @@ Every field entry must carry the flag `"isCustomField": true` in addition to its
 
 Rules:
 
-- **`customFields`** — every entry requires `type`. Field names must be valid identifiers (letters, digits, `_`, `$`; not starting with a digit) and cannot be a JavaScript reserved word. Entries without `isCustomField: true` are ignored; if none carry the flag, the call errors.
+- **`customFields`** — every entry requires `type`. Field names must be valid identifiers (letters, digits, `_`, `$`; not starting with a digit) and cannot be a JavaScript reserved word. The server keeps only entries that have the `isCustomField` key (it checks that the key is there, not its value, so always send `true`); if none carry it, the call errors.
 - **`overrides`** on an **existing** built-in field — you do **not** need to send `type` (the original field's type is kept, and any `type` you send is ignored). Use this to adjust properties such as making a field `required`.
 - **`overrides`** that introduce a **new** root-level field — `type` is required.
 - **`unique` implies sparse.** Any custom field marked `unique` is made sparse automatically, so records that leave it empty don't collide on `null`.
+- **`index: true`** makes a field part of the record search (`/v2/<object>/search`). Only plain `string` fields that are not passwords (`uiCom: "PasswordInput"`) can be indexed — not lists, numbers or dates; anything else returns `400` ("Only string fields can be indexed.").
+- **`PATCH` replaces each block it receives whole.** Send the complete `customFields` (or `overrides`) block, existing fields included: a field you leave out is deleted. A block you don't send is kept, and `{}` clears a block. When a change leaves no field at all, the app deletes the Custom Field record instead of saving it empty — do the same.
 
 ### customFields vs overrides — where the data lives
 
 - **`customFields`** live **nested** on the record: e.g. `contact.customFields.color`. Write them as a nested object.
 - **`overrides`** live at the object **root**: e.g. `deal.tipoEvento` is set/read directly at the top level of the record.
+
+### Status and `active`
+
+Only records with `active: true` are loaded when the servers start. After each restart the server writes the outcome to the record's read-only `status`:
+
+| `status` starts with | `active` | What happened | What to do |
+|---|---|---|---|
+| `Success:` | `true` | The fields are loaded. | Nothing. |
+| `Error:` | `false` | A field could not be built when the servers started, or the database failed at that moment (for example `MongoNetworkError`, `MongoPoolClearedError`). The servers restart once more without the record. | Read the message. For a database error, just reactivate; otherwise fix the field, then reactivate. |
+| `Index sync error:` | `false` | An index could not be built, usually `E11000 duplicate key` on a `unique` field whose records repeat a value. It can also be a built-in unique index of the same object. | Fix the repeated values (or drop `unique`), then reactivate. |
+| (empty) | `true` | Saved, not loaded yet. | Wait for the restart. |
+
+A switched-off record turns off **all** of that object's custom fields at once: they vanish from the schema and values sent for them are dropped. To reactivate, `PATCH /v2/customfield/<_id>` with `"active": true` (and the blocks, whole, if you change them too). That is another restart.
 
 ---
 
@@ -368,8 +387,12 @@ console.log(created.modelName); // "Pet"  (normalized)
 // 2. Wait until /v2/pet is live
 async function waitLive(path) {
   for (let i = 0; i < 30; i++) {
-    const res = await fetch(`${base}/${path}?limit=1`, { headers });
-    if (res.status !== 404) return;
+    try {
+      const res = await fetch(`${base}/${path}?limit=1`, { headers });
+      if (res.ok) return;
+    } catch {
+      // servers are restarting; keep polling
+    }
     await new Promise((r) => setTimeout(r, 2000));
   }
   throw new Error('Timed out waiting for resource to activate');
@@ -392,16 +415,19 @@ A missing `required` field returns `400` with a descriptive message identifying 
 
 ## 7. Common pitfalls
 
-1. **The schema is not live the instant you create it.** Creating a Custom Object (or Custom Field) validates and persists your config and schedules the schema to be applied. The new endpoints/fields become usable only after that completes. Poll for readiness (e.g. an `until` loop on a `limit=1` list call) instead of firing writes immediately — otherwise you get `404` (new object) or your new fields silently drop (new fields).
+1. **The schema is not live the instant you create it.** Creating, updating or deleting a Custom Object (or Custom Field) validates and persists your config, then restarts the account's servers (about half a minute on a dev account; may be longer on production, so poll, don't sleep a fixed time) to load the schema. The new endpoints/fields become usable only after that restart, and other requests to the account can fail while it runs. Wait for the new servers instead of firing writes immediately — otherwise you get `404` (new object) or your new fields silently drop (new fields). A `limit=1` list call works for a brand-new object (it answers `404` until the restart), but not for new fields on an existing object: the old servers keep answering normally until they go down. Watch the public `GET https://<domain>/prlversion` instead: it returns the answering server's `uptime`, and a server is new when its uptime is shorter than the time since your write. Wait for two such answers in a row, then for the API. If you use the CLI, its schema commands live under `./prolibu object …`: `object sync` asks which files to send and waits for each restart; `object create` and `object update` send a file as it is, with no merge and no wait, so a partial file deletes fields.
 2. **Undeclared fields are dropped silently.** Both generated objects and Custom Fields store only what you declared. There is no error for an unknown attribute — the value just vanishes. Declare every field you intend to persist.
 3. **`modelName` is normalized.** It is singularized and PascalCased on save (`"pets"` → `"Pet"`). Read it back from the response and derive the REST path from the lowercased value (`Pet` → `/v2/pet`).
 4. **Name collisions return `400`.** A `modelName` cannot be a reserved name or duplicate an existing object. Handle the `400` and pick another name.
-5. **`isCustomField: true` is mandatory on every custom field** you send via the API. Entries without it are ignored; if none carry it, the request errors.
+5. **`isCustomField: true` is mandatory on every custom field** you send via the API. Entries without the key are ignored; if none carry it, the request errors.
 6. **`overrides` on an existing field ignores the `type` you send** and keeps the original field's type. Only brand-new root fields in `overrides` require (and honor) `type`.
 7. **`unique` custom fields become sparse automatically**, so empty values don't collide.
 8. **One Custom Field record per object.** `objectAssigned` is unique — to add fields later, `PATCH` the existing record (send the complete field set), don't `POST` a new one.
 9. **A newly created Custom Object may not be assignable Custom Fields until it is fully applied.** `objectAssigned` must reference an object the platform already knows about; wait for the new object to be live before attaching Custom Fields to it.
-10. **The record path accepts a key, not just `_id`.** `GET /v2/car/CYM783` resolves by the field marked `primaryKey`/`displayName`. Mark that field intentionally.
+10. **The record path accepts a key, not just `_id`.** `GET /v2/car/CYM783` resolves by the field marked `primaryKey`. Mark that field intentionally.
+11. **A new `required` field breaks the next save of existing records.** Saving it changes no data: older records keep loading, but each one without a value fails its next save until it gets one. Before adding `required` to an object that has records, count them: `GET /v2/<object>?xquery={"<path>":{"$in":[null,""]}}&limit=1` and read `pagination.count`. A new `unique` field is riskier: if saved records already repeat a value, its index fails and the whole record switches off (`Index sync error:`), so check for repeated values first.
+12. **A Custom Field record can switch itself off.** If its `status` starts with `Error:` or `Index sync error:`, `active` is `false` and none of the object's custom fields apply. Fix the cause and reactivate with `"active": true` (see [Status and `active`](#status-and-active)).
+13. **An active Custom Object cannot be edited** (`PATCH /v2/cob/<id>` answers `400`). Keep its fields on its Custom Field record as `overrides`.
 
 ---
 
@@ -411,9 +437,10 @@ A missing `required` field returns `400` with a descriptive message identifying 
 
 - [ ] Pick a `modelName` that isn't reserved or already in use.
 - [ ] Expect it to be normalized to PascalCase singular — read the response to confirm.
-- [ ] Define each field as `{ "type": "<supportedType>", ... }`.
+- [ ] If the fields may change later, create the object with only `modelName` and define them as `overrides` on its Custom Field record once it is live (an active object cannot be edited).
+- [ ] Otherwise define each field as `{ "type": "<supportedType>", ... }`.
 - [ ] For relationships, use `{ "type": "objectid", "ref": "<ObjectName>" }`.
-- [ ] Mark one field `primaryKey: true` / `displayName: true` if you want to address records by its value.
+- [ ] Mark one field `primaryKey: true` if you want to address records by its value (`displayName: true` only sets the label).
 - [ ] `POST /v2/cob`; confirm `201`.
 - [ ] Poll `/v2/<name>?limit=1` until it's live before writing records.
 - [ ] Declare every field you'll persist — undeclared fields are dropped.
@@ -426,8 +453,10 @@ A missing `required` field returns `400` with a descriptive message identifying 
 - [ ] Under `customFields`: `type` required; use valid identifier keys.
 - [ ] Under `overrides`: existing fields don't need `type` (inherited); new root fields do.
 - [ ] Remember `unique` implies sparse.
+- [ ] On `PATCH`, send each block whole (a field left out is deleted).
+- [ ] Before adding `required` or `unique` to an object with records, count the records affected.
 - [ ] `POST`/`PATCH /v2/customfield`; confirm the response.
-- [ ] Wait until applied, then write `customFields` nested and `overrides` at the root.
+- [ ] Wait for the restart (`/prlversion` uptime), check that `status` starts with `Success:`, then write `customFields` nested and `overrides` at the root.
 
 ---
 

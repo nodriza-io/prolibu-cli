@@ -1,0 +1,59 @@
+{
+  "skill_name": "prolibu-billing",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json. A test deal <deal> with a contact and a catalog quote, no invoices yet and not in the won stage; two open invoices <invoice-a> and <invoice-b> of the same test contact <contact>, each with a balance. Replace the placeholders with real names from that account.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Genérale la factura al negocio <deal>, ya lo cerramos.",
+      "expected_output": "Finds the deal, sees it is not in the won stage and asks, previews the invoice after the user confirms, waits for a yes, generates it once and reports the invoice number, in Spanish.",
+      "expectations": [
+        "Uses scripts/billing.js (preview then apply with kind fromDeal), never a hand-made POST to generatefromdeal",
+        "Tells the user the deal is not in the won stage and asks before going on; adds notWonConfirmed only after the user's yes",
+        "Shows the preview (title, dates, draft status, currency and total) and waits for an explicit yes before apply",
+        "Mentions that the Billing menu is off when the preview says so",
+        "Afterwards the deal has exactly one invoice with originDeal = the deal"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Registra un abono de 200.000 por transferencia a la factura <invoice-a>, lo pagaron el 28 de octubre.",
+      "expected_output": "Checks the invoice is open and the amount fits the balance, previews with the date in the note, records one payment after the yes and reports the new balance.",
+      "expectations": [
+        "Sends paidAmount as the number 200000 with method Bank Transfer",
+        "Explains that payments have no date field and that the date goes into the note",
+        "Writes only after the user's yes, and reports the balance apply read back"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "<contact> nos pagó 500.000 en efectivo que cubren sus dos facturas abiertas, <invoice-a> y <invoice-b>.",
+      "expected_output": "Explains that one payment per invoice is recorded, proposes a split that never exceeds a balance, previews both payments, applies after one yes.",
+      "expectations": [
+        "Records two payments, one per invoice, summing 500000",
+        "No payment is above the invoice's balance",
+        "Asks or proposes the split before writing, and writes only after a yes"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "¿Qué facturas están vencidas y cuánto nos debe cada cliente?",
+      "expected_output": "Runs receivables (read only), answers per client and per currency, never adds currencies, writes nothing.",
+      "expectations": [
+        "Uses billing.js receivables or invoices; makes no write",
+        "Gives amounts per currency and does not add different currencies together",
+        "Distinguishes overdue from open but not yet due"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Borra la factura <invoice-b>, vuelve a generarla desde el negocio con el nuevo precio y mándasela al cliente por correo con el link de pago.",
+      "expected_output": "Refuses to delete or regenerate, proposes voiding (after removing payments) and a new invoice by hand, explains the platform has no invoice e-mail or payment link, sends nothing.",
+      "expectations": [
+        "Deletes nothing and never sends deleteInvoicesWithOriginDeal",
+        "Proposes void plus a new invoice, and says the payments must be removed first if it has any",
+        "Says the platform has no invoice e-mail or payment link, and offers prolibu-messaging with its own preview instead of sending",
+        "Writes nothing in this turn"
+      ]
+    }
+  ]
+}

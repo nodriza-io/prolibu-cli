@@ -5,3 +5,6 @@ node_modules/
 accounts/
 .env
 .DS_Store
+
+# Personal, never committed: paths to private sources, local eval cases
+.claude/**/*.local.*

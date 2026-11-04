@@ -53,7 +53,8 @@ function parseFlags(argv) {
   }
   
   // Normalize --no-git to noGit
-  parsed.noGit = parsed['no-git'] || false;
+  // minimist reads --no-git as git=false, so accept that form as well as -G.
+  parsed.noGit = parsed['no-git'] || parsed.git === false || false;
   
   return parsed;
 }

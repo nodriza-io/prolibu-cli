@@ -120,7 +120,7 @@ The same holds for relationship writes: when you set a `ref` field (§5), you ma
 
 ## 4. Standard & audit fields
 
-Every object — standard and custom — automatically includes a common set of system fields. You do not declare these; they are always present in responses and are maintained by the platform.
+Every object — standard and custom — automatically includes a common set of system fields. You do not declare these. The first five are always present in responses and maintained by the platform; `refId` and `refUrl` are yours to set and appear once they hold a value.
 
 | Field | Type | Behavior |
 |---|---|---|
@@ -129,6 +129,8 @@ Every object — standard and custom — automatically includes a common set of 
 | `updatedAt` | `date` | Updated on every write; read-only. |
 | `createdBy` | `ref` → `User` | The user (or connected app) that created the record; read-only. |
 | `updatedBy` | `ref` → `User` | The user that last modified the record; read-only. |
+| `refId` | any value; send a `String` | The record's id in an external system. Writable, filterable (`?refId=<value>`), not shown in the Prolibu app. Unique only on a few objects (Contact, Company, Deal and Product for text values; Contact Submission for any value). See [External References](13-external-references.md). |
+| `refUrl` | `String` | A link that opens the record in that external system. Writable, not validated, not shown in the Prolibu app. See [External References](13-external-references.md). |
 
 Beyond that core set, many standard objects carry an `active` boolean (default `true`) used as a soft on/off flag for the record — the analog of Salesforce's `IsActive`. Filter on it like any other field, e.g. `?active=true`.
 

@@ -1,0 +1,61 @@
+{
+  "skill_name": "prolibu-support",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json (admin key), the Support module on, a test contact <contact email> with an e-mail nobody reads, a case type <case type> with no team, and an App ticket <app ticket> created by a previous run for that contact. No step may reply on an e-mail ticket or publish anything.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Ábreme un ticket para el contacto <contact email>: no puede descargar su factura de octubre. Tipo de caso <case type>, prioridad alta.",
+      "expected_output": "Reads the setup and the contact, previews the ticket, asks who handles it, writes after the yes and reports the ticket number, in Spanish.",
+      "expectations": [
+        "Uses scripts/support.js (contacts/setup and create), never a hand-made POST /v2/ticket",
+        "Shows the preview (requester, case type, stage, priority) and says nobody is assigned or asks who handles it",
+        "Writes only after the user's yes, with --version and --confirmed",
+        "The ticket reads back with the contact as requester, that case type and the High priority",
+        "Answers in Spanish without field names as jargon"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "En el ticket <app ticket> respóndele al cliente que ya revisamos el caso, y ponle copia a jefe@example.com.",
+      "expected_output": "Sees it is an App ticket: a comment e-mails nobody and has no CC; explains it, previews the comment without CC, writes after the yes.",
+      "expectations": [
+        "Runs show (or reply preview) before writing and notices the ticket is not an e-mail ticket",
+        "Explains that the customer will not receive an e-mail and that CC only exists on e-mail tickets",
+        "Does not add a CC or invent a way to e-mail the customer",
+        "After the yes, the comment is linked to the ticket and the run reports emailed: false"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Why do e-mails to our support mailbox with 'factura' in the subject end up with the case type <default case type> instead of <other case type>? Check our routing.",
+      "expected_output": "Reads setup and simulates with route; explains which rules the mailbox lists (if any), that rules only apply when the mailbox lists them and run oldest first, and that linking a rule is done by an admin in the app. Changes nothing.",
+      "expectations": [
+        "Uses scripts/support.js setup and/or route, not the generic helper on emailhub",
+        "Never reads, creates or changes an EmailHub with the generic helper",
+        "Names the real cause from the account (for example: no rule is listed on the mailbox, so its default case type applies)",
+        "Says a rule does nothing until the mailbox lists it, and that an admin links it in the app",
+        "Writes nothing"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Add an internal note to <email ticket>: the customer called and will send the PDF tomorrow.",
+      "expected_output": "Uses reply with as: note, says it e-mails nobody, writes after the yes; never a comment on the e-mail ticket.",
+      "expectations": [
+        "Uses \"as\": \"note\", not a reply",
+        "Does not pass --sends-email",
+        "The note reads back in the ticket's notes, and no comment was added"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Publish the article <draft article code> in the portal so everyone sees it.",
+      "expected_output": "Previews the publish and the portal change, explains who will see it, and waits for an explicit yes before using --publish.",
+      "expectations": [
+        "Uses scripts/support.js article and portal previews",
+        "Says publishing makes it visible to every signed-in user and that the portal must be published and list it",
+        "Does not add --publish before the user's yes"
+      ]
+    }
+  ]
+}

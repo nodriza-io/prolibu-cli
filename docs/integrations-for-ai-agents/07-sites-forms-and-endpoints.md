@@ -45,12 +45,12 @@ An `Endpoint` binds a public URL to one of your automation [Scripts](05-automati
 | `routeName` | `String`, required, unique | The URL slug. Alphanumeric and hyphens only (DNS-safe). |
 | `method` | `String`, required | One of `GET`, `POST`, `PUT`, `DELETE`. Default `POST`. |
 | `script` | `ObjectId` ref `Script`, required | The automation script to run for each request. |
-| `active` | `Boolean` | Only active endpoints respond; an inactive one returns `404`. |
+| `active` | `Boolean` | Only active endpoints respond; an inactive one returns `400` (`Endpoint is not active`). |
 | `authentication.enabled` | `Boolean`, default `true` | When `true`, the caller must present a valid API key. When `false`, the endpoint is fully public. |
 | `authentication.requiredRoles` | `[ObjectId]` ref `Role` | When set, an authenticated caller must be an admin or hold at least one of these roles, or the request is rejected with `403`. |
 | `collaborators` | `[ObjectId]` | Optional collaborators. |
 
-The combination of `routeName` + `method` must be unique; creating a second endpoint with the same pair is rejected with a `400`.
+`routeName` is unique across **all** methods: creating a second endpoint with a `routeName` that already exists is rejected with a `400`, whatever its `method`.
 
 ### 1.2 Invocation URL
 
@@ -62,15 +62,17 @@ https://<domain>/v2/endpoint/{method}/{routeName}
 
 where `{method}` is the lowercased HTTP method. So a `GET` endpoint named `get-test` is reachable at `https://<domain>/v2/endpoint/get/get-test`, a `POST` endpoint named `stripe-hook` at `https://<domain>/v2/endpoint/post/stripe-hook`, and so on.
 
-> **`routeName` must be unique across every method, not just per method.** The dispatcher resolves the endpoint by `routeName` alone and then ignores the method segment: a `POST` endpoint answers `GET /v2/endpoint/get/<routeName>` with a normal `200` (verified). The model only rejects a duplicate `routeName` **+** `method` pair, so nothing stops you from creating `sync` as both `GET` and `POST` — but only one of them will ever be reached, arbitrarily. Give every endpoint its own `routeName` (`sync-pull`, `sync-push`) and read the real verb from `eventData.headers` if you need it. Treat the `method` field as documentation plus a uniqueness key, not as a route guard.
+> **The `method` field is not a route guard.** The dispatcher resolves the endpoint by `routeName` alone, so any verb reaches it: a `POST` endpoint answers `GET /v2/endpoint/get/<routeName>` with a normal `200` (verified). The verb in the path only has to match the HTTP verb you send — `POST …/get/<routeName>` gets an HTML `404 Cannot POST`. The script cannot tell which verb was used: it is not in `eventData`, and not in `eventData.headers` either. Since `routeName` is unique across all methods, one endpoint per operation is the only way to separate verbs — give each its own `routeName` (`sync-pull`, `sync-push`). Treat `method` as the URL the app shows, nothing more.
 
 ### 1.3 Authentication behavior
 
 - If `authentication.enabled` is `false`, anyone can call the endpoint. This is the mode you use for public webhooks and open APIs.
 - If `authentication.enabled` is `true`, the caller must send `Authorization: Bearer <API_KEY>`. A missing or invalid credential returns `401`.
 - If `authentication.requiredRoles` is non-empty, an authenticated non-admin caller who holds none of those roles is rejected with `403`.
+- Any `Authorization` header that is not a valid token is rejected with `401` **even on a public endpoint**. A sender that adds its own `Authorization` header (some webhook providers do) cannot use a public endpoint; have it send its secret in another header.
+- A browser request whose `Origin` is a foreign site gets an HTML `404` page (CORS). Allowed origins are the account's own domain, `*.prolibu.com`, `localhost`, and any origin an administrator allows in the account's security settings. Server-to-server callers normally send no `Origin`.
 
-Because an inbound webhook sender usually cannot present your API key, receivers for third-party webhooks are typically created with `authentication.enabled: false` and validate the sender **inside the script**, by comparing a **static shared-secret header** against a value in the script's persistent `variables`. Verifying a provider's cryptographic signature is **not possible** — the sandbox has no `crypto` and no base64; see [§1.6](#16-using-an-endpoint-as-a-webhook-receiver). For the variables store see [Automation & Scripts](05-automation-and-scripts.md#51-where-a-scripts-credentials-live).
+Because an inbound webhook sender usually cannot present your API key, receivers for third-party webhooks are typically created with `authentication.enabled: false` and validate the sender **inside the script**, either by comparing a **static shared-secret header** against a value in the script's persistent `variables`, or by checking the provider's **HMAC signature** with a pure-JavaScript HMAC-SHA256 — see [§1.6](#16-using-an-endpoint-as-a-webhook-receiver). For the variables store see [Automation & Scripts](05-automation-and-scripts.md#51-where-a-scripts-credentials-live).
 
 ### 1.4 What the script receives and returns
 
@@ -83,13 +85,13 @@ Each invocation runs the linked script with a request context. Inside the script
 |---|---|
 | `endpoint` | `{ _id, endpointCode, endpointName, routeName, url, method }` — metadata about the endpoint that was hit. |
 | `authenticated` | `true` if the caller presented a valid credential, else `false`. |
-| `headers` | The inbound request headers. |
-| `query` | Parsed query-string parameters. |
-| `body` | The parsed request body (for `POST` / `PUT`). |
+| `headers` | The inbound request headers, lowercase names, including `authorization` and `cookie`. |
+| `query` | Parsed query-string parameters (values are strings). |
+| `body` | The parsed request body. Its shape depends on `Content-Type`: JSON → object, `text/plain` → the raw text as a string, `application/x-www-form-urlencoded` → object of strings, none → `{}`. Invalid JSON is rejected with `400 Invalid JSON` before the script runs. The raw bytes are not available. |
 
 `eventData.endpoint.url` is informational and prints the method **uppercase** (`…/v2/endpoint/POST/probe`); the callable path is the lowercase one. Do not build links from it.
 
-The caller's own API key is **not** passed into the sandbox. When the caller was authenticated the script gets `requestUser` (`_id`, `email`, `isAdmin`, `roles`, …) so it can decide *who* is asking, but to *act* on the account it uses a key of its own from `variables` — see [Automation & Scripts §5](05-automation-and-scripts.md#5-reading-and-writing-account-data).
+The caller's token is not handed to the script as a credential, but it **does arrive**: `eventData.headers.authorization` carries it (and `headers.cookie` the cookies). Never echo, log or store the headers. When the caller was authenticated the script also gets `requestUser` (`email`, `firstName`, `lastName`, `isAdmin`, `_id`, `company`, `roles`) so it can decide *who* is asking — but ids do not survive the trip into the sandbox: `_id`, `company` and the ids in `roles` arrive as empty objects (`{}`). Identify the caller by `email`, and restrict by role with `authentication.requiredRoles`, not in code. On an anonymous call `requestUser` is **not defined at all**: referencing it throws `requestUser is not defined` (a `400`), so test it with `typeof requestUser === 'undefined'`. To *act* on the account the script uses a key of its own from `variables` — see [Automation & Scripts §5](05-automation-and-scripts.md#5-reading-and-writing-account-data).
 
 #### Response shapes
 
@@ -109,14 +111,19 @@ The failure shapes are **different objects**, not an envelope with an error insi
 | Script never assigned `output` | `200` | `{ "authenticated": <bool>, "output": null }` |
 | Script threw, or rejected a promise | `400` | `{ "statusCode": 400, "error": "<the thrown message>" }` |
 | Script exceeded its `timeout` | `400` | `{ "statusCode": 400, "error": "Script execution timeout" }` |
+| Invalid JSON body | `400` | `{ "statusCode": 400, "error": "Invalid JSON" }` |
 | `authentication.enabled` and no/invalid credential | `401` | `{ "statusCode": 401, "error": "Authentication required to access this endpoint" }` |
+| Invalid `Authorization` header, even on a public endpoint | `401` | `{ "statusCode": 401, "error": … }` |
 | Authenticated but missing a `requiredRoles` role | `403` | `{ "statusCode": 403, "error": "Forbidden, …" }` |
-| Unknown `routeName`, or endpoint `active: false` | `404` | error object |
-| Rate limited | `429` | error object |
+| Unknown `routeName` | `404` | error object |
+| Path verb ≠ HTTP verb, or a foreign `Origin` | `404` | HTML page, not JSON |
+| Endpoint `active: false` | `400` | `{ "statusCode": 400, "error": "Endpoint is not active" }` |
 
 Two things follow. First, **the thrown message is echoed verbatim to the caller** — never put a key, a connection string, or a provider's raw error into a thrown `Error`; catch it, log it with `console.error`, and throw something generic. Second, a client cannot distinguish "script failed" from "bad request" by status alone — both are `400` — so return failures you expect as *data* inside `output` (`{ ok: false, reason: … }`) and reserve throwing for genuinely exceptional cases.
 
-The script runs in an isolated sandbox with a per-run time budget, and the endpoint waits for it. Read [Automation & Scripts §2.1](05-automation-and-scripts.md#21-what-is-available-inside-code) before writing the code — the sandbox has no `require`, no `crypto` and no base64, which rules out some designs outright.
+There is no per-endpoint rate limit: a `429` only means the caller's IP has been banned on the account.
+
+The script runs in an isolated sandbox with a per-run time budget, and the endpoint waits for it. Read [Automation & Scripts §2.1](05-automation-and-scripts.md#21-what-is-available-inside-code) before writing the code — the sandbox has no `require` at run time and no `Buffer`, `crypto`, `atob`/`btoa` or `fetch`, so anything like HMAC or base64 has to be plain JavaScript inside the script ([§1.6](#16-using-an-endpoint-as-a-webhook-receiver)).
 
 ### 1.5 Worked example — a public "echo" endpoint
 
@@ -187,7 +194,7 @@ https://<domain>/v2/endpoint/post/<routeName>
 
 The delivered event arrives as `eventData.body`. For a Prolibu-to-Prolibu webhook that is `{ eventName, eventData }` (see [Webhooks & Events](06-webhooks-and-events.md) for the envelope); for a third-party sender it is whatever that provider posts.
 
-**Validate the sender — but you cannot verify a signature.** The sandbox has no `crypto` and no base64, so an HMAC check (Stripe's `Stripe-Signature`, GitHub's `X-Hub-Signature-256`, Meta's `X-Hub-Signature`) is impossible inside a script. Authenticate with a **static shared secret in a header**, compared against a value in `variables`:
+**Validate the sender.** The simplest check is a **static shared secret in a header**, compared against a value in `variables`. Use any header but `Authorization`, which is rejected with `401` before the script runs ([§1.3](#13-authentication-behavior)):
 
 ```js
 (async () => {
@@ -202,7 +209,24 @@ The delivered event arrives as `eventData.body`. For a Prolibu-to-Prolibu webhoo
 })();
 ```
 
-If the provider cannot send a static header and signature verification is a requirement, terminate that webhook outside Prolibu and forward the verified payload to this endpoint. Either way treat the body as untrusted: prefer re-fetching the object from the provider's API by id over trusting the posted fields.
+**HMAC signatures can be verified too** (Stripe's `Stripe-Signature`, GitHub's `X-Hub-Signature-256`, Meta's `X-Hub-Signature`). The sandbox has no `crypto`, but a pure-JavaScript HMAC-SHA256 works: this CLI ships one in `lib/utils/hmacSha256.js` (`hmacSha256Hex`, `hmacSha256Bytes`, `timingSafeEqual`), bundled when you publish the script with `./prolibu script`, or pasted into the script's `code`. The real limit is the message: providers sign the **raw bytes** of the body, and the script only gets the parsed body.
+
+- A `text/plain` body arrives as the raw string — sign-check it as is.
+- A JSON body has to be rebuilt with `JSON.stringify(eventData.body)`, which equals the raw bytes only when the sender posts **compact** JSON. Verified: compact JSON (accents included) matches; spaces or line breaks, numbers written as `10.0`, and escaped `\/` do not.
+
+```js
+const raw = typeof eventData.body === 'string' ? eventData.body : JSON.stringify(eventData.body);
+const secret = variables.find(v => v.key === 'hookSecret')?.value;
+const sent = String(eventData.headers['x-hub-signature-256'] || '').replace(/^sha256=/, '');
+if (!secret || !timingSafeEqual(hmacSha256Hex(secret, raw), sent)) {
+  output = { ok: false };
+  return;
+}
+```
+
+Check the provider's exact recipe: some sign `timestamp + "." + body`, some prefix the header (`sha256=`), some encode in base64 instead of hex (a few lines of plain JavaScript over `hmacSha256Bytes`).
+
+If the provider signs a body you cannot rebuild and cannot send a static header, terminate that webhook outside Prolibu and forward the verified payload to this endpoint. Either way treat the body as untrusted: prefer re-fetching the object from the provider's API by id over trusting the posted fields.
 
 ---
 
@@ -221,15 +245,15 @@ Managed through `/v2/form/` CRUD (authenticated). Key configurable fields:
 | `description` | `String` | Optional description. |
 | `formSchema` | `Object` (JSON) | **The single source of truth for the fields** — see [§2.2](#22-formschema--flat-vs-paged). |
 | `mappings` | `[Object]` | How submitted values become records — see [§2.3](#23-mapping-submissions-to-records). |
-| `access.mode` | `String` enum | `''` (default), `public`, `authenticated`, or `password`. Governs who may submit. |
-| `access.enableCaptcha` | `Boolean`, default `true` | Requires a captcha token when `mode` is `public`. |
-| `access.password` | `String` | Required password when `mode` is `password` (auto-generated if you enable password mode without supplying one). |
+| `access.mode` | `String` enum | `''` (default), `public`, `authenticated`, or `password`. Governs who may submit. **Always set it:** the empty default is treated as `public` on submit, but the hosted page only shows the captcha for `public`, so with captcha on **nobody** can submit an empty-mode form. |
+| `access.enableCaptcha` | `Boolean`, default `true` | Requires a captcha token when `mode` is `public` (or empty). The captcha is Cloudflare Turnstile and needs an **active Cloudflare service credential** on the account; without one the page shows no captcha and every submission fails. |
+| `access.password` | `String` | Required password when `mode` is `password`. Auto-generated **only when the form is created** in password mode without one. Switching an existing form to `password` without supplying one leaves it with no password, and everyone is locked out (`403 Invalid password`). |
 | `thankYou.title` | `String` | Confirmation heading shown after submit. |
 | `thankYou.message` | `String` | Confirmation body. |
 | `thankYou.redirectURL` | `String` | Optional URL to redirect to after a successful submit. |
 | `submissions.persist` | `Boolean`, default `false` | When `true`, each submission is stored as a `FormSubmission` (see [§2.7](#27-formsubmission)). |
 | `submissions.notifyOnSubmit` | `[ObjectId]` ref `User` | Users to notify on each submission. |
-| `assignmentGroup` | `ObjectId` ref `UserGroup` | Round-robin owner assignment for created records. |
+| `assignmentGroup` | `ObjectId` ref `UserGroup` | Group that receives created records. With the group's load balancing on, it assigns an owner round-robin; with it off, it notifies every member and leaves the record unassigned (on objects that carry `assignmentGroup`, such as `Contact`). |
 | `uploads.enabled` | `Boolean`, default `true` | Whether file-type fields accept uploads. |
 | `uploads.maxFileSizeMB` | `Number` | Per-file size cap (hard ceiling 5 MB). |
 | `active` | `Boolean` | Only active forms accept submissions. |
@@ -241,7 +265,29 @@ Managed through `/v2/form/` CRUD (authenticated). Key configurable fields:
 - **Flat** — a plain object of field definitions keyed by field key. Rendered as a single form. The keys `title`, `description`, `mode`, `theme`, and `pages` are reserved meta keys and are not treated as fields.
 - **Paged (wizard)** — `{ title, description, theme, pages: [{ name, title, fields }] }`. Rendered as a multi-step wizard. A form is treated as paged when `pages` is a non-empty array.
 
-Each field definition carries a `type`. Valid field types:
+Each field definition carries a `type`. Write fields the way the app's form builder does — a capitalized type plus a `format` or a UI component (`uiCom`) — because that is what the hosted page understands:
+
+| Question | Field |
+|---|---|
+| Short text | `{"type":"String"}` |
+| Email | `{"type":"String","format":"email"}` |
+| Long text | `{"type":"String","uiCom":"TextArea"}` |
+| Phone | `{"type":"String","uiCom":"PhoneWithIndicative"}` |
+| Number / date / yes-no | `{"type":"Number"}` / `{"type":"Date"}` / `{"type":"Boolean"}` |
+| Dropdown | `{"type":"String","enum":["A","B"]}` |
+
+A minimal flat schema:
+
+```json
+{
+  "title": "Contact us",
+  "fullName": { "type": "String", "label": "Name", "required": true },
+  "email":    { "type": "String", "format": "email", "label": "Email", "required": true },
+  "message":  { "type": "String", "uiCom": "TextArea", "label": "Message" }
+}
+```
+
+The server accepts these `type` values, in any case:
 
 ```
 string  number  boolean  date  objectid  mixed  array  text
@@ -249,18 +295,7 @@ select  email   phone    url   textarea  rating slider color
 file    html    section
 ```
 
-A minimal flat schema:
-
-```json
-{
-  "title": "Contact us",
-  "fullName": { "type": "string", "required": true },
-  "email":    { "type": "email",  "required": true },
-  "message":  { "type": "textarea" }
-}
-```
-
-Fields must declare a `type` (or a UI component, or a `sourceModel` + `sourceAttr` pair); an unknown `type` is rejected with `400` when you save the form.
+but the lowercase pseudo-types (`email`, `textarea`, `phone`, `rating`, …) only *save*: the hosted page does not know them and renders a plain one-line text box with no validation (`file` is the exception). Fields must declare a `type` (or a UI component, or a `sourceModel` + `sourceAttr` pair); an unknown `type` is rejected with `400` when you save the form — including `Object`, which is what the builder's Matching field writes.
 
 ### 2.3 Mapping submissions to records
 
@@ -270,11 +305,13 @@ Fields must declare a `type` (or a UI component, or a `sourceModel` + `sourceAtt
 |---|---|---|
 | `modelName` | `String`, required | The object API name to create — must be an existing object (e.g. `Contact`, `Deal`, `Ticket`). |
 | `action` | `String` | Currently only `create` is supported (the default). |
-| `fieldMap` | `Object`, required | Maps form field keys to field paths on the object. Nested paths are supported (e.g. `"companyName": "account.name"`). |
+| `fieldMap` | `Object`, required | Maps form field keys to field paths on the object. Paths may go into the object's own groups (e.g. `"city": "address.city"`), never through a reference to another record. A path the object does not have is **dropped silently**. |
 | `defaults` | `Object` | Static values merged into every created record. |
 | `assignmentGroup` | `ObjectId` ref `UserGroup` | Optional per-mapping owner assignment override. |
 
-When you save the form it is validated (all failures return `400`): every `modelName` must exist, every `fieldMap` value must reference a field key that exists in `formSchema`, and `action` must be `create`.
+When you save the form it is validated (all failures return `400`): every `modelName` must exist, every `fieldMap` must be non-empty and each of its **keys** must be a field key that exists in `formSchema`, and `action` must be `create`. The server checks **neither the target paths** (the `fieldMap` values) **nor the object's required fields**: a wrong path is dropped without an error, and a required field nobody fills surfaces only at submit time, as a `failed` result. `GET /v2/form/getmodelfields/<Object>` lists the valid paths and which ones are required.
+
+Each mapping creates its own record, and the records one submission creates (say a `Contact` and a `Deal`) are **not linked** to each other.
 
 ### 2.4 Public form routes
 
@@ -284,19 +321,21 @@ A form exposes these public routes under `/v2/form/`:
 |---|---|---|---|
 | `/v2/form/register` | `PUT` | **Submit** the form (create records). | Public — enforced by the form's `access.mode`. |
 | `/v2/form/upload` | `POST` (multipart) | Upload a file for a `file`-type field. | Public — requires a signed `uploadToken`. |
-| `/v2/form/jsonschema/{id}` | `GET` | Fetch the schema for headless rendering. | Public. |
-| `/v2/form/view/{id}` | `GET` | Server-rendered HTML form. | Public. |
-| `/v2/form/thanks/{id}` | `GET` | Server-rendered confirmation page. | Public. |
+| `/v2/form/jsonschema/{id}` | `GET` | Fetch the schema for headless rendering. `{id}` is the `_id`. | Public. |
+| `/v2/form/view/{id}` | `GET` | Server-rendered HTML form. `{id}` is the `_id` or the `formCode`. | Public. |
+| `/v2/form/thanks/{id}` | `GET` | Server-rendered confirmation page. `{id}` is the `_id` or the `formCode`. | Public. |
 
 > The submit route is **`PUT /v2/form/register`**, not `POST`. This is a common mistake.
 
-Additional authenticated helper routes exist for building forms and for external lead-ad ingestion (`getmodelfields`, `metafields`, `submitexternal`); those require a valid token and are used by tooling rather than by end users.
+All public routes answer `404` while the form is inactive (`active: false`).
+
+One authenticated helper route exists for building forms (`getmodelfields/{modelname}`, the fields of an object). The former lead-ad routes `metafields` and `submitexternal` are deprecated and answer `410`; these routes are no longer handled by Form.
 
 ### 2.5 Submitting a form — `register`
 
-`PUT /v2/form/register` takes `{ id, data }` where `id` is the form's `_id` (or `formCode`) and `data` is a flat object of field-key → value. Depending on `access.mode` you also send:
+`PUT /v2/form/register` takes `{ id, data }` where `id` is the form's `_id` (a `formCode` is rejected with `400 Cast to ObjectId failed`) and `data` is a flat object of field-key → value. Depending on `access.mode` you also send:
 
-- `captchaToken` — required when `mode` is `public` and `enableCaptcha` is `true`.
+- `captchaToken` — required when `mode` is `public` (or empty) and `enableCaptcha` is `true`; without it the request fails with `400`.
 - `password` — required when `mode` is `password`.
 - an `Authorization` bearer token — required when `mode` is `authenticated`.
 - `verifyOnly: true` — validate access without persisting; returns `{ "verified": true }`.
@@ -330,15 +369,15 @@ Response (`200`):
 }
 ```
 
-Each `results` entry has `status: "success"` or `status: "failed"` (with an `error` message) so you can tell which mappings succeeded. If a required field defined in `formSchema` is missing, the whole request is rejected with `400`.
+Each `results` entry has `status: "success"` or `status: "failed"` (with an `error` message) so you can tell which mappings succeeded. If a required field defined in `formSchema` is missing (or `null`, or empty), the whole request is rejected with a `400` naming the field, and nothing is created.
 
-Public submission is rate-limited per IP and per form; bursts of submissions beyond those limits return `429`. Design test harnesses accordingly.
+Public submission is rate-limited: **60 submissions per form and 1000 per IP, per clock minute**; beyond that the request returns `429`. Design test harnesses accordingly.
 
 ### 2.6 File uploads
 
 Uploads are a two-step, secured flow because the public submitter has no API key:
 
-1. Obtain a short-lived `uploadToken` from the form's render payload (`view`, see [§2.8](#28-headless-rendering)). The token is bound to the form and expires (about 30 minutes).
+1. Obtain a short-lived `uploadToken` from the HTML served by `GET /v2/form/view/{id}`, where it is embedded in the page script. The JSON-schema route in [§2.8](#28-headless-rendering) does not return it. The token is bound to the form and expires (about 30 minutes).
 2. `POST` the file as `multipart/form-data` to `/v2/form/upload` with `formId`, the `uploadToken`, the target `fieldKey`, and the `file`.
 
 ```bash
@@ -355,7 +394,7 @@ Response (`200`):
 { "fileId": "665f0c9a1b2c3d4e5f0044cc", "fileName": "resume.pdf" }
 ```
 
-The stored file is **private** and scoped to the form. Uploads are validated: the target field must be a `file` field, the size cap applies (`uploads.maxFileSizeMB`, hard ceiling 5 MB → `413` if exceeded), and the extension/type is whitelisted (`.pdf`, `.doc`, `.docx`, `.jpg`, `.jpeg`, `.png`) and content-checked. A missing, forged, or expired `uploadToken` returns `401`; uploads on a form with `uploads.enabled: false` return `403`. Uploads are rate-limited per IP and per form (`429` on excess).
+The stored file is **private** and scoped to the form. Uploads are validated: the target field must be a `file` field, the size cap applies (`uploads.maxFileSizeMB`, hard ceiling 5 MB → `413` if exceeded), and the extension/type is whitelisted (`.pdf`, `.doc`, `.docx`, `.jpg`, `.jpeg`, `.png`) and content-checked. A missing, forged, or expired `uploadToken` returns `401`; uploads on a form with `uploads.enabled: false` return `403`. Uploads are rate-limited to 60 per IP and 200 per form, per minute (`429` on excess).
 
 Use the returned `fileId` as the value of the corresponding field in your `register` `data` payload.
 
@@ -387,12 +426,13 @@ Response (`200`):
 {
   "formName": "Contact Form",
   "formSchema": { "...": "..." },
-  "fields": { "email": { "type": "email", "required": true } },
-  "access": { "mode": "public", "enableCaptcha": true }
+  "fields": { "email": { "type": "String", "format": "email", "required": true } },
+  "access": { "mode": "public", "enableCaptcha": true },
+  "turnstileSiteKey": "<site key>"
 }
 ```
 
-`fields` is an **object keyed by field key** (not an array); each value is the flattened field definition. This route deliberately **omits** `mappings` and `access.password` — the mapping logic and the password are never exposed publicly. Render from this payload, then submit with `PUT /v2/form/register`.
+`fields` is an **object keyed by field key** (not an array); each value is the flattened field definition. `turnstileSiteKey` is the Cloudflare Turnstile site key to render the captcha widget with; it is empty unless the form is public with captcha on **and** the account has an active Cloudflare credential — empty on a public captcha form means the page shows no captcha and no submission can succeed. This route deliberately **omits** `mappings` and `access.password` — the mapping logic and the password are never exposed publicly. Render from this payload, then submit with `PUT /v2/form/register`.
 
 ---
 
@@ -506,7 +546,7 @@ Understanding this is what separates a site that works from one that 403s on its
 Two consequences worth internalizing:
 
 - **Assets are answered by a redirect to object storage**, not proxied. They are fast and cost the platform nothing, but they are also *not* covered by `authenticationRequired` ([§3.6](#36-requiring-a-signed-in-visitor)).
-- **Only `siteType: 'SPA'` gets the history-API fallback.** A `Static` site keeps folder semantics, so nested static directories keep working. If your SPA is registered as `Static`, every client route below the root answers with a storage `AccessDenied` error page. Changing `siteType` requires re-uploading the `package`, because the archive is unzipped to a different path per type.
+- **Only `siteType: 'SPA'` gets the history-API fallback.** A `Static` site keeps folder semantics, so nested static directories keep working. If your SPA is registered as `Static`, every client route below the root answers with a storage `AccessDenied` error page. Changing `siteType` requires re-uploading the `package`, because the archive is unzipped to a different path per type — until you republish, every URL of the site answers `403`.
 
 ### 3.5 Building an SPA that survives the mount path
 
@@ -567,7 +607,7 @@ Two behaviors to expect:
 
 #### Do not build a login form
 
-**This is the mistake to avoid.** A gated site needs **no login UI of its own** — no email/password fields, no call to `/v2/auth/signin`, no "remember me", no MFA handling, no password-reset link. The platform's own sign-in page at `/v2/auth/signin` already does all of it, branded with the account's logo and colors, and `authenticationRequired` routes the visitor there automatically. Rebuilding it means re-implementing MFA and lockout by hand and getting them wrong.
+**This is the mistake to avoid.** A published site **never asks for a password** — no email/password fields, no call to `/v2/auth/signin`, no "remember me", no MFA handling, no password-reset link. The platform's own sign-in page at `/v2/auth/signin` already does all of it — password, Google, Microsoft and Okta sign-in, MFA, lockout and password reset — and `authenticationRequired` routes the visitor there automatically. (The page is generic: it shows the platform's logo, not the account's branding.) A form of your own breaks as soon as MFA is on — `POST /v2/auth/signin` then answers `mfaRequired` instead of a token — and cannot serve users who sign in with Google, Microsoft or Okta. There is no `/v2/auth/login` (it answers `404`).
 
 What you ship is a site that assumes it is already behind the gate.
 
@@ -578,13 +618,18 @@ The gate and your JavaScript use **two different copies of the same session**, a
 - **The page gate** is server-side and reads the `apiKey` **cookie**, which is `httpOnly` — your JavaScript can never read it.
 - **Your API calls** must send `Authorization: Bearer <apiKey>`. The `/v2/` API **does not accept the cookie**: calling `GET /v2/user/me` with only the cookie returns `401 Unauthorized. Missing apiKey.`
 
-The bridge is `localStorage`. When the platform's sign-in page authenticates a visitor it stores the key as `localStorage['apiKey']` **on your account's origin** — the same origin your site is served from — so your site reads it directly:
+The bridge is `localStorage`. When the platform's sign-in page authenticates a visitor it stores the key as `localStorage['apiKey']` **on your account's origin** — the same origin your site is served from — so your site reads it directly. Read it with `JSON.parse` and fall back to the raw value: the current app stores it JSON-quoted (`"abc…"`), the older app and the sign-in page store it plain, and a key sent with its quotes answers `401`.
 
 ```js
 const SIGNIN = '/v2/auth/signin?redirect=' +
   encodeURIComponent(location.pathname + location.search + location.hash)
 
-let apiKey = localStorage.getItem('apiKey')
+function readApiKey() {                       // JSON-quoted or plain: accept both
+  const raw = localStorage.getItem('apiKey')
+  try { const v = JSON.parse(raw); return typeof v === 'string' && v ? v : raw } catch { return raw }
+}
+
+const apiKey = readApiKey()
 if (!apiKey) location.href = SIGNIN          // gate passed but no token yet
 
 const res = await fetch('/v2/user/me', {
@@ -592,12 +637,13 @@ const res = await fetch('/v2/user/me', {
 })
 
 if (res.status === 401) {                     // key expired or revoked
-  localStorage.removeItem('apiKey')
-  location.href = SIGNIN
+  location.href = SIGNIN                      // the sign-in page checks the key and cleans up itself
 }
 
 const me = await res.json()                   // { profile: { firstName, email, … } }
 ```
+
+**Never remove `localStorage.apiKey` yourself** (no `localStorage.removeItem('apiKey')`, not even on a `401`): it is the same session the app uses on this origin, so removing it signs the visitor out of the app.
 
 Always keep the `localStorage`-empty branch. The cookie and the `localStorage` copy can fall out of step — a visitor who signed in on another tab before your site existed, or who cleared site data, passes the page gate but arrives with no token. Sending them to `/v2/auth/signin?redirect=…` re-seeds both and returns them where they were.
 
@@ -619,7 +665,7 @@ curl -s -X PATCH "https://<domain>/v2/site/665f0c9a1b2c3d4e5f0055dd" \
 A site is plain static hosting on your account's own domain, so `fetch('/v2/...')` is same-origin and needs no CORS setup. Every call must carry `Authorization: Bearer <apiKey>` — the `/v2/` API never authenticates from the cookie.
 
 - **Gated site** (`authenticationRequired: true`) — the visitor already signed in through the platform's page; read the key from `localStorage` as shown in [§3.6](#36-requiring-a-signed-in-visitor). Do not build a login form.
-- **Public site that needs data** — either call an unauthenticated [custom Endpoint](#1-custom-endpoints--inbound-http) that runs a script server-side (the right answer when the data is not the visitor's own), or send visitors through `/v2/auth/signin?redirect=…` for the same `localStorage` handoff.
+- **Public site that needs data** — anonymous visitors have no session, so anything server-side goes through a public (`authentication.enabled: false`) [custom Endpoint](#1-custom-endpoints--inbound-http) that runs a script (the right answer when the data is not the visitor's own). If the visitors are users of the account, send them through `/v2/auth/signin?redirect=…` instead for the same `localStorage` handoff.
 
 **Never embed an API key in a site bundle.** The files are public on object storage — see [§3.6](#36-requiring-a-signed-in-visitor) — so a key shipped in JavaScript is a published credential. If a page needs privileged data, put it behind an Endpoint whose script holds the credential. See [Authentication & Connected Apps](04-authentication-and-connected-apps.md).
 
@@ -672,14 +718,14 @@ An existing code issues a `302` redirect to the destination; an unknown code ret
 8. **A site archive must contain `index.html` at the root of the zip.** Zip the *contents* of your build folder, not the folder — a wrapper directory is the most common cause of a `400` on upload.
 9. **Deactivating a `Site` takes it offline immediately** — previously valid URLs return `403`. It is not a soft, logical flag.
 13. **Share `site.publicUrl`, not `site.url`.** `shortUrl` no longer exists (it reads `undefined`); the long `url` leaks the owner id. See [§3.2](#32-the-two-urls).
-14. **An SPA registered as `siteType: 'Static'` 403s on every route below the root.** Only `SPA` gets the history-API fallback, and switching the type requires re-uploading the `package`.
+14. **An SPA registered as `siteType: 'Static'` 403s on every route below the root.** Only `SPA` gets the history-API fallback, and switching the type requires re-uploading the `package` (until then the whole site answers `403`).
 15. **A default Vite build does not work under `/site/<siteCode>/`.** Set `base: './'` and give your router `basename: new URL(document.baseURI).pathname`, or use hash routing. See [§3.5](#35-building-an-spa-that-survives-the-mount-path).
 16. **`authenticationRequired` gates pages, not assets.** Files stay readable from object storage while the site is `active` — never ship secrets in a bundle.
 17. **Re-deploying replaces the whole site.** The old unzipped folder is deleted first, so anything you stop shipping disappears.
 18. **`400 Malicious content detected in file` on upload is not about your zip being corrupt.** It means the account has the cloud-drive content scanner on, and it rejects any `<script>…</script>` tag — see [§3.3](#33-uploading-a-site).
-10. **`routeName` + `method` must be unique per endpoint**; a collision is rejected with `400`. Pick distinct route names rather than relying on the method to disambiguate.
+10. **`routeName` is unique across all methods**; a second endpoint with the same `routeName` is rejected with `400`, and any verb reaches an endpoint whatever its `method`. Give each operation its own route name.
 11. **Endpoint scripts run under a timeout.** The request waits for the script; a long-running or throwing script surfaces as an error response. Keep endpoint scripts fast and do heavy work asynchronously.
-12. **Public submission and upload are rate-limited** per IP and per form; bursts return `429`.
+12. **Public submission and upload are rate-limited.** Submissions: 60 per form and 1000 per IP, per clock minute. Uploads: 60 per IP and 200 per form, per minute. Beyond that, `429`.
 
 ---
 
@@ -689,15 +735,15 @@ An existing code issues a `302` redirect to the destination; an unknown code ret
 
 - [ ] Create a `Script` whose `code` handles `eventName === "EndpointRequest"` and assigns `output`.
 - [ ] Create the `Endpoint` with a DNS-safe `routeName`, the `method`, the `script`, and `authentication.enabled` set appropriately (`false` for public/webhook receivers).
-- [ ] Ensure the `routeName` + `method` pair is unique.
+- [ ] Ensure the `routeName` is unique (across all methods).
 - [ ] Call `https://<domain>/v2/endpoint/<method-lowercase>/<routeName>` and read `response.output`.
-- [ ] As a webhook receiver, point the sender at `.../v2/endpoint/post/<routeName>`, keep `authentication.enabled: false`, and validate the sender inside the script (read the payload from `eventData.body`).
+- [ ] As a webhook receiver, point the sender at `.../v2/endpoint/post/<routeName>`, keep `authentication.enabled: false`, and validate the sender inside the script with a shared-secret header (not `Authorization`) or an HMAC signature (read the payload from `eventData.body`).
 
 **Publish a web-to-lead form (`Form`):**
 
-- [ ] Define `formSchema` (flat or paged) using only valid field types.
-- [ ] Define `mappings[]` with an existing `modelName`, a `fieldMap` referencing keys present in the schema, and `action: "create"`.
-- [ ] Choose `access.mode` (`public` + captcha / `authenticated` / `password`) and decide on `submissions.persist`.
+- [ ] Define `formSchema` (flat or paged) in the builder's format (`String` + `format` / `uiCom`), not lowercase pseudo-types.
+- [ ] Define `mappings[]` with an existing `modelName`, a `fieldMap` referencing keys present in the schema and target paths from `getmodelfields`, every required field of the object filled, and `action: "create"`.
+- [ ] Always set `access.mode` (`public` + captcha / `authenticated` / `password`) — empty accepts nobody; for public + captcha, confirm `turnstileSiteKey` is non-empty in `jsonschema`. Decide on `submissions.persist`.
 - [ ] Submit with **`PUT /v2/form/register`** `{ id, data }` (plus `captchaToken` / `password` when required).
 - [ ] For file fields, fetch an `uploadToken` from the form view, `POST` the file to `/v2/form/upload`, then send the returned `fileId` in `register`.
 - [ ] For headless rendering, read `GET /v2/form/jsonschema/<id>` and render in your own app.
