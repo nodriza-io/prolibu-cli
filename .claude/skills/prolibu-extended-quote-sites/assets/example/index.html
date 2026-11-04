@@ -66,8 +66,15 @@
       return node
     }
 
+    // Opened outside the editor (a review, a direct link): show the catalog, never apply.
+    if (!host.embedded) {
+      $('title').textContent = 'Catalog preview'
+      $('meta').textContent = 'Open it from the quote editor to add products to a quote.'
+      $('term').disabled = false
+    }
+
     // 1) First message AS SOON AS the page loads: the editor's modal errors out if we stay silent for 15 s.
-    host.getDeal().then((deal) => {
+    if (host.embedded) host.getDeal().then((deal) => {
       const quote = host.quote()
       currency = quote.quoteCurrency || null
       isEvents = quote.quoteMode === 'Events'

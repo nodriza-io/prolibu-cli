@@ -8,6 +8,9 @@ uses it, so it looks and behaves like the app. Hand-made CSS with its own colors
 The exception: proposal and contract documents (doc-render) carry the **client's** brand, not
 Cobalt's look. Those follow `prolibu-document-design`.
 
+Cobalt is the floor, not the bar: the layout, hierarchy and checks a page must pass are in
+[`UI-QUALITY.md`](UI-QUALITY.md).
+
 ## Load it from the account
 
 Every account domain serves Cobalt, the same version the app uses. Use root-relative paths so
@@ -53,10 +56,14 @@ Look up each component's props there; do not guess them. Common picks:
 ## Rules
 
 - **Colors, spacing, fonts, radii and shadows come from tokens.** In the page's CSS use the
-  semantic layer: `--co-semantic-surface-page`, `-surface-primary`, `-text-default`,
-  `-text-muted`, `-border-default`, `-border-subtle`, `-accent`, `-status-error`… and the
+  semantic layer: `--co-semantic-text-default`, `-text-muted`, `-border-default`,
+  `-border-subtle`, `-accent`, `-status-error`… and the
   scales `--co-spacing-*`, `--co-font-size-*`, `--co-border-radius-*`, `--co-shadow-*`,
   `--co-font-family-primary`. The semantic layer follows dark mode for free. No hex in the CSS.
+- **Surfaces are a trap.** Page, panels, headers and cards: `--co-semantic-surface-page` or
+  `-surface-secondary` (white). A quiet fill (a search row, a chip group, an icon tile):
+  `-surface-control` (gray-100) or `-surface-muted` (gray-200). **`-surface-primary` is the
+  black fill of a primary button**: never a panel, header or card background.
 - **Your CSS does layout only:** grid, flex, widths, gaps. Do not restyle the inside of a
   `co-*` (it is shadow DOM).
 - **A brand color goes once, as a token override** in `:root`, e.g.

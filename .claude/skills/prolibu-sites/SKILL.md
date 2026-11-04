@@ -63,7 +63,9 @@ reads the key itself). Answer in the user's language, in plain words.
    - Start a plain page from `assets/example/index.html`.
    - **Build anything visual with Cobalt**, the app's design system: `co-*` components and
      `--co-*` tokens loaded from the account's `/ui/static/cobalt/…`, no colors or plain
-     buttons of your own. Read [`../_shared/COBALT.md`](../_shared/COBALT.md) first.
+     buttons of your own. Read [`../_shared/COBALT.md`](../_shared/COBALT.md) first, and design
+     to [`../_shared/UI-QUALITY.md`](../_shared/UI-QUALITY.md): one primary action, aligned
+     cards, nothing cut at 1440, 1024 or 390 px.
    - For React or Vue, read `references/templates.md` first: the repo's templates must be
      fixed before use (their login calls a route that does not exist), and there is no Vue
      template.
@@ -86,7 +88,9 @@ reads the key itself). Answer in the user's language, in plain words.
    For a page only the account's users should see, add
    `<meta name="robots" content="noindex, nofollow">` and
    `<meta name="referrer" content="no-referrer">`: the platform sends neither header.
-3. **Check and preview.** `preview <domain> <prefix>-dev <folder>` runs every check and says
+3. **Look at it, then preview.** Run `node .claude/skills/_shared/ui-review.js <domain> <folder>`
+   (headless Chrome, real data, nothing written), fix every finding, and open each screenshot
+   before going on. Then `preview <domain> <prefix>-dev <folder>` runs every check and says
    what will be created or replaced (the live package's size and checksum). Fix every
    blocker (missing or nested `index.html`, absolute `/assets/…` paths, `.env`, keys or
    secrets in any file, an API key of this account, a zip over the account's upload limit,
@@ -174,6 +178,8 @@ teaches users to type their password into pages.
   profile only).
 - Ask for a password, put a token in a URL, or remove `localStorage.apiKey`.
 - Embed an API key or secret in any site file; use an Endpoint.
+- Open `profile*.json` or copy the key into a shell variable or curl; read data through
+  `node .claude/skills/_shared/prolibu-api.js <domain> GET '/v2/...'`.
 - Style a page with your own palette, fonts or plain `<button>`/`<input>`; use Cobalt.
 - Publish to a site another user created, or publish prod without its own yes (`--prod`).
 - Retry a 403 with another profile.
