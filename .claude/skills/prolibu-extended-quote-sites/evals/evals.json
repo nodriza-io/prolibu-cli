@@ -10,7 +10,7 @@
         "Lays out config.json (siteType Static), public/index.html and public/prolibu-extended-quote.js by hand, without running site create",
         "The page sends form:get:model on load, searches with productSearch passing the price list id, builds lines with formatLineItem and applies existing + new lines, then form:close",
         "Runs extended-quote.js lint on the site and it has no errors",
-        "Stops and asks before ./prolibu site dev (no --watch); does not publish in the first turn",
+        "Stops and asks before publishing with site.js (never ./prolibu site, no --watch); does not publish in the first turn",
         "Explains how to connect it: the account preference for an admin, or attach to a workspace with preview/apply; never writes preferences",
         "Answers in Spanish with tú"
       ]
@@ -66,7 +66,8 @@
         "Starts from assets/example/index.html and copies assets/prolibu-extended-quote.js next to it",
         "Keeps the Cobalt links and builds controls with co-* components, listening to coInput/coChange and reading values from event.detail or .value",
         "Adds no hex colors or plain <button>/<input>; brand, if asked, only as a --co-* override",
-        "extended-quote.js lint on public/ returns no errors and none of NO_COBALT, NO_COBALT_TOKENS, HARDCODED_COLORS, PLAIN_CONTROLS"
+        "extended-quote.js lint on public/ returns no errors and none of NO_COBALT, NO_COBALT_TOKENS, HARDCODED_COLORS, PLAIN_CONTROLS",
+        "Runs _shared/ui-review.js on the folder, fixes its findings and opens the screenshots; product rules are quiet secondary text, tiers are neutral chips, and only the apply button is primary"
       ]
     }
   ]
