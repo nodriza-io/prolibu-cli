@@ -19,6 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const { createClient, UsageError, DEFAULT_ROOT } = require('../../_shared/prolibu-api');
+const { cobaltFindings } = require('../../_shared/cobalt-check');
 
 const BLOCKED = 3;
 const ID_RE = /^[a-f0-9]{24}$/i;
@@ -171,6 +172,10 @@ function lintSource(files) {
   }
   if (!usesHelper && /['"`]form:set:model['"`]/.test(all) && /lineItems\s*:\s*(newLines|selected|nuevas|items)\b/.test(all)) {
     add('ONLY_NEW_LINES', 'warning', 'form:set:model seems to send only the new lines; it REPLACES the whole list. Send the lines that arrived plus the new ones.');
+  }
+  // Design: the quote editor is a Cobalt app, so the site should look like it.
+  for (const f of cobaltFindings(texts.map((t) => ({ rel: t.file, text: t.text })))) {
+    add(f.rule.replace(/([A-Z])/g, '_$1').toUpperCase(), 'warning', f.message, f.file ? [f.file] : undefined);
   }
   return {
     files: files.length,

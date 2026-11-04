@@ -61,6 +61,9 @@ reads the key itself). Answer in the user's language, in plain words.
    ```
 
    - Start a plain page from `assets/example/index.html`.
+   - **Build anything visual with Cobalt**, the app's design system: `co-*` components and
+     `--co-*` tokens loaded from the account's `/ui/static/cobalt/…`, no colors or plain
+     buttons of your own. Read [`../_shared/COBALT.md`](../_shared/COBALT.md) first.
    - For React or Vue, read `references/templates.md` first: the repo's templates must be
      fixed before use (their login calls a route that does not exist), and there is no Vue
      template.
@@ -88,7 +91,8 @@ reads the key itself). Answer in the user's language, in plain words.
    blocker (missing or nested `index.html`, absolute `/assets/…` paths, `.env`, keys or
    secrets in any file, an API key of this account, a zip over the account's upload limit,
    blocked extensions, the content scanner, a site created by another user). Read the
-   warnings to the user (password fields, `/v2/auth/login`, source maps, a stale build).
+   warnings to the user (password fields, `/v2/auth/login`, source maps, a stale build, and
+   the Cobalt ones: fix those before publishing).
    Show the plain summary and **stop**; wait for a yes. **One yes covers one write:** the
    publish, the gate and the prod publish each get their own preview, their own question and
    their own yes, even when the user asked for all of them at the start. Never run a
@@ -170,6 +174,7 @@ teaches users to type their password into pages.
   profile only).
 - Ask for a password, put a token in a URL, or remove `localStorage.apiKey`.
 - Embed an API key or secret in any site file; use an Endpoint.
+- Style a page with your own palette, fonts or plain `<button>`/`<input>`; use Cobalt.
 - Publish to a site another user created, or publish prod without its own yes (`--prod`).
 - Retry a 403 with another profile.
 

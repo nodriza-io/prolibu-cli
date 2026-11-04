@@ -331,6 +331,24 @@ describe('lint of the site code', () => {
     expect(codes).toEqual(expect.arrayContaining(['NO_GET_MODEL', 'INVENTED_MESSAGE', 'UNIT_PRICE', 'HAND_BUILT_LINES', 'TOKEN_IN_URL', 'NO_ORIGIN_CHECK', 'NO_CLOSE', 'ONLY_NEW_LINES']));
   });
 
+  test('a page without Cobalt, or styled by hand, gets design warnings', async () => {
+    const f = path.join(dir, 'index.html');
+    fs.writeFileSync(f, `<html><body><button>Agregar</button><script>
+      parent.postMessage({ type: 'form:get:model' }, o); addEventListener('message', (e) => e.origin);
+      formatLineItem(); parent.postMessage({ type: 'form:close' }, o)</script></body></html>`);
+    const { code, json } = await run('lint', f);
+    expect(code).toBe(0);
+    expect(json.findings).toEqual([expect.objectContaining({ code: 'NO_COBALT', severity: 'warning' })]);
+    fs.writeFileSync(f, `<html><head><link rel="stylesheet" href="/ui/static/cobalt/tokens/tokens.css">
+      <script type="module" src="/ui/static/cobalt/cobalt/cobalt.esm.js"></script>
+      <style>.a{color:#111111}.b{color:#222222}.c{color:#333333}.d{color:#444444}.e{color:#555555}</style></head>
+      <body><co-button label="Agregar"></co-button><script>
+      parent.postMessage({ type: 'form:get:model' }, o); addEventListener('message', (e) => e.origin);
+      formatLineItem(); parent.postMessage({ type: 'form:close' }, o)</script></body></html>`);
+    const second = await run('lint', f);
+    expect(second.json.findings.map((x) => x.code)).toEqual(['HARDCODED_COLORS']);
+  });
+
   test('a hard-coded key is an error', async () => {
     const f = path.join(dir, 'app.js');
     const fakeKey = 'F'.repeat(32);

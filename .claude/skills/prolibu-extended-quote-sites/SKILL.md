@@ -55,7 +55,9 @@ into the site and adapt the page, not the helper.
    accounts/<domain>/sites/<prefix>/public/prolibu-extended-quote.js   copied from assets/
    ```
 
-2. **Write the page** with the rules below. Then run `lint` on `public/` and fix every `error`.
+2. **Write the page** with the rules below and with Cobalt, the app's design system
+   ([`../_shared/COBALT.md`](../_shared/COBALT.md)): the picker opens inside the editor and must
+   look like it. Then run `lint` on `public/`; fix every `error` and the Cobalt warnings.
    If writing under `accounts/` is denied, stop and ask the user; never put the site elsewhere.
 3. **Publish the test copy** following `prolibu-sites` (show what and where, wait for a yes, then
    `./prolibu site dev --domain <domain> --prefix <prefix> --no-git`; never `--watch`: a local

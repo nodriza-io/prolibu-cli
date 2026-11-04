@@ -141,7 +141,8 @@ function write(rel, content) {
 }
 
 const siteDir = (name = 'demo') => path.join(tmp, 'accounts', D, 'sites', name);
-const PAGE = '<!doctype html><html><head><meta name="robots" content="noindex"><link rel="stylesheet" href="./style.css"></head><body>v1</body></html>';
+const COBALT = '<link rel="stylesheet" href="/ui/static/cobalt/tokens/tokens.css"><script type="module" src="/ui/static/cobalt/cobalt/cobalt.esm.js"></script>';
+const PAGE = `<!doctype html><html><head><meta name="robots" content="noindex">${COBALT}<link rel="stylesheet" href="./style.css"></head><body>v1</body></html>`;
 
 function goodSite(name = 'demo', page = PAGE) {
   write(`accounts/${D}/sites/${name}/config.json`, '{"siteType":"Static"}');
@@ -268,6 +269,25 @@ describe('site.js', () => {
     expect(json.skipped).toEqual(['.DS_Store']);
     expect(out).not.toContain(KEY);
     expect(out).not.toContain(FAKE_SECRET);
+  });
+
+  test('check accepts Cobalt from the platform path and warns when a page skips Cobalt', async () => {
+    const good = goodSite('cobalt', PAGE);
+    const ok = await run('check', D, good);
+    expect(ok.code).toBe(0);
+    expect(ok.json.blockers).toEqual([]);
+    expect(ok.json.warnings).toEqual([]);
+    const plain = goodSite('plain', '<!doctype html><html><head><meta name="robots" content="noindex"></head><body><button>Ok</button></body></html>');
+    const { code, json } = await run('check', D, plain);
+    expect(code).toBe(0);
+    expect(json.warnings.map((w) => w.rule)).toEqual(['noCobalt']);
+  });
+
+  test('check still blocks other paths under /ui/static', async () => {
+    const dir = goodSite('ui', PAGE.replace('</head>', '<script src="/ui/static/other/app.js"></script></head>'));
+    const { code, json } = await run('check', D, dir);
+    expect(code).toBe(3);
+    expect(json.blockers).toEqual([expect.objectContaining({ rule: 'absolutePath', ref: '/ui/static/other/app.js' })]);
   });
 
   test('check warns about a file the page loads but the folder does not have', async () => {
