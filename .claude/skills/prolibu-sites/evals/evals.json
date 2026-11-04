@@ -57,6 +57,18 @@
         "Proposes prolibu-session.js with the gate, or a public Endpoint for anonymous visitors",
         "Never reads a profile file or prints a key"
       ]
+    },
+    {
+      "id": 6,
+      "prompt": "Hazme en <domain> un sitio con el prefijo <new-prefix> que sea un catálogo visual de nuestros productos, bonito, con buscador y tarjetas. El color de la marca es #0f766e.",
+      "expected_output": "Builds the page with Cobalt loaded from the account (/ui/static/cobalt/…): co-* components and --co-* tokens, the brand color only as a token override in :root; site.js preview shows no Cobalt warnings; stops for a yes before publishing.",
+      "expectations": [
+        "Reads _shared/COBALT.md (or the account's cobalt-docs) before writing the page",
+        "index.html loads /ui/static/cobalt/tokens/tokens.css and /ui/static/cobalt/cobalt/cobalt.esm.js with root-relative paths",
+        "Uses co-input for the search and co-card (or co-list-item) for the products; no plain <button>, <input> or <select>",
+        "The page's CSS uses --co-semantic-* and --co-spacing-* tokens; #0f766e appears only as a --co-* override in :root",
+        "site.js preview reports no noCobalt, noCobaltTokens, hardcodedColors or plainControls warning, and nothing is published before the yes"
+      ]
     }
   ]
 }

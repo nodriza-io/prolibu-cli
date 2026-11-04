@@ -4,40 +4,40 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Extended quote</title>
+  <!-- Cobalt, Prolibu's design system, served by the account itself (same version as the app). -->
+  <link rel="stylesheet" href="/ui/static/cobalt/tokens/tokens.css">
+  <script type="module" src="/ui/static/cobalt/cobalt/cobalt.esm.js"></script>
   <style>
-    :root { --ink: #1f1c1b; --muted: #6b6866; --line: #e6e3e0; --accent: #2563eb; --error: #aa2e1b; }
+    /* Layout only: every color, space and radius comes from a --co-* token. */
     * { box-sizing: border-box; }
-    body { margin: 0; padding: 16px; font: 14px/1.4 system-ui, sans-serif; color: var(--ink); background: #fff; }
-    h1 { font-size: 16px; margin: 0 0 4px; }
-    .muted { color: var(--muted); }
-    .error { color: var(--error); }
-    input, button { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
-    button { cursor: pointer; background: var(--ink); color: #fff; border-color: var(--ink); }
-    button.secondary { background: #fff; color: var(--ink); border-color: var(--line); }
-    button:disabled { opacity: .45; cursor: default; }
-    #term { width: 100%; margin: 12px 0 8px; }
+    [hidden] { display: none !important; } /* co-* set display on :host, which beats the hidden attribute */
+    body { margin: 0; padding: var(--co-spacing-lg); font-family: var(--co-font-family-primary); color: var(--co-semantic-text-default); background: var(--co-semantic-surface-page); }
+    h1 { font-size: var(--co-font-size-16); margin: 0 0 var(--co-spacing-xs); }
+    h2 { font-size: var(--co-font-size-14); margin: var(--co-spacing-lg) 0 var(--co-spacing-xs); }
+    .muted { color: var(--co-semantic-text-muted); }
+    #term { display: block; margin: var(--co-spacing-md) 0 var(--co-spacing-sm); }
     ul { list-style: none; margin: 0; padding: 0; }
-    li { display: flex; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+    li { display: flex; gap: var(--co-spacing-sm); align-items: center; padding: var(--co-spacing-sm) 0; border-bottom: 1px solid var(--co-semantic-border-subtle); }
     li .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    li input[type=number] { width: 72px; }
-    footer { position: sticky; bottom: 0; display: flex; gap: 8px; justify-content: flex-end; padding-top: 12px; background: #fff; }
+    li co-number-field { width: 96px; }
+    footer { position: sticky; bottom: 0; display: flex; gap: var(--co-spacing-sm); justify-content: flex-end; padding-top: var(--co-spacing-md); background: var(--co-semantic-surface-page); }
   </style>
 </head>
 <body>
   <h1 id="title">Loading deal…</h1>
   <div id="meta" class="muted"></div>
 
-  <label id="dayField" hidden>Event day <input id="day" type="date"></label>
-  <input id="term" type="search" placeholder="Search a product by name or code (2 letters or more)" autocomplete="off" disabled>
-  <div id="status" class="muted"></div>
+  <co-date-field id="day" label="Event day" hidden></co-date-field>
+  <co-input id="term" type="search" icon-left="magnifying-glass" placeholder="Search a product by name or code (2 letters or more)" disabled></co-input>
+  <co-helper-text id="status"></co-helper-text>
   <ul id="results"></ul>
 
-  <h2 style="font-size:14px;margin:16px 0 4px">To add to the quote</h2>
+  <h2>To add to the quote</h2>
   <ul id="picked"></ul>
 
   <footer>
-    <button id="cancel" class="secondary">Cancel</button>
-    <button id="apply" disabled>Apply to the quote</button>
+    <co-button id="cancel" variant="secondary" shape="square" size="m" label="Cancel"></co-button>
+    <co-button id="apply" variant="primary" shape="square" size="m" label="Apply to the quote" disabled></co-button>
   </footer>
 
   <!-- In the package, prolibu-extended-quote.js sits NEXT TO this index.html (copy it from the skill's assets). -->
@@ -56,8 +56,8 @@
     let searchController = null
 
     function setStatus (text, isError = false) {
-      $('status').textContent = text
-      $('status').className = isError ? 'error' : 'muted'
+      $('status').message = text
+      $('status').status = isError ? 'error' : 'default'
     }
 
     function el (tag, props = {}, children = []) {
@@ -71,18 +71,19 @@
       const quote = host.quote()
       currency = quote.quoteCurrency || null
       isEvents = quote.quoteMode === 'Events'
-      $('dayField').hidden = !isEvents
+      $('day').hidden = !isEvents
       if (isEvents) ProlibuQuote.userTimeZone().then((tz) => { timeZone = tz || ACCOUNT_TIME_ZONE }).catch(() => { timeZone = ACCOUNT_TIME_ZONE })
       $('title').textContent = deal.dealName || 'New deal'
       $('meta').textContent = `${quote.lineItems.length} line(s) in the quote · currency ${currency || 'not set'}`
       $('term').disabled = false
-      $('term').focus()
+      $('term').setFocus?.()
     }).catch((err) => setStatus(err.message, true))
 
     // 2) Search with the editor's endpoint (debounced, and the previous request is cancelled).
-    $('term').addEventListener('input', (event) => {
+    // Cobalt events are camelCase CustomEvents: coInput carries the text in event.detail.
+    $('term').addEventListener('coInput', (event) => {
       clearTimeout(searchTimer)
-      searchTimer = setTimeout(() => search(event.target.value), 300)
+      searchTimer = setTimeout(() => search(event.detail || ''), 300)
     })
 
     async function search (term) {
@@ -102,8 +103,8 @@
     }
 
     function resultRow (item) {
-      const qty = el('input', { type: 'number', min: 1, value: 1 })
-      const add = el('button', { textContent: 'Add' })
+      const qty = el('co-number-field', { min: 1, value: 1, size: 'sm' })
+      const add = el('co-button', { label: 'Add', variant: 'soft', shape: 'square', size: 's' })
       add.addEventListener('click', async () => {
         if (isEvents && !$('day').value) return setStatus('Pick the event day before adding.', true)
         add.disabled = true
@@ -127,7 +128,7 @@
 
     function renderPicked () {
       $('picked').replaceChildren(...picked.map((line, index) => {
-        const remove = el('button', { className: 'secondary', textContent: 'Remove' })
+        const remove = el('co-button', { label: 'Remove', variant: 'ghost', shape: 'square', size: 's' })
         remove.addEventListener('click', () => { picked.splice(index, 1); renderPicked() })
         return el('li', {}, [el('span', { className: 'name', textContent: `${line.quantity} × ${line.productName}` }), remove])
       }))

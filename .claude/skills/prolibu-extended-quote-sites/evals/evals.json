@@ -57,6 +57,17 @@
         "Explains that enabled=false alone would still show the button to V2 admins",
         "Gives the exact values for the admin to set"
       ]
+    },
+    {
+      "id": 6,
+      "prompt": "Hazme una cotización extendida para <domain> donde el vendedor escoja habitaciones y servicios por día del evento. Que se vea como el resto de Prolibu.",
+      "expected_output": "Starts from assets/example/index.html, keeps Cobalt (co-input, co-date-field, co-number-field, co-button and --co-* tokens loaded from /ui/static/cobalt/…), and lint returns no Cobalt warnings.",
+      "expectations": [
+        "Starts from assets/example/index.html and copies assets/prolibu-extended-quote.js next to it",
+        "Keeps the Cobalt links and builds controls with co-* components, listening to coInput/coChange and reading values from event.detail or .value",
+        "Adds no hex colors or plain <button>/<input>; brand, if asked, only as a --co-* override",
+        "extended-quote.js lint on public/ returns no errors and none of NO_COBALT, NO_COBALT_TOKENS, HARDCODED_COLORS, PLAIN_CONTROLS"
+      ]
     }
   ]
 }

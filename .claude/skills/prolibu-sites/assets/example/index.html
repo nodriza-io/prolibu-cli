@@ -4,35 +4,48 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Example signed-in page</title>
+  <!-- Cobalt, Prolibu's design system, served by the account itself (same version as the app). -->
+  <link rel="stylesheet" href="/ui/static/cobalt/tokens/tokens.css">
+  <script type="module" src="/ui/static/cobalt/cobalt/cobalt.esm.js"></script>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.5; }
-    .muted { color: #666; }
+    /* Layout only: every color, space and font comes from a --co-* token. */
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; } /* co-* set display on :host, which beats the hidden attribute */
+    body { margin: 0; padding: var(--co-spacing-2xl) var(--co-spacing-lg); font-family: var(--co-font-family-primary); color: var(--co-semantic-text-default); background: var(--co-semantic-surface-page); }
+    main { max-width: 720px; margin: 0 auto; display: grid; gap: var(--co-spacing-md); }
+    h1 { font-size: var(--co-font-size-16); margin: 0; }
+    .muted { color: var(--co-semantic-text-muted); margin: 0; }
   </style>
 </head>
 <body>
-  <h1>Example signed-in page</h1>
-  <p id="who" class="muted">Checking your session…</p>
-  <ul id="deals"></ul>
+  <main>
+    <h1>Example signed-in page</h1>
+    <p id="who" class="muted">Checking your session…</p>
+    <co-card variant="outlined" padding="sm">
+      <co-skeleton id="loading"></co-skeleton>
+      <div id="deals"></div>
+      <co-empty-state id="empty" heading="No deals yet" description="Deals you can see will show up here." icon="briefcase" variant="plain" hidden></co-empty-state>
+    </co-card>
+  </main>
 
   <!-- Copy prolibu-session.js next to this file (public/ or the build's public folder). -->
   <script src="prolibu-session.js"></script>
   <script>
     (async function () {
-      const who = document.getElementById('who');
+      const $ = (id) => document.getElementById(id);
       try {
         const me = await ProlibuSession.me();
-        who.textContent = 'Signed in as ' + ((me.profile && me.profile.email) || 'unknown');
+        $('who').textContent = 'Signed in as ' + ((me.profile && me.profile.email) || 'unknown');
 
         const query = new URLSearchParams({ limit: '5', sort: '-updatedAt', select: 'dealName' });
         const { data } = await ProlibuSession.api('/deal?' + query);
-        const list = document.getElementById('deals');
-        for (const deal of data) {
-          const item = document.createElement('li');
-          item.textContent = deal.dealName;
-          list.appendChild(item);
-        }
+        $('deals').replaceChildren(...data.map((deal) =>
+          Object.assign(document.createElement('co-list-item'), { label: deal.dealName, icon: 'briefcase' })));
+        $('empty').hidden = data.length > 0;
       } catch (err) {
-        if (!err.signingIn) who.textContent = 'Could not load: ' + err.message;
+        if (!err.signingIn) $('who').textContent = 'Could not load: ' + err.message;
+      } finally {
+        $('loading').hidden = true;
       }
     })();
   </script>
