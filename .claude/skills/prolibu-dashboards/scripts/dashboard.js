@@ -13,6 +13,7 @@
 //   dashboard.js dashboards <domain> [text]
 //   dashboard.js show       <domain> report|dashboard <id or code>
 //   dashboard.js fields     <domain> <Model>
+//   dashboard.js dates      <domain> <Model> [--where '<json>']
 //   dashboard.js schema     <domain> <tool> [argument]
 //   dashboard.js diagnose   <domain> report|dashboard <id or code>
 //   dashboard.js preview    <domain> '<plan json>'
@@ -486,6 +487,51 @@ async function cmdFields(client, [model]) {
   return { model, fields };
 }
 
+// Which date fields actually hold data. A period on a date most records leave empty opens in
+// zeros, and picking it by name alone is a guess (closeDate is often empty on won deals).
+async function cmdDates(client, [model], flags) {
+  let where = {};
+  if (flags.where !== undefined) {
+    try {
+      where = JSON.parse(flags.where);
+    } catch (e) {
+      throw new UsageError('--where must be a JSON object, for example \'{"stage":"<stageCode>"}\'.');
+    }
+    if (!where || typeof where !== 'object' || Array.isArray(where)) throw new UsageError('--where must be a JSON object.');
+    if (JSON.stringify(where).includes('"$where"')) throw new UsageError('--where cannot use $where.');
+  }
+  // Reports filter stages by code; the REST API stores the stage's _id. Accept the code.
+  if (typeof where.stage === 'string' && !ID_RE.test(where.stage)) {
+    const body = await call(client, 'GET', `/v2/stage?${query({ xquery: { stageCode: where.stage }, select: '_id stageCode', limit: '1' })}`);
+    const found = (body.data || [])[0];
+    if (!found) throw new UsageError(`No stage with code "${where.stage}" on this account. Read the codes with fields.`);
+    where = { ...where, stage: found._id };
+  }
+  const { fields } = await cmdFields(client, [model]);
+  // The record's own dates first: they are the ones a period uses; nested ones fill the rest.
+  const datePaths = fields.filter((f) => /^date$/i.test(f.type)).map((f) => f.path)
+    .sort((a, b) => a.split('.').length - b.split('.').length).slice(0, 15);
+  const base = `/v2/${model.toLowerCase()}`;
+  const count = async (xquery) => {
+    const body = await call(client, 'GET', `${base}?${query({ xquery, select: '_id', limit: '1' })}`);
+    return body.pagination ? body.pagination.count : (body.data || []).length;
+  };
+  const records = await count(where);
+  const dates = [];
+  for (const p of datePaths) {
+    const empty = await count({ ...where, [p]: null });
+    // The API sorts only by top-level fields; nested dates come back without `latest`.
+    let latest = null;
+    if (!p.includes('.')) {
+      const body = await call(client, 'GET', `${base}?${query({ xquery: where, select: p, sort: `-${p}`, limit: '1' })}`);
+      const top = (body.data || [])[0];
+      latest = top ? top[p] : null;
+    }
+    dates.push({ path: p, filled: records - empty, empty, latest: latest == null ? null : String(latest).slice(0, 10) });
+  }
+  return { model, where, records, dates };
+}
+
 // The tools' arguments change often: read them live instead of trusting a copy. The catalog is
 // public and the same one the app's developer docs render.
 async function cmdSchema(client, [toolName, arg]) {
@@ -651,6 +697,7 @@ function parseCli(argv) {
     else if (arg === '--allow-removal') flags.allowRemoval = true;
     else if (arg === '--version') flags.version = next();
     else if (arg === '--profile') flags.profile = next();
+    else if (arg === '--where') flags.where = next();
     else if (arg.startsWith('--')) throw new UsageError(`Unknown option ${arg}.`);
     else positional.push(arg);
   }
@@ -663,6 +710,7 @@ const COMMANDS = {
   dashboards: (client, rest) => cmdList(client, 'dashboard', rest, 'dashboardName', 'dashboardCode'),
   show: cmdShow,
   fields: cmdFields,
+  dates: cmdDates,
   schema: cmdSchema,
   diagnose: cmdDiagnose,
   preview: cmdPreview,

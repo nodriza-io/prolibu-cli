@@ -12,6 +12,10 @@
 //   proposal.js contract           <domain> <contractId>
 //   proposal.js preview            <domain> '<plan json>'          writes nothing; returns a version
 //   proposal.js apply              <domain> '<plan json>' --version <v> --confirmed
+//   proposal.js model              <domain>                         which proposal model the account runs
+//
+// This script is for accounts whose proposal lives inside the deal. On an account where proposals
+// are their own records it stops (exit 3) and points to proposal-records.js.
 //
 // A plan has one "action": proposal | saveVersion | restoreVersion | contractTemplate |
 // generateContract | updateContract (fields in SKILL.md).
@@ -20,6 +24,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const { createClient, assertDataFileAllowed, UsageError, DEFAULT_ROOT } = require('../../_shared/prolibu-api');
+const { detectModel } = require('./model');
 
 const ID_RE = /^[a-f0-9]{24}$/i;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z?)?$/;
@@ -842,7 +847,26 @@ function parseCli(argv) {
   return { command: positional[0], domain: positional[1], rest: positional.slice(2), flags };
 }
 
+// Commands and plan actions that read or write the deal's own proposal.
+const DEAL_MODEL_COMMANDS = ['deals', 'show', 'preview', 'apply'];
+const CONTRACT_ONLY_ACTIONS = ['contractTemplate', 'updateContract'];
+const RECORDS_MODEL = 'This account keeps proposals as their own records (several per deal, with status and automatic versions). '
+  + 'Use scripts/proposal-records.js instead; nothing was read or written here.';
+
+async function assertDealModel(client, command, rest, rootDir) {
+  if (!DEAL_MODEL_COMMANDS.includes(command)) return;
+  // A bad plan is a usage error before any call, the model probe included.
+  if ((command === 'preview' || command === 'apply') && CONTRACT_ONLY_ACTIONS.includes(readPlan(rest[0], rootDir).action)) return;
+  const { model } = await detectModel(client);
+  if (model === 'records') throw new Blocked(RECORDS_MODEL);
+}
+
+async function cmdModel(client) {
+  return detectModel(client);
+}
+
 const COMMANDS = {
+  model: cmdModel,
   deals: cmdDeals,
   show: cmdShow,
   layouts: cmdLayouts,
@@ -864,6 +888,7 @@ async function main(argv, opts = {}) {
     if (!handler || !domain) throw new UsageError(`Usage: proposal.js <${Object.keys(COMMANDS).join('|')}> <domain> …`);
     // Generating a contract prints two PDFs on the server; give it more than the default 30 s.
     client = createClient({ domain, rootDir, profile: flags.profile, fetchImpl: opts.fetchImpl, stderr, timeoutMs: GENERATE_TIMEOUT_MS });
+    await assertDealModel(client, command, rest, rootDir);
     const result = await handler(client, rest, flags, { rootDir });
     stdout.write(`${hide(JSON.stringify(result, null, 2))}\n`);
     if (command === 'apply' && !result.saved) return 1;

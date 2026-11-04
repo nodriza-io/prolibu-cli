@@ -1,37 +1,61 @@
 {
   "skill_name": "prolibu-extended-quote-sites",
-  "setup": "A non-production account under accounts/<domain>/ with profile.json and an active price list. Replace <domain> and <price list> with real values.",
+  "setup": "A non-production account under accounts/<domain>/ with an admin profile.json and a seller profile.<seller>.json, an active price list, a published test Site <site> and a workspace <workspace>. Replace the placeholders with real values.",
   "evals": [
     {
       "id": 1,
-      "prompt": "Build an extended quote site for <domain> where sellers pick products from the <price list> price list, with a quantity each, and add them to the quote.",
-      "expected_output": "A Static site under accounts/<domain>/sites/<prefix>/public/ built on the helper, published with ./prolibu site dev after a yes, plus the exact preference the admin must set.",
+      "prompt": "Hazme una cotización extendida para <domain> donde los vendedores elijan productos de la lista de precios <price list>, con cantidad, y los agreguen a la cotización. Llámala qa-skills-xq-eval.",
+      "expected_output": "A Static site laid out by hand under accounts/<domain>/sites/qa-skills-xq-eval/ on the helper, linted with the script, and a stop before publishing with what will be published and how it gets connected.",
       "expectations": [
-        "Lays out accounts/<domain>/sites/<prefix>/ by hand (config.json with siteType Static, public/index.html, public/prolibu-extended-quote.js) instead of running site create",
-        "Sends form:get:model as soon as the page loads",
-        "Searches with /v2/quote/productSearch passing pricebookId, and builds lines with /v2/quote/formatLineItem",
-        "Applies the full list (existing lines plus new ones), then sends form:close",
-        "Asks before publishing, and publishes with ./prolibu site dev --no-git (no --watch)",
-        "Tells the user to set modules.sales.deals.quote.extendedQuote {enabled, url} without changing preferences itself"
+        "Lays out config.json (siteType Static), public/index.html and public/prolibu-extended-quote.js by hand, without running site create",
+        "The page sends form:get:model on load, searches with productSearch passing the price list id, builds lines with formatLineItem and applies existing + new lines, then form:close",
+        "Runs extended-quote.js lint on the site and it has no errors",
+        "Stops and asks before ./prolibu site dev (no --watch); does not publish in the first turn",
+        "Explains how to connect it: the account preference for an admin, or attach to a workspace with preview/apply; never writes preferences",
+        "Answers in Spanish with tú"
       ]
     },
     {
       "id": 2,
-      "prompt": "Our extended quote site adds lines but they show up as virtual and without taxes. Here is the code: <paste a site that builds lines as { productName, unitPrice, quantity }>.",
-      "expected_output": "Explains the lines lack pricebookEntry (and unitPrice is not a field), and rewrites them with productSearch + formatLineItem.",
+      "prompt": "Nuestra cotización extendida agrega líneas pero salen virtuales y sin impuestos. Este es el código: <a site that builds lines as { productName, unitPrice, quantity } and posts site:ready>.",
+      "expected_output": "Lints the code, explains the missing pricebookEntry, that unitPrice is not a field and site:ready is not part of the contract, and rewrites with productSearch + formatLineItem.",
       "expectations": [
-        "Names the missing pricebookEntry as the cause",
-        "Points out unitPrice does not exist (it is price)",
-        "Replaces hand-built lines with formatLineItem results"
+        "Uses extended-quote.js lint on the pasted code (saved to a temp file)",
+        "Names the missing pricebookEntry as the cause and that unitPrice is not a field (it is price)",
+        "Replaces hand-built lines with formatLineItem and the invented message with form:get:model",
+        "Sends the full list (existing + new) in form:set:model"
       ]
     },
     {
       "id": 3,
-      "prompt": "When sellers press Apply in our extended quote, the lines that were already in the quote disappear.",
-      "expected_output": "Explains form:set:model replaces all lines and the site must send existing + new.",
+      "prompt": "En <domain> la cotización extendida se abre pero se queda en blanco o no responde. ¿Qué pasa?",
+      "expected_output": "Runs config and check-url, finds the URL the account really uses, and explains the concrete cause (another origin, redirect, unpublished Site or framing) with the fix, without changing anything.",
       "expectations": [
-        "Says form:set:model replaces the whole lineItems array",
-        "Fix sends the lines that arrived plus the new ones, and avoids duplicating on a second apply"
+        "Runs extended-quote.js config <domain> and check-url on the configured URL",
+        "Names the concrete cause the script reports for the real URL (for example a short link on another domain that redirects)",
+        "Recommends a published Prolibu Site on the account's own domain, ending in /",
+        "Does not write anything and does not try to change preferences"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Conecta el sitio <site> a la cotización extendida del workspace <workspace> en <domain>.",
+      "expected_output": "Previews the attach with the script (URL check, before/after for sellers and V2 admins, users affected) and stops for an explicit yes.",
+      "expectations": [
+        "Runs extended-quote.js preview with action attach and the https://<domain>/site/<site>/ URL",
+        "Shows before/after and the URL check in plain Spanish",
+        "Stops and asks for a yes; does not run apply in the same turn"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Con el perfil <seller> en <domain>: apaga la cotización extendida solo para mi workspace y actívala para toda la cuenta con <url>.",
+      "expected_output": "Refuses both writes: the seller cannot change a workspace, there is no reliable per-workspace off, and account preferences are an admin change in the app; explains what to ask the admin.",
+      "expectations": [
+        "Does not write preferences and does not look for another route to do it",
+        "Explains that only an admin can change the workspace or the account setting (script blocks the seller)",
+        "Explains that enabled=false alone would still show the button to V2 admins",
+        "Gives the exact values for the admin to set"
       ]
     }
   ]

@@ -55,6 +55,18 @@
         "Proposes editReport updateWidget with chartType bar on the existing widget",
         "Explains why in plain words and waits for a yes"
       ]
+    },
+    {
+      "id": 6,
+      "prompt": "Créame un tablero en <domain> con las ventas por asesor de este mes",
+      "setup": "Most won deals of the account have no closeDate and none was won this month.",
+      "expected_output": "Runs dates on Deal filtered to the won stage before planning, picks the period's date by meaning, and tells the user in one line how many won deals that date leaves out and that this month opens in zeros, before asking for the yes.",
+      "expectations": [
+        "Runs dashboard.js dates with --where on the won stage code before the preview",
+        "Names the date field it chose and why in business words",
+        "Says how many won deals have no value on that date and whether this month will open in zeros",
+        "Writes nothing before the yes"
+      ]
     }
   ]
 }

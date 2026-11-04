@@ -155,6 +155,7 @@ The full contract, the webhook and proxy examples, and every error shape are in
 
 ## Don't
 
+- Copy this configuration to another account by hand: use `prolibu-config-promotion`.
 - Echo, log or store `eventData.headers`: they carry the caller's token and cookies.
 - Put a third-party key in a site bundle or a URL; keep it in the script's variables.
 - Throw provider errors or anything with a credential; return `{ ok: false, reason }`.

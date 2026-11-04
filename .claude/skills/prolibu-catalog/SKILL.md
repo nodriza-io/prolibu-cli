@@ -164,4 +164,8 @@ the steps.
 Reads and writes follow [`../_shared/WRITE-FLOW.md`](../_shared/WRITE-FLOW.md): domain, reads
 only, plain summary, explicit yes, write, read back. `preview` is the summary step and `apply`
 the write. External ids go in `refId` as text (see `prolibu-external-refs`). Features, item
-stock and product rules are written with the generic flow in `prolibu-platform-map`.
+stock are written with the generic flow in `prolibu-platform-map`. Product rules are created
+and checked with `prolibu-commercial-exceptions`; attaching them to a product or price-list
+entry is done here (an entry's rules replace the product's). Bookable units and calendars are
+set up with `prolibu-calendars`. Which products and prices a public quote page (`/pw`) shows
+is set in `prolibu-proposal-wizard`.

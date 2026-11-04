@@ -137,6 +137,7 @@ falls outside the steps above.
 | "Virtual line items has been disabled…" | A line without a product, on an account that forbids them | Use catalog products |
 | 400 "This deal is in the … stage" | Closed deal | Tell the user; an admin decides |
 | 409 when saving | An approval changed the quote | Preview again |
+| A product rule blocks the save ("no puede ser superior", "está bloqueado", "viola la regla de la excepción comercial") | A rule limits that field, or an approved exception pins it | `prolibu-commercial-exceptions`: diagnose, then request an exception |
 
 ## Verify
 

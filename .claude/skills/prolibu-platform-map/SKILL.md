@@ -1,6 +1,6 @@
 ---
 name: prolibu-platform-map
-description: Start here for any Prolibu account task. Routes the request to the right Prolibu skill (account setup, sites, scripts, endpoints, forms, webhooks, external ids, imports, custom fields, catalog, quotes, proposals, stages, activities, support, messaging, dashboards, AI agents, virtual tours), maps business words to Prolibu objects and modules, and gives the safe procedure to read or write any other object through the API (schema first, then the write flow). Use it whenever someone asks what Prolibu has or "how does X work in Prolibu", wants to work with an object no other Prolibu skill covers (invoices, payments, custom objects…), or a call returns every record, 400 on a populate or sort, or a filter that seems ignored. Spanish triggers: "qué objetos tiene Prolibu", "cómo funciona", "qué módulo", "crear un registro", "consultar por API".
+description: Start here for any Prolibu account task. Routes the request to the right Prolibu skill (account setup, sites, scripts, endpoints, forms, webhooks, external ids, imports, custom fields, catalog, quotes, proposals, stages, commercial exceptions, calendars, billing, contracts, leads, scoring, the public quoter, projects and work orders, ads, data cleanup, access review, document designs, academy, list columns and saved filters, moving configuration between accounts, activities, support, messaging, conversations, dashboards, AI agents, virtual tours, diagnostics), maps business words to Prolibu objects and modules, and gives the safe procedure to read or write any other object through the API (schema first, then the write flow). Use it whenever someone asks what Prolibu has or "how does X work in Prolibu", wants to work with an object no other Prolibu skill covers (invoices, payments, custom objects…), or a call returns every record, 400 on a populate or sort, or a filter that seems ignored. Spanish triggers: "qué objetos tiene Prolibu", "cómo funciona", "qué módulo", "crear un registro", "consultar por API".
 ---
 
 # Prolibu platform map
@@ -24,7 +24,7 @@ Answer in the user's language. Object names, API paths and field names stay as w
 
 | The user wants to… | Skill |
 | --- | --- |
-| Publish a website, landing page or single-page app on the account | `prolibu-sites` |
+| Publish a website, landing page or single-page app on the account: check the build, publish with read-back, roll back, gate or take down | `prolibu-sites` |
 | Run code on record events, on a schedule or on demand | `prolibu-scripts` |
 | Expose a custom URL or receive another system's webhook | `prolibu-endpoints` |
 | Build or change a web form, or route ad lead forms | `prolibu-forms` |
@@ -36,14 +36,31 @@ Answer in the user's language. Object names, API paths and field names stay as w
 | Create or update products, price lists and their prices, taxes, volume discounts or coupons, or load a catalog from Excel | `prolibu-catalog` |
 | Add, change or remove products on a deal's quote | `prolibu-quotes` |
 | Turn a deal's proposal on or change its template, save or restore proposal versions, write contract templates, or generate a deal's contract ready for e-signature | `prolibu-proposals` |
-| Build a product picker or configurator inside the quote editor | `prolibu-extended-quote-sites` |
+| Build a product picker or configurator inside the quote editor; which site each workspace gets | `prolibu-extended-quote-sites` |
 | Move records between pipeline stages, or understand a pipeline | `prolibu-stages` |
 | Log tasks, notes, meetings or calls on a contact, company or deal, or read a record's activity history | `prolibu-activities` |
 | Open, find, assign or answer support tickets; case types, routing, the support mailbox; help articles and the portal | `prolibu-support` |
-| Build e-mail templates with variables, contact lists or e-mail campaigns; test, launch, schedule or pause one; read WhatsApp conversations | `prolibu-messaging` |
+| Build e-mail templates with variables, contact lists or e-mail campaigns; test, launch, schedule or pause one | `prolibu-messaging` |
 | Build or change a report or dashboard (KPIs, charts, several reports, goals vs. actuals), or find why one shows zeros | `prolibu-dashboards` |
 | Create or change a native AI agent (instructions, model, skills, actions) and the triggers that run it on a schedule or a record event | `prolibu-ai-agents` |
 | Create, update or download virtual tours (car configurators, 360° spaces) | `prolibu-virtual-tours` |
+| See why a product rule blocks a quote; request, edit, withdraw, approve (or counter) or reject a commercial exception; check it reached the quote; create or edit product rules | `prolibu-commercial-exceptions` |
+| Set up a bookable calendar (hours, closed dates, rotation, units), check free slots, book, reschedule, cancel or confirm appointments, or diagnose a deal's bookings | `prolibu-calendars` |
+| Invoice a won deal or by hand, record or remove payments, emit or void invoices, see receivables and billing metrics (subscriptions and payment methods read only) | `prolibu-billing` |
+| Send a Draft contract for e-signature, see who still has to sign, remind pending signers, withdraw a sent contract, or download the original or signed PDF | `prolibu-contracts` |
+| Read or summarize a contact's or deal's WhatsApp/SMS conversations, reply with text or an approved template, assign a chat, hand it back to the AI agent, or write conversation flows | `prolibu-conversations` |
+| Triage, assign or convert leads without duplicates; follow-up protocols and why a sequence e-mail did not go out; sellers' goals | `prolibu-leads` |
+| Explain a contact's or deal's score, create or edit a rules scoring profile, activate it, re-score named records | `prolibu-scoring` |
+| Set up the public self-service quoter (/pw): wizards, wizard groups, assignment group, links and QR; diagnose quotes that did not arrive | `prolibu-proposal-wizard` |
+| Find out why something did not happen or who changed what: script runs, webhooks, e-mail status, missed notices, sign-in failures, audit log, a record's history (read only) | `prolibu-diagnostics` |
+| Projects of tasks (gantt, members, working days, timeline) and work orders: create, status, overdue tasks, reschedule | `prolibu-projects` |
+| Meta / Facebook / Instagram ad leads: why they do not arrive, who receives them, leads per campaign, workspace per page, stage events to Meta | `prolibu-ads` |
+| Duplicate contacts or companies: find, merge, tag stale contacts as archived | `prolibu-data-cleanup` |
+| Who can see or do what: a user's roles and permissions, "can U open R and why not", who sees a record, admins, sign-in rules (read only) | `prolibu-access-review` |
+| Proposal and document designs (templates, snippets, default layout, fonts), custom views for sharing a proposal, who viewed a presentation | `prolibu-document-design` |
+| Academy: programs, courses, lessons, publish, enroll, who has not finished, missing certificates | `prolibu-academy` |
+| Default list columns, saved or shared filters, menu links, row actions, field and cell widgets | `prolibu-ui-customization` |
+| Move or compare configuration between accounts (dev to prod): scripts, endpoints, forms, webhooks, templates, stages, filters | `prolibu-config-promotion` |
 | Create a new skill, or rebuild one that does not work | `prolibu-skill-creator` |
 | Anything else: find, create or change records of any other object | This skill: Steps below |
 

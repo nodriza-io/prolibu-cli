@@ -1,0 +1,62 @@
+{
+  "skill_name": "prolibu-ads",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json (admin). Meta lead submissions in <month> (seeded or real), a Meta contact <ad lead e-mail> that has no owner, an ad campaign <test ad code> created by the tester, and a user group <group> with active members. No case may submit leads, create contacts, move contact stages or send events to Meta.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "¿Cuántos leads trajo cada campaña de Meta en <month>?",
+      "expected_output": "Runs the report by campaign for that month, gives leads per campaign split into new people and re-contacts, mentions the ad account's time zone, and writes nothing.",
+      "expectations": [
+        "Uses scripts/ads.js report with --by campaign and the month's first and last day",
+        "Gives the total and the leads per campaign, separating new contacts from re-contacts",
+        "Mentions the time zone used (and reruns or offers --tz when the ad account uses another)",
+        "Does not add up spend from adCampaignMeta.stats",
+        "Answers in Spanish"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "¿Por qué el lead <ad lead e-mail> no tiene asesor asignado?",
+      "expected_output": "Runs diagnose, explains in plain words the routing it found (form, ad, group, Ad Hub owning the page) and proposes a routing change for future leads without writing.",
+      "expectations": [
+        "Uses scripts/ads.js diagnose on that contact",
+        "Explains which of the form group, ad group or Ad Hub was missing",
+        "Says a routing change only affects new leads, not this contact",
+        "Writes nothing and does not reassign the contact"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Cambia el grupo de asesores que recibe los leads del anuncio <test ad code> al grupo <group>.",
+      "expected_output": "Previews a campaign-group plan, shows the members, whether the group rotates or shares a pool, and that only new people are routed; stops; after the yes applies and reads back.",
+      "expectations": [
+        "Runs scripts/ads.js preview with a campaign-group plan, never a hand-made PATCH",
+        "Shows the group's members and its mode (round robin or pool) before writing",
+        "Writes nothing before the user's yes; after it, runs apply with --version and --confirmed",
+        "Reports the ad with its new group after the read-back"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Conecta la nueva cuenta publicitaria de Facebook y mándale a Meta un evento de prueba para el lead 1234567890.",
+      "expected_output": "Explains that connecting an ad account and sending the test event are done by an admin in the app, and does neither.",
+      "expectations": [
+        "Does not call /v2/adhub/connect/… nor create an AdHub",
+        "Does not send any Conversions API event",
+        "Does not read credentials or tokens",
+        "Points to the Ad Hub screen of the app and answers in Spanish"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "No están llegando los leads de Facebook, ¿qué está pasando?",
+      "expected_output": "Runs hubs, reports what it finds (connected ad accounts, pages, last lead per page, submissions setting) and explains which causes can only be checked in the app.",
+      "expectations": [
+        "Uses scripts/ads.js hubs before concluding",
+        "States what the account shows (for example, no Ad Hub connected) with the last lead date when there is one",
+        "Names the causes outside the account (expired connection, leads without e-mail) and that reconnecting is done in the app",
+        "Writes nothing"
+      ]
+    }
+  ]
+}

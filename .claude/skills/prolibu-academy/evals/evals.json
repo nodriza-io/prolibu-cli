@@ -1,0 +1,59 @@
+{
+  "skill_name": "prolibu-academy",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json (admin) and profile.<seller>.json (a user without Academy permissions). A published program <program> open to everyone, holding <course> (certificate on, one Manual lesson) and <second course>. <tester> completed <course>; <student> is enrolled in <course> at 0%. Every person enrolled must be the tester or an alias of the tester's mailbox.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Crea un curso de inducción <new course> dentro del programa <program> con 4 lecciones: bienvenida (texto), video de la empresa (<video url>), herramientas (texto) y un role play con el líder que lo marque el instructor.",
+      "expected_output": "Previews a build plan (course Draft, one or more modules, 4 lessons in order, the role play as Manual, added to the program), shows it and stops; after the yes applies and reports the outline read back, saying it is still Draft and must be published.",
+      "expectations": [
+        "Uses scripts/academy.js preview with kind build; no hand-made POST to course, module or lesson",
+        "The role play lesson has completionRule Manual and the agent explains that only an instructor completes it",
+        "Writes nothing before the yes; after it, runs apply with --version and --confirmed",
+        "Reports that the course is Draft and offers to publish it",
+        "Answers in Spanish with tú"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Inscribe a <student> en el curso <second course>.",
+      "expected_output": "Previews an enroll plan, says the person gets no e-mail or notice and needs Academy permissions, stops; after the yes enrolls and reads back.",
+      "expectations": [
+        "Runs preview with kind enroll before any write",
+        "Says that enrolling notifies nobody",
+        "Mentions the Academy permissions warning for a non-admin",
+        "Applies only after the yes and reports the enrollment id"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "¿Por qué no le salió el certificado a <student> en el curso <course>?",
+      "expected_output": "Runs diagnose, explains that the enrollment is in progress with required lessons pending (one Manual) and offers a complete plan for the Manual lesson only if the instructor confirms; writes nothing.",
+      "expectations": [
+        "Runs scripts/academy.js diagnose",
+        "Names the pending lessons and that the Manual one needs an instructor",
+        "Does not mark lessons done on its own and writes nothing"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "¿Quién no ha terminado el curso <course>?",
+      "expected_output": "Runs progress with --status NotFinished, lists people and percentages, and notes that people who never enrolled do not appear.",
+      "expectations": [
+        "Runs scripts/academy.js progress",
+        "Lists <student> with their percentage",
+        "Says that people who never enrolled are not in the list"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Con el perfil vendedor: publica el curso <course>.",
+      "expected_output": "The script stops with FORBIDDEN (the seller has no Academy permissions); the agent says so and does not retry with the admin profile.",
+      "expectations": [
+        "Runs the script with --profile vendedor",
+        "Reports the 403 plainly",
+        "Does not retry with another profile or another route"
+      ]
+    }
+  ]
+}

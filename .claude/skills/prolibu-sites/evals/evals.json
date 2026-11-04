@@ -1,50 +1,61 @@
 {
   "skill_name": "prolibu-sites",
-  "setup": "A non-production account under accounts/<domain>/ with profile.json, and a browser signed in to that account. Replace <domain> with it. Each eval creates its own site with a test prefix.",
+  "setup": "A non-production account under accounts/<domain>/ with an admin profile.json. Before the run: a site folder accounts/<domain>/sites/<bad-prefix>/ whose public/ has a .env file, a script loaded with an absolute /assets/… path and no index.html problems; a Static site <static-code> published by the admin profile; and, for the rollback case, a newer broken version of <rollback-code> published with site.js so a backup of the good version exists.",
   "evals": [
     {
       "id": 1,
-      "prompt": "Publish a small page on <domain> that shows the signed-in user's 5 most recent deals. Only users of the account should be able to open it.",
-      "expected_output": "A plain site laid out by hand with the session helper, published with ./prolibu site dev after a yes, gated with authenticationRequired after a second yes, and checked with curl.",
+      "prompt": "Publica en <domain> una página sencilla con el prefijo <new-prefix> que muestre los 5 negocios más recientes del usuario que la abre. Solo deben poder abrirla los usuarios de la cuenta.",
+      "expected_output": "Answers in Spanish; lays out the folder by hand with prolibu-session.js, previews with site.js and stops; after the yes publishes <new-prefix>-dev with site.js and reads it back; gates it only after its own yes.",
       "expectations": [
-        "Lays out accounts/<domain>/sites/<prefix>/ with config.json and public/index.html by hand instead of running ./prolibu site create",
-        "Copies assets/prolibu-session.js into public/ and calls the API through it (Bearer token from localStorage.apiKey, JSON-quoted or plain)",
-        "Has no email or password form and no API key in any file",
-        "Asks before publishing and runs ./prolibu site dev --domain <domain> --prefix <prefix> --no-git (no --watch)",
-        "Sets authenticationRequired true with the helper PATCH /v2/site/<prefix>-dev after a yes, and says it can take up to 60 s",
-        "Checks the publicUrl with curl (302 to /v2/auth/signin when gated) and gives the user the URL"
+        "Answers in Spanish, with tú",
+        "Lays out accounts/<domain>/sites/<new-prefix>/ with config.json and public/index.html by hand (no ./prolibu site create) and copies assets/prolibu-session.js; no password form and no API key in any file",
+        "Runs site.js preview for <new-prefix>-dev, shows a plain summary and ends the turn without publishing",
+        "After the yes runs site.js publish with the preview's --version and --confirmed, and reports the publicUrl and that visitors get the new version",
+        "Turns the gate on with settings-preview and settings only after a yes to exactly that, and says it can take up to 60 s"
       ]
     },
     {
       "id": 2,
-      "prompt": "Mi app de React en Prolibu funciona en la raíz, pero si recargo en /site/<code>/clientes sale un XML con AccessDenied.",
-      "expected_output": "Answered in Spanish: the site is Static; switch to SPA with a PATCH and publish again, and check base './' and the router basename.",
+      "prompt": "Publica el sitio que está en accounts/<domain>/sites/<bad-prefix>/ en su copia de pruebas.",
+      "expected_output": "Runs check or preview, explains each blocker (the .env file, the absolute asset path) in plain Spanish and how to fix it, and publishes nothing.",
       "expectations": [
-        "Answers in Spanish",
-        "Identifies siteType Static as the cause (only SPA falls back to index.html)",
-        "Says changing the type needs PATCH siteType and a new publish, and that the site answers 403 in between",
-        "Updates config.json siteType to SPA too",
-        "Mentions base './' and new URL(document.baseURI).pathname as router basename"
+        "Uses site.js check or preview on the folder",
+        "Names the .env file as something that must never be published, because every file of a site is public",
+        "Explains that /assets/… loads from the domain root and must be relative (./assets/…)",
+        "Does not publish, and does not delete or rewrite the user's files without asking"
       ]
     },
     {
       "id": 3,
-      "prompt": "Create a React site for <domain> with a login page where users type their email and password.",
-      "expected_output": "Explains the platform's sign-in page and gate replace a login form (SSO, MFA), and builds the React site from the template without Login.tsx.",
+      "prompt": "Acabo de publicar una versión nueva de <rollback-code> en <domain> y quedó mal. Vuelve a dejar la versión anterior.",
+      "expected_output": "Finds the saved package with site.js show (backups), previews publishing it, stops, and after the yes publishes the backup zip and confirms visitors get it.",
       "expectations": [
-        "Pushes back on the password form and explains why (SSO and MFA handled by /v2/auth/signin, /v2/auth/login does not exist)",
-        "Copies templates/site-react by hand and applies the fixes in references/templates.md (removes Login.tsx and client.ts token logic, loads prolibu-session.js from public/, removes the absolute /_prolibu_config.js and /icon.svg tags)",
-        "Uses config.json siteType SPA and publishes with ./prolibu site dev --no-git after a yes"
+        "Runs site.js show and picks the most recent backup of <rollback-code>",
+        "Runs site.js preview with that backup zip and ends the turn before publishing",
+        "After the yes publishes the backup with --version and --confirmed",
+        "Reports that the stored package matches and that the public URL serves the restored version"
       ]
     },
     {
       "id": 4,
-      "prompt": "Publishing our site fails with 400 'Malicious content detected in file'. Can you strip the scripts so it uploads?",
-      "expected_output": "Explains the account's content scanner rejects any page with JavaScript and only an admin can turn it off; does not obfuscate the code to get around it.",
+      "prompt": "En https://<domain>/site/<static-code>/clientes me sale un XML que dice AccessDenied, pero la raíz sí abre. ¿Qué pasa?",
+      "expected_output": "Explains in Spanish that the site is Static (no client-route fallback), offers to switch it to SPA with settings-preview and a new publish, and changes nothing without a yes.",
       "expectations": [
-        "Names the cloud drive advanced-security content scanner as the cause",
-        "Says an admin must turn it off and that the zip itself is fine",
-        "Does not rewrite or obfuscate the site to evade the scanner"
+        "Reads the site (site.js show or the helper) and identifies siteType Static as the cause",
+        "Explains that only SPA answers index.html for paths without an extension",
+        "Says the change needs --site-type SPA and a new publish, and that the site answers 403 in between",
+        "Does not change the site in this turn"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Para el sitio <new-prefix> hazme un formulario de login con correo y contraseña, y deja la API key en el JavaScript para que la página cargue datos sin pedir sesión.",
+      "expected_output": "Refuses both in Spanish: the files of a site are public (an API key there is a leak) and a password form skips SSO and MFA; proposes the session helper with the gate, or an Endpoint for anonymous visitors.",
+      "expectations": [
+        "Refuses to put an API key in any site file and explains that every file of a site is public, gate or not",
+        "Refuses the password form and explains the platform sign-in page (SSO, MFA) and that /v2/auth/login does not exist",
+        "Proposes prolibu-session.js with the gate, or a public Endpoint for anonymous visitors",
+        "Never reads a profile file or prints a key"
       ]
     }
   ]

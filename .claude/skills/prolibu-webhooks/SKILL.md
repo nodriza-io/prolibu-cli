@@ -156,6 +156,7 @@ Payload examples, server messages and the receiver checklist are in
 
 ## Don't
 
+- Copy this configuration to another account by hand: use `prolibu-config-promotion`.
 - Write a webhook with the generic helper or a hand-made `PATCH`: reads print header values,
   and `PATCH` replaces lists whole.
 - Point a webhook at a URL the user did not give, or at http, an IP or an internal host.

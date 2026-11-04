@@ -1,7 +1,7 @@
 # How a Site is served, gated and signed into
 
 Read this when a case falls outside the steps in `SKILL.md`. Everything here was checked
-against the server code and with live requests.
+against the server code and with live requests (last on 2026-11-03).
 
 ## The Site record
 
@@ -46,14 +46,32 @@ from the template's `config.json`) are not Site fields; the server drops them.
 The CLI sends `siteType` from `config.json` only when it creates the site. To change it:
 
 1. Change `siteType` in `config.json` (for `--watch` and future copies).
-2. `PATCH /v2/site/<siteCode>` with `{ "siteType": "SPA" }` through the helper, after a yes.
+2. `site.js settings-preview <domain> <siteCode> --site-type SPA`, a yes, then `settings`.
    From now until step 3 the site answers 403: the record points to a folder that is empty.
-3. Publish again with `./prolibu site dev|prod`. The package unzips into the new folder.
+3. Publish again (`site.js preview` → `publish`). The package unzips into the new folder.
 
 Do it for `-dev` and for the prod site separately.
 
 ## Publishing rules
 
+`scripts/site.js` applies these rules before it uploads; `./prolibu site dev|prod` checks none
+of them.
+
+- **The server deletes the live files before it validates the new zip.** A failed publish
+  (no `index.html`, wrong user) leaves the site empty. The platform keeps no previous
+  version: the uploaded zip replaces the old one (its file is overwritten or deleted). The
+  script downloads the live package before replacing it, checks its SHA-256 against the
+  file record, and prints the path; publishing that zip is the rollback.
+- The upload is `PATCH /v2/site/<siteCode>` as multipart with the zip in the field `package`
+  (`application/zip`). The file record of `package` has a `sha256`: the read-back compares
+  it with the uploaded zip. Each HTML file served carries `x-amz-meta-sha256`, the SHA-256 of
+  the stored file, so the script can tell which `index.html` visitors get (SPA pages get a
+  `<base>` injected, so the body itself differs; the header does not).
+- **Upload limit.** The zip goes through the API's upload limit: the account preference
+  `modules.tools.cloudDrive.uploadRestrictions.maxFileSizeMB` (20 MB by default, readable by
+  every user in `/v2/user/preferences`), never above the platform ceiling. Over it: 413.
+  `blockExtensions` (admins only) applies to each unzipped file: one blocked file stops the
+  unzip halfway.
 - `index.html` must be at the root of the zip. The CLI zips the **contents** of `public/` or
   of the build's output folder, so keep `index.html` there. Otherwise: 400 "The site package
   must contain an index.html file".
@@ -71,6 +89,16 @@ Do it for `-dev` and for the prod site separately.
   while it is on. It is off by default; only an admin can change it. Tell the user; do not
   try to obfuscate around it.
 
+## What visitors' responses carry
+
+- HTML: `cache-control: no-store`, `content-type: text/html`. No `X-Robots-Tag` and no
+  `Referrer-Policy`: an ungated site whose link is shared can be indexed. For internal pages
+  add the robots (`noindex, nofollow`) and referrer (`no-referrer`) meta tags, or gate it.
+- Storage metadata is passed through: `x-amz-meta-sha256`, `x-amz-meta-filepath` and
+  `x-amz-meta-createdby` (the creator's user id), as the long `url` already does.
+- The uploaded zip (`package`) is stored as a public file: anyone with its URL downloads the
+  whole site, gate or not.
+
 ## The sign-in gate (`authenticationRequired`)
 
 - It guards **HTML pages** under `/site/<siteCode>/` only. Assets are redirected to public
@@ -78,7 +106,9 @@ Do it for `-dev` and for the prod site separately.
   download it: never put a secret in a bundle.
 - It reads the `apiKey` session cookie (httpOnly, set by the sign-in page). Without a valid
   one: 302 to `/v2/auth/signin?redirect=<the path asked for>`.
-- After a change, it can take up to 60 s to apply (the server caches the site lookup).
+- After a change, it can take up to 60 s to apply (the server caches the site lookup,
+  per server, misses included: a code asked for before the site existed answers 404 for up to
+  60 s after it is created). `active` is not cached: it changes the storage permissions.
 - The sign-in page handles everything: password, Google, Microsoft and Okta sign-in, MFA,
   lockout after failed attempts and password reset. When it already
   has a valid token in `localStorage`, it restores the cookie and returns to `redirect` at

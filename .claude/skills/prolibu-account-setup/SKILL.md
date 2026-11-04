@@ -140,6 +140,10 @@ outside the steps.
 - Ask for the key in the chat, read or print a profile file (`cat`, `Read`, `echo`), or put a
   key on a command line (`./prolibu … --apikey`, `curl -H`, `claude mcp add --header` with
   the key typed in).
+- Hand the person a command that prints the key either (`node -p '…apiKey'`, `cat`, `jq`), not
+  even "to run yourself": run with `!` in Claude Code, its output lands in this conversation.
+  When someone asks to see their key, say it stays out of the chat, name the file
+  (`accounts/<domain>/profile.json`) to open in their editor, and offer `check` to confirm it works.
 - Run `claude mcp add` or `claude mcp get <name>` yourself: the first is the user's to run,
   the second prints the key. Use `claude mcp list`.
 - Use `--scope project` or write `.mcp.json`: it lands in the repo.

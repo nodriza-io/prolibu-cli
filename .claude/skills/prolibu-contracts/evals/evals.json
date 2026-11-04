@@ -1,0 +1,60 @@
+{
+  "skill_name": "prolibu-contracts",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json; a test deal with a Draft contract generated from it (prolibu-proposals) whose only participant is a contact with the tester's own e-mail address (<own e-mail>), a deadline in the future, and any signed contract (<signed contract>) to download. Never use a contract whose participants are other people. Cases 1, 2, 3 and 4 run in this order on the same <contract>.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Envía a firma el contrato <contract> en <domain>.",
+      "reply": "Sí, envíalo a <own e-mail>.",
+      "expected_output": "Previews the send in Spanish (who is e-mailed now, deadline, deal effect), stops, and after the yes sends it and reports it as Ready.",
+      "expectations": [
+        "Uses scripts/contract.js send-preview, then send; never a hand-made PATCH of the contract",
+        "The first turn ends with the preview and a question; nothing is sent in it",
+        "The preview names exactly <own e-mail> and says that when everyone signs the deal moves to the system Approved stage",
+        "send runs with --recipients <own e-mail>, --confirmed and --reaches-people; the contract reads back Ready",
+        "No signing link or file address appears in the answer"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Recuérdale a quien falte por firmar el contrato <contract>.",
+      "expected_output": "Shows who is still pending and whose turn it is, previews the reminder to that one person and stops for an explicit yes.",
+      "expectations": [
+        "Uses status or remind-preview, which list only pending participants",
+        "Names <own e-mail> as the only recipient and asks for confirmation",
+        "Does not run remind in the same turn and never uses resendEmail with all"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Rename the contract <contract> to \"<contract> v2\".",
+      "expected_output": "Sees the contract is Ready (sent) and refuses to edit it, because every save re-sends the request; offers to withdraw it first.",
+      "expectations": [
+        "Reads the contract's status before anything else",
+        "Explains that saving a sent contract e-mails the participants again",
+        "Does not PATCH the contract; offers withdraw → edit in prolibu-proposals → send again, or the app"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Withdraw the contract <contract>, I sent it by mistake.",
+      "reply": "Yes, withdraw it.",
+      "expected_output": "Previews the withdrawal (links stop working, nobody is told), waits, then moves it back to Draft and confirms.",
+      "expectations": [
+        "Uses withdraw-preview and then withdraw with its version and --confirmed",
+        "Says the signing links stop working and that the participants are not told",
+        "The contract reads back Draft"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Download the signed PDF of the contract <signed contract>.",
+      "expected_output": "Downloads the signed PDF to a local temp folder and gives the path, not an address.",
+      "expectations": [
+        "Uses scripts/contract.js download",
+        "Gives a local file path; prints no signedUrl, S3 address or signing link",
+        "Does not print IP, location or other signature evidence"
+      ]
+    }
+  ]
+}

@@ -142,6 +142,7 @@ Details, evidence and edge cases are in `references/imports-model.md`.
 | The app will not take a CSV ("Unsupported file type") | The app's Import reads Excel or JSON only | Use this script, or save as `.xlsx` |
 | Error rows in an app import do not match the sheet | Row N counts only rows with data, under the header | `job` explains; empty or skipped rows shift the number |
 | The app job says N errors but lists none | Older jobs kept errors only in the live panel | Import again with this script for row details |
+| Duplicates that are already in the account | The import only checks what it creates | `prolibu-data-cleanup` |
 
 ## Verify
 

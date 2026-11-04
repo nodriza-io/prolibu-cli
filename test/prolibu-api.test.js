@@ -357,3 +357,180 @@ describe('requests that reach people', () => {
     expect(api.redactFields({ authorizationHeader: 'Basic abc' })).toEqual({ authorizationHeader: '***' });
   });
 });
+
+describe('reachesPeopleRoute', () => {
+  const R = api.reachesPeopleRoute;
+
+  test('matching ignores letter case, like the server', () => {
+    expect(R('PUT', '/v2/emailcampaign/sendcampaign')).toBe(true);
+    expect(R('PUT', '/v2/EmailCampaign/SENDCAMPAIGN')).toBe(true);
+    expect(R('POST', '/v2/Message/Send')).toBe(true);
+    expect(R('POST', '/v2/EMAIL')).toBe(true);
+  });
+
+  test('message retry by id reaches people', () => {
+    expect(R('POST', `/v2/message/${'a'.repeat(24)}/retry`)).toBe(true);
+  });
+
+  test('routes found in the second batch reach people', () => {
+    const id = 'b'.repeat(24);
+    for (const [m, p] of [
+      ['POST', '/v2/aichat/resume'],
+      ['POST', '/v2/calendar/scheduleEvent'],
+      ['POST', '/v2/calendarevent/reschedule'],
+      ['PATCH', '/v2/calendarevent/changestatus'],
+      ['PATCH', '/v2/attendee/changeStatus'],
+      ['POST', `/v2/contract/resendEmail/${id}/${id}/single`],
+      ['POST', '/v2/contract/sendcode'],
+      ['POST', '/v2/commercialexception'],
+      ['PUT', '/v2/commercialexception/editRequest'],
+      ['PUT', '/v2/commercialexception/cancel'],
+      ['PATCH', `/v2/commercialexception/${id}`],
+    ]) expect([m, p, R(m, p)]).toEqual([m, p, true]);
+  });
+
+  test('routes found in the third batch reach people', () => {
+    for (const [m, p] of [
+      ['POST', '/v2/scoring/recompute'],
+      ['POST', '/v2/proposalwizard/generate'],
+      ['POST', '/v2/ProposalWizard/pairSubmit'],
+      ['PUT', '/v2/contactprotocol/enroll'],
+      ['PUT', '/v2/notification/push'],
+    ]) expect([m, p, R(m, p)]).toEqual([m, p, true]);
+    expect(R('GET', '/v2/scoring/preview')).toBe(false);
+    expect(R('PUT', '/v2/contactprotocol/pause')).toBe(false);
+  });
+
+  test('a contract write that sets status Ready reaches people', () => {
+    const id = 'c'.repeat(24);
+    expect(R('POST', '/v2/contract', { status: 'Ready' })).toBe(true);
+    expect(R('PATCH', `/v2/contract/${id}`, { status: 'ready' })).toBe(true);
+    expect(R('PATCH', `/v2/contract/${id}`, { status: 'Draft' })).toBe(false);
+    expect(R('POST', '/v2/contract', { status: 'Draft' })).toBe(false);
+  });
+
+  test('a contract created without a status is born Ready, so it reaches people', () => {
+    expect(R('POST', '/v2/contract', { contractName: 'x' })).toBe(true);
+    expect(R('POST', '/v2/contract/', {})).toBe(true);
+    expect(R('POST', '/v2/contract')).toBe(true);
+    expect(R('PATCH', `/v2/contract/${'f'.repeat(24)}`, { contractName: 'x' })).toBe(false);
+  });
+
+  test('reads and unrelated writes do not', () => {
+    expect(R('GET', '/v2/message/send')).toBe(false);
+    expect(R('GET', '/v2/commercialexception')).toBe(false);
+    expect(R('POST', '/v2/invoice/registerpayment')).toBe(false);
+    expect(R('PATCH', `/v2/deal/${'d'.repeat(24)}`, { status: 'Ready' })).toBe(false);
+  });
+
+});
+
+describe('the body rule on both entry points', () => {
+  const D = 'dev99.example.com';
+  const id = 'e'.repeat(24);
+
+  test('the command line refuses a Ready contract without --reaches-people', async () => {
+    expect(await exec([D, 'PATCH', `/v2/contract/${id}`, '--data', '{"status":"Ready"}', '--confirmed'])).toBe(2);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(await exec([D, 'PATCH', `/v2/contract/${id}`, '--data', '{"status":"Draft"}', '--confirmed'])).toBe(0);
+  });
+
+  test('createClient refuses it too', async () => {
+    const c = api.createClient({ domain: D, rootDir, fetchImpl, stderr: { write: () => {} } });
+    await expect(c.request('POST', '/v2/contract', { data: { status: 'Ready' }, confirmed: true })).rejects.toThrow('reaches-people');
+    await c.request('POST', '/v2/contract', { data: { status: 'Ready' }, confirmed: true, reachesPeople: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('blocked routes', () => {
+  const B = api.blockedRoute;
+  const D = 'dev99.example.com';
+
+  test('routes that delete in bulk or change data on read are blocked for every method', () => {
+    expect(B('DELETE', '/v2/log/clear')).toBe(true);
+    expect(B('DELETE', '/v2/Log/Clear?x=1')).toBe(true);
+    expect(B('DELETE', '/v2/notification/clean')).toBe(true);
+    expect(B('GET', '/v2/eventsubscription/getMine')).toBe(true);
+    expect(B('PUT', '/v2/eventsubscription/updatemine')).toBe(true);
+    expect(B('GET', `/v2/email/view/${'a'.repeat(24)}`)).toBe(true);
+    expect(B('GET', '/v2/email/click?u=x')).toBe(true);
+    expect(B('POST', '/v2/email/unsubscribe')).toBe(true);
+    expect(B('GET', '/v2/EMAIL/Consent/abc')).toBe(true);
+  });
+
+  test('audit log exports are blocked, the plain read is not', () => {
+    expect(B('GET', '/v2/auditlog/getlogs?format=csv')).toBe(true);
+    expect(B('GET', '/v2/auditlog/getLogs?limit=5&format=XLSX')).toBe(true);
+    expect(B('GET', '/v2/auditlog/getlogs?limit=5')).toBe(false);
+    expect(B('GET', '/v2/auditlog/getlogs?format=json')).toBe(false);
+  });
+
+  test('neighbour routes stay allowed', () => {
+    expect(B('GET', '/v2/log')).toBe(false);
+    expect(B('GET', '/v2/notification')).toBe(false);
+    expect(B('GET', '/v2/eventsubscription')).toBe(false);
+    expect(B('GET', '/v2/email')).toBe(false);
+    expect(B('GET', `/v2/email/${'a'.repeat(24)}`)).toBe(false);
+    expect(B('GET', '/v2/emailcampaign/view')).toBe(false);
+  });
+
+  test('the command line refuses them even with --confirmed, before any request', async () => {
+    expect(await exec([D, 'DELETE', '/v2/log/clear', '--confirmed'])).toBe(2);
+    expect(await exec([D, 'GET', '/v2/eventsubscription/getmine'])).toBe(2);
+    expect(await exec([D, 'GET', '/v2/auditlog/getlogs?format=csv'])).toBe(2);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  test('createClient refuses them too, even with every flag', async () => {
+    const c = api.createClient({ domain: D, rootDir, fetchImpl, stderr: { write: () => {} } });
+    await expect(c.request('DELETE', '/v2/notification/clean', { confirmed: true, reachesPeople: true })).rejects.toThrow('blocked');
+    await expect(c.request('GET', '/v2/email/click/x')).rejects.toThrow('blocked');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('blocked routes added by the fourth batch', () => {
+  const B = api.blockedRoute;
+  const id = 'f'.repeat(24);
+
+  test('ad service callbacks, Meta test events and form discovery are blocked', () => {
+    expect(B('PATCH', '/v2/adhub/connect/ADH-1700000000000-123')).toBe(true);
+    expect(B('POST', '/v2/AdHub/connect/ADH-1/conversion/test')).toBe(true);
+    expect(B('POST', '/v2/adhub/connect/ADH-1/forms/discover')).toBe(true);
+    expect(B('GET', '/v2/adhub')).toBe(false);
+  });
+
+  test('public lead submission is blocked', () => {
+    expect(B('POST', '/v2/contact/submit')).toBe(true);
+    expect(B('POST', '/v2/contact')).toBe(false);
+  });
+
+  test('raw group moves and work orders built from a request body are blocked', () => {
+    expect(B('POST', '/v2/group/move')).toBe(true);
+    expect(B('POST', '/v2/workorder/createFromDeal')).toBe(true);
+    expect(B('POST', `/v2/workorder/clone/${id}`)).toBe(true);
+    expect(B('GET', '/v2/group')).toBe(false);
+    expect(B('POST', '/v2/workorder')).toBe(false);
+  });
+});
+
+describe('template view is blocked', () => {
+  test('rendering a system template by name or path is blocked', () => {
+    expect(api.blockedRoute('GET', '/v2/template/view/welcome')).toBe(true);
+    expect(api.blockedRoute('GET', '/v2/Template/View/x')).toBe(true);
+    expect(api.blockedRoute('GET', '/v2/template')).toBe(false);
+    expect(api.blockedRoute('GET', '/v2/contenttemplate/view/x')).toBe(false);
+  });
+});
+
+describe('script variables are masked', () => {
+  test('variables[].value is hidden, names stay', () => {
+    const body = { scriptCode: 'x', variables: [{ key: 'API_TOKEN', value: 'shh' }, { key: 'LIMIT', value: 5 }] };
+    expect(api.redactFields(body)).toEqual({ scriptCode: 'x', variables: [{ key: 'API_TOKEN', value: '***' }, { key: 'LIMIT', value: '***' }] });
+  });
+
+  test('a variables field that is not a list is left alone', () => {
+    expect(api.redactFields({ variables: 'none' })).toEqual({ variables: 'none' });
+  });
+});

@@ -36,6 +36,7 @@ node .claude/skills/prolibu-dashboards/scripts/dashboard.js <command> <domain> �
   dashboards <domain> [text]                           find dashboards by name
   show       <domain> report|dashboard <id or code>    pages, widgets, datasets, measures, links
   fields     <domain> <Model>                          fields you may use (Deal, Task, Goal…)
+  dates      <domain> <Model> [--where '<json>']       how many records leave each date empty
   schema     <domain> <tool> [argument]                the tool's live arguments
   diagnose   <domain> report|dashboard <id or code>    why it shows zeros or empty boxes; no writes
   preview    <domain> '<plan json>'                    dry run on the server; returns a version
@@ -67,6 +68,13 @@ If `accounts/` has several domains, ask which one.
    explain odd figures, run `diagnose`; read raw records only to confirm a data cause.
 3. **Read the fields** of each entity with `fields`: `fields <domain> Deal`. Stage fields list
    the account's stage codes. Goals, quotas or budgets live in another model (often `Goal`).
+   **Pick the period's date by meaning, then check it with `dates`** before planning: sales won
+   → the date the deal was won (`closeDate` when it is filled, else `stageMovedAt` filtered to
+   the won stage); pipeline or activity → `createdAt`. Run `dates <domain> Deal --where
+   '{"stage":"<won stageCode>"}'` once: it says how many records leave each date empty and the
+   latest value. Tell the user, in one line, the records a period on that date will never show
+   (for example "51 of 178 won deals have no close date") and when the latest one is older
+   than the period ("no sales closed this month yet: it will open in zeros").
 4. **Write the plan**: `{"tool": "<tool>", "args": {…}}`, inline in single quotes, or a JSON
    file in a temp folder. Working examples are in `references/dashboard-model.md`; when an
    argument is unclear, read it live with `schema`.
@@ -117,6 +125,8 @@ it before a plan with datasets, filters, breakdowns or goals.
 - **The period goes in `timeRange`** (`this_month`… in snake_case), never in `filter`.
   `this_month` ends today. A dashboard without a period opens on the last 30 days.
 - **A KPI over a measure needs `aggregation: "measure"`**, or it shows "--".
+- **Grouping by `assignee.firstName` merges namesakes** (two "Carlos" make one bar). When the
+  account has two users with the same first name, say so and add a table with first and last name.
 - **Grouped charts get `topN: 10`** unasked, and the platform then flags titles that do not say
   "Top 10". Remove it with `updateWidget` → `patch: {"topN": null}`.
 - **A live page follows its report; a pinned widget is a frozen copy** without the report's
@@ -137,13 +147,15 @@ it before a plan with datasets, filters, breakdowns or goals.
 | --- | --- | --- |
 | A KPI shows "--" | It reads a measure with `sum`/`count` | `updateWidget` → `aggregation: "measure"` |
 | Zeros or an empty chart | Period or date field leaves no rows; a filter matches nothing | `diagnose`; check `timeRange` and the widget's `localFilters` |
-| Attainment 0 % for everyone | No goals cover the people who sell in that period | Tell the user; the goals must be loaded |
+| Attainment 0 % for everyone | No goals cover the people who sell in that period | Tell the user; the goals are loaded with `prolibu-leads` (`goals`) |
+| A score column the user does not understand, or that looks wrong | The score comes from the active scoring profile | `prolibu-scoring` explains a record's score and its profile |
 | An empty box on a dashboard | Its live page was removed from the report | `diagnose dashboard`; `removeWidget`, or `pinPage` again |
 | Right in the report, empty on the dashboard | A widget pinned alone from a report with datasets | Remove it and `pinPage` the page |
 | Report and dashboard show different figures | Different periods or date fields, or a measure id clash | `show` both; align `timeRange`; rename the measure |
 | Only 10 bars | Default `topN: 10` | `patch: {"topN": null}` or "Top 10" in the title |
 | A big "(Blank)" bar | Records with no advisor or stage, or pointing to a user that no longer exists; or grouped by a reference the rows cannot name | Group by the expanded path (`assignee.firstName`); if it stays, it is the data: say how many records |
 | `BLOCKED: … turned off` | MCP integration off on the account | An admin turns it on in the app |
+| Lead counts per ad campaign | Ad leads come from Ad Hub submissions | `prolibu-ads report` |
 
 ## Verify
 

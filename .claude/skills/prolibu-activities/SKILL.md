@@ -122,6 +122,7 @@ Details, evidence and edge cases are in `references/activity-model.md`.
 | After moving the due date, the reminder came at the old time | The server only recomputes it when the reminder choice changes | Send `dates.dueReminderAt` with the new `dueAt` (reference) |
 | A customer received a calendar invitation | The meeting was created in the app with a connected calendar | Expected for those meetings; this skill never sends one |
 | A task "done" in the app | Its stage is the closing one ("Done") | Use `prolibu-stages` to move tasks |
+| A task that belongs to a project (gantt, dependencies, working days) | It is part of a task group | `prolibu-projects` |
 
 ## Verify
 

@@ -42,7 +42,8 @@ In plain business terms:
 2. **Which questions?** For each: the label, whether it is required, and which field of the
    record it fills. An answer that fills nothing is still kept (see "How the platform behaves").
 3. **Who may send it?** Anyone (public, with a captcha), only signed-in users of the account,
-   or anyone with a password.
+   or anyone with a password. A form linked to a public quote page (`/pw`) needs its captcha
+   off: the quote page never shows one (see `prolibu-proposal-wizard`).
 4. **What does the visitor see after sending?** A thank-you title and message, in the
    visitor's language, or a jump to a web address.
 5. **Keep each submission as a log entry?** Recommend yes: it is the only trace of a submission
@@ -153,6 +154,7 @@ Details and sources: `references/form-model.md`.
 | 403 "Invalid password" for everyone | Password mode set on an existing form without a password | Set `access.password` |
 | 429 | More than 60 submissions to the form in one minute | Wait a minute |
 | "Cannot POST /v2/form/register" | Wrong method | `PUT` |
+| A Meta / Facebook lead form, or ad leads with no owner | Meta forms are mirrored from the Ad Hub | `prolibu-ads` |
 
 ## Verify
 
@@ -163,6 +165,7 @@ Details and sources: `references/form-model.md`.
 
 ## Don't
 
+- Copy this configuration to another account by hand: use `prolibu-config-promotion`.
 - Build a custom HTML page plus a custom endpoint when a form does the job.
 - Write a form with the generic API helper or a hand-made PATCH.
 - Turn captcha off on a public form unless the user agreed after hearing it invites spam.

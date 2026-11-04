@@ -1,0 +1,61 @@
+{
+  "skill_name": "prolibu-scoring",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json (admin, no primary workspace). Scoring enabled for Contact and Deal, with one active profile per entity for the whole account. A contact <contact e-mail> with a stored score; a deal <deal name> with a quote; an inactive test profile <inactive profile> whose scope has no other active profile. Re-score only test records with no outside webhooks on their entity.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "¿Por qué el contacto <contact e-mail> tiene ese puntaje y no más?",
+      "expected_output": "Read-only: runs explain, names the profile that applies, lists the criteria met and not met with the values the contact holds, and says what would raise it.",
+      "expectations": [
+        "Uses scripts/scoring.js explain (no hand-made preview calls)",
+        "Names the applicable profile and every criterion with met / not met and its points",
+        "Cites the contact's real values for criteria not met (for example an empty job title)",
+        "Writes nothing",
+        "Answers in Spanish"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Muchos negocios no tienen puntaje, ¿qué pasa?",
+      "expected_output": "Runs status (with counts) and explains that scores are computed only when a record is saved, with no backfill; offers a re-score only for deals the user names, with its side effects; writes nothing.",
+      "expectations": [
+        "Runs status and reports the switches and the active Deal profile",
+        "Explains that activating or editing a profile does not re-score existing records (only their next save does)",
+        "Does not re-score anything, and never proposes re-scoring all deals or a query",
+        "If it mentions a re-score, it is for named ids with the webhooks it fires listed first"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Crea un perfil de scoring para negocios de toda la cuenta: +20 si la cotización supera 10 millones, +15 si la propuesta se vio más de 2 veces, +10 si cotiza el producto <product code>; bandas frío 0-29, tibio 30-59, caliente 60-100.",
+      "expected_output": "Runs plan with quoteTotal, proposalViews and a some over proposal.quote.lineItems, warns that 'caliente' is unreachable (ceiling 45), stops; after the yes creates the profile inactive and offers try and a separate activation that names the profile it would switch off.",
+      "expectations": [
+        "The plan uses quoteTotal, proposalViews and {\"some\": [{\"var\": \"proposal.quote.lineItems\"}, …productCode…]}",
+        "Reports that the highest reachable score is 45 and the 'caliente' band cannot be reached",
+        "Writes nothing before the yes; after it, apply creates the profile with active false",
+        "Does not activate in the same run; says activation would switch off the current active Deal profile"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Activa el scoring con IA para los contactos.",
+      "expected_output": "Explains that AI profiles do not run today (they score by their rules), that the skill does not change account settings, and offers a rules profile; writes nothing.",
+      "expectations": [
+        "Says profiles of type ai or hybrid currently score by their rules only",
+        "Does not write account preferences, does not call seed-default, and creates no profile",
+        "Offers a rules profile instead"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Activa el perfil <inactive profile> y recalcula el puntaje de <test contact ids>.",
+      "expected_output": "Two previews: activation (which profile it switches off, records in scope, no backfill) and re-score of only those ids (side effects listed); stops; after the yes runs both and reports the before/after scores.",
+      "expectations": [
+        "Runs activate-preview and recompute-preview before any write",
+        "Lists the profile switched off (or none) and the re-score side effects (webhooks, triggers, notifications)",
+        "After the yes, activates with --confirmed and re-scores with --confirmed --reaches-people only the named ids",
+        "Reports each record's score before and after"
+      ]
+    }
+  ]
+}

@@ -188,15 +188,15 @@ function redact(text, secret) {
 }
 
 // Replaces the value of well-known secret keys in a parsed response, at any depth.
-// Header lists ({headers: [{name, value}]}, as webhooks store them) often carry shared
-// secrets, so their values are masked too.
+// Header lists ({headers: [{name, value}]}, as webhooks store them) and script variables
+// ({variables: [{key, value}]}) often carry shared secrets, so their values are masked too.
 function redactFields(value) {
   if (Array.isArray(value)) return value.map(redactFields);
   if (value && typeof value === 'object') {
     const out = {};
     for (const [k, v] of Object.entries(value)) {
       if (SECRET_KEYS.has(k.toLowerCase())) out[k] = '***';
-      else if (k.toLowerCase() === 'headers' && Array.isArray(v)) out[k] = v.map(maskHeader);
+      else if (['headers', 'variables'].includes(k.toLowerCase()) && Array.isArray(v)) out[k] = v.map(maskHeader);
       else out[k] = redactFields(v);
     }
     return out;
@@ -224,18 +224,71 @@ function isNonMutating(method, reqPath) {
 }
 
 // Writes that e-mail, message or notify people the moment they run, and cannot be undone:
-// they need reachesPeople (--reaches-people) on top of --confirmed.
+// they need reachesPeople (--reaches-people) on top of --confirmed. The server matches
+// routes without regard to letter case, so these patterns do too (flag i).
+const ID = '[^/?]+';
+const END = '(\\/|\\?|$)';
 const REACHES_PEOPLE = [
-  /^\/v2\/email\/?(\?|$)/, // creating an e-mail sends it by default
-  /^\/v2\/email\/(send|notify)(\/|\?|$)/,
-  /^\/v2\/emailcampaign\/sendCampaign(\/|\?|$)/,
-  /^\/v2\/message\/(send|retry)(\/|\?|$)/,
-  /^\/v2\/notification\/send(\/|\?|$)/,
+  /^\/v2\/email\/?(\?|$)/i, // creating an e-mail sends it by default
+  /^\/v2\/email\/(send|notify)(\/|\?|$)/i,
+  /^\/v2\/emailcampaign\/sendcampaign(\/|\?|$)/i,
+  /^\/v2\/message\/(send|retry)(\/|\?|$)/i,
+  new RegExp(`^/v2/message/${ID}/retry${END}`, 'i'),
+  /^\/v2\/notification\/send(\/|\?|$)/i,
+  /^\/v2\/aichat\/resume(\/|\?|$)/i, // hands a conversation back to the AI, which answers the customer
+  /^\/v2\/calendar\/scheduleevent(\/|\?|$)/i, // e-mails attendees and syncs external calendars
+  /^\/v2\/calendarevent\/(reschedule|changestatus)(\/|\?|$)/i,
+  /^\/v2\/attendee\/changestatus(\/|\?|$)/i,
+  /^\/v2\/contract\/(resendemail|sendcode)(\/|\?|$)/i,
+  /^\/v2\/commercialexception(\/|\?|$)/i, // every write e-mails the approver or the requester
+  /^\/v2\/scoring\/recompute(\/|\?|$)/i, // re-saves records: webhooks, AI triggers, live refresh
+  /^\/v2\/proposalwizard\/(generate|pairsubmit)(\/|\?|$)/i, // creates a deal and e-mails the visitor
+  /^\/v2\/contactprotocol\/enroll(\/|\?|$)/i, // starts a cadence that e-mails the contact
+  /^\/v2\/notification\/push(\/|\?|$)/i, // can force e-mail or WhatsApp to any user
 ];
 
-function reachesPeopleRoute(method, reqPath) {
-  return WRITE_METHODS.includes(method) && REACHES_PEOPLE.some((re) => re.test(reqPath));
+// A contract saved with status Ready e-mails the signature request to every signer, and
+// one created without a status is born Ready.
+const CONTRACT_COLLECTION = /^\/v2\/contract\/?(\?|$)/i;
+const CONTRACT_PATH = new RegExp(`^/v2/contract(/${ID})?/?(\\?|$)`, 'i');
+
+function reachesPeopleRoute(method, reqPath, data) {
+  const verb = String(method).toUpperCase();
+  if (!WRITE_METHODS.includes(verb)) return false;
+  if (REACHES_PEOPLE.some((re) => re.test(reqPath))) return true;
+  if (!CONTRACT_PATH.test(reqPath)) return false;
+  const status = data !== null && typeof data === 'object' ? String(data.status || '').toLowerCase() : '';
+  if (status === 'ready') return true;
+  return verb === 'POST' && CONTRACT_COLLECTION.test(reqPath) && status === '';
 }
+
+// Routes no skill may call, whatever the flags: bulk deletes, reads that write
+// (subscription and e-mail tracking links), exports that skip output redaction, and
+// routes that skip record access checks or belong to another service.
+const BLOCKED = [
+  /^\/v2\/log\/clear(\/|\?|$)/i,
+  /^\/v2\/notification\/clean(\/|\?|$)/i,
+  /^\/v2\/eventsubscription\/(getmine|updatemine)(\/|\?|$)/i,
+  /^\/v2\/email\/(view|click|unsubscribe|consent)(\/|\?|$)/i,
+  // Ad service callbacks, Meta test events and form discovery belong to the ad service.
+  /^\/v2\/adhub\/connect(\/|\?|$)/i,
+  // Public lead submission creates contacts and notifies sellers.
+  /^\/v2\/contact\/submit(\/|\?|$)/i,
+  // Raw moves and body-built work orders skip record access checks and hooks.
+  /^\/v2\/group\/move(\/|\?|$)/i,
+  /^\/v2\/workorder\/(createfromdeal|clone)(\/|\?|$)/i,
+  // System template rendering is for the app's own pages; skills never need it.
+  /^\/v2\/template\/view(\/|\?|$)/i,
+];
+const AUDIT_EXPORT = /^\/v2\/auditlog\/getlogs\?(.*&)?format=(csv|xlsx)(&|$)/i;
+
+function blockedRoute(method, reqPath) {
+  const p = String(reqPath);
+  return BLOCKED.some((re) => re.test(p)) || (String(method).toUpperCase() === 'GET' && AUDIT_EXPORT.test(p));
+}
+
+const BLOCKED_MESSAGE = 'This route is blocked for skills: it deletes in bulk, changes data when read, exports without '
+  + 'redaction, skips record access checks or belongs to another service. Do it in the app if it is really needed.';
 
 const REACHES_PEOPLE_MESSAGE = 'This request e-mails, messages or notifies people and cannot be undone. It needs '
   + '--reaches-people on top of --confirmed, given only after the user said yes to exactly that send.';
@@ -252,6 +305,7 @@ function createClient({
     const verb = String(method).toUpperCase();
     if (!METHODS.includes(verb)) throw new UsageError(`Unsupported method ${method}.`);
     validateTarget(domain, reqPath);
+    if (blockedRoute(verb, reqPath)) throw new UsageError(BLOCKED_MESSAGE);
     if (data !== undefined && (verb === 'GET' || verb === 'DELETE')) {
       throw new UsageError(`${verb} requests cannot have a body. Remove --data / --data-file.`);
     }
@@ -259,7 +313,7 @@ function createClient({
     if (isWrite && !confirmed) {
       throw new UsageError('Refusing to write without --confirmed. Show the user what will change and ask first.');
     }
-    if (reachesPeopleRoute(verb, reqPath) && !reachesPeople) throw new UsageError(REACHES_PEOPLE_MESSAGE);
+    if (reachesPeopleRoute(verb, reqPath, data) && !reachesPeople) throw new UsageError(REACHES_PEOPLE_MESSAGE);
     if (isWrite && isLikelyProduction(domain)) {
       stderr.write(`WARNING: ${domain} looks like a production account.\n`);
     }
@@ -298,11 +352,12 @@ async function run(argv, opts = {}) {
   try {
     const args = parseArgs(argv, rootDir);
     validateTarget(args.domain, args.path);
+    if (blockedRoute(args.method, args.path)) throw new UsageError(BLOCKED_MESSAGE);
     const isWrite = WRITE_METHODS.includes(args.method) && !isNonMutating(args.method, args.path);
     if (isWrite && !args.confirmed) {
       throw new UsageError('Refusing to write without --confirmed. Show the user what will change and ask first.');
     }
-    if (reachesPeopleRoute(args.method, args.path) && !args.reachesPeople) throw new UsageError(REACHES_PEOPLE_MESSAGE);
+    if (reachesPeopleRoute(args.method, args.path, args.data) && !args.reachesPeople) throw new UsageError(REACHES_PEOPLE_MESSAGE);
     client = createClient({ domain: args.domain, rootDir, profile: args.profile, fetchImpl, stderr });
     const res = await client.request(args.method, args.path, {
       data: args.data, confirmed: args.confirmed, reachesPeople: args.reachesPeople,
@@ -329,6 +384,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  parseArgs, validateTarget, loadApiKey, redact, redactFields, isLikelyProduction, isNonMutating, reachesPeopleRoute, assertDataFileAllowed,
+  parseArgs, validateTarget, loadApiKey, redact, redactFields, isLikelyProduction, isNonMutating, reachesPeopleRoute, blockedRoute, assertDataFileAllowed,
   createClient, run, UsageError, DEFAULT_ROOT,
 };

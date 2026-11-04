@@ -372,3 +372,33 @@ describe('move write', () => {
     expect(out + err).not.toContain('SECRET123');
   });
 });
+
+describe('leads are converted by prolibu-leads only', () => {
+  const converted = {
+    _id: 'd55e41069c71267e72fe0004', stageName: 'Convertido', stageCode: 'lead-stage-converted', stageType: 'Lead.stage', active: true,
+  };
+  const reviewing = { ...converted, _id: 'd55e41069c71267e72fe0001', stageName: 'En Revisión', stageCode: 'lead-stage-reviewing' };
+  const base = {
+    modelName: 'Lead', field: 'stage', record: {}, current: null, set: {}, prefs: {},
+  };
+
+  test('moving a lead to Converted is blocked and points to prolibu-leads', () => {
+    const { blockers } = stages.checkMove({ ...base, target: converted });
+    expect(blockers.join(' ')).toContain('prolibu-leads');
+  });
+
+  test('the same stage found by id alone is blocked too', () => {
+    const { blockers } = stages.checkMove({ ...base, target: { ...converted, stageCode: undefined } });
+    expect(blockers.join(' ')).toContain('prolibu-leads');
+  });
+
+  test('setting converted by --set is blocked', () => {
+    const { blockers } = stages.checkMove({ ...base, target: reviewing, set: { converted: true } });
+    expect(blockers.join(' ')).toContain('prolibu-leads');
+  });
+
+  test('other lead moves are not affected', () => {
+    const { blockers } = stages.checkMove({ ...base, target: reviewing });
+    expect(blockers.join(' ')).not.toContain('prolibu-leads');
+  });
+});

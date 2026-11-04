@@ -1,6 +1,6 @@
 ---
 name: prolibu-proposals
-description: Prepare a Prolibu deal's proposal and its contract the way the app does it — turn the proposal on with a title and a layout template, give the preview of the document, save and restore proposal versions, create contract templates, generate the deal's contract from a template with its participants and roles, and leave it as a Draft ready for e-signature, without ever sending it. Use it whenever someone wants to set up or change a deal's proposal or its template, save or go back to a version, write a contract template, generate a contract from a deal, or add signers or reviewers; or reports a contract with empty or raw variables, a missing template, versions that vanished, or "the deal already has a contract". Spanish triggers: "propuesta del negocio", "plantilla de la propuesta", "guardar versión", "restaurar versión", "plantilla de contrato", "generar contrato", "firmantes", "firma electrónica".
+description: Prepare a Prolibu deal's proposal and its contract the way the app does it — turn the proposal on with a title and a layout template, give the preview of the document, save and restore proposal versions, create contract templates, generate the deal's contract from a template with its participants and roles, and leave it as a Draft ready for e-signature, without ever sending it. Use it whenever someone wants to set up or change a deal's proposal or its template, save or go back to a version, write a contract template, generate a contract from a deal, or add signers or reviewers; or reports a contract with empty or raw variables, a missing template, versions that vanished, or "the deal already has a contract". It adapts to both proposal models: the proposal inside the deal, and accounts where a deal has several proposals with status (Draft, Ready, Approved, Denied) and automatic versions. Spanish triggers: "propuesta del negocio", "varias propuestas", "estado de la propuesta", "marcar lista", "borrador", "plantilla de la propuesta", "guardar versión", "restaurar versión", "plantilla de contrato", "generar contrato", "firmantes", "firma electrónica".
 ---
 
 # Prolibu Proposals
@@ -14,6 +14,18 @@ A contract is a Contract record: a **template** (`isContractTemplate`) or a cont
 from a deal, with participants (`signers`) and their roles. The rule that hurts when ignored:
 **a contract in `Ready` e-mails its participants on every save.** This skill only prepares
 contracts as `Draft`; a person sends them from the app.
+
+## Two proposal models: detect first
+
+Accounts run one of two models. **Always start with**
+`node .claude/skills/prolibu-proposals/scripts/proposal.js model <domain>`:
+
+- `"deal"`: the proposal lives inside the deal (one per deal). Everything below applies.
+- `"records"`: proposals are their own records, several per deal, each with a status and
+  automatic read-only versions. Use `scripts/proposal-records.js` and follow
+  [Proposals as records](#proposals-as-records); contracts still use `proposal.js`.
+
+Each script stops (exit 3, nothing written) on the wrong model, so a wrong guess costs nothing.
 
 `scripts/proposal.js` does the fragile parts in code: it never resends `enabled` (that moves
 the deal's stage), never sends the template's HTML, versions the stored proposal, backs up
@@ -89,10 +101,48 @@ If `accounts/` has several domains, ask which one.
      `empty` fields had no data on the deal or contact, `unknown` names do not exist and were
      dropped from the document. Then say how to send it (below).
 
-**Sending is the user's step, in the app:** open the contract, check the document and where
-each signature goes, and press save-and-send (it moves the contract to `Ready`, which e-mails
-the participants). Never do this step, never give the user a signing link to forward, and
-never share the proposal link with a client: the app's Share button makes the tracked link.
+**Sending is not done here.** To send the Draft for signature, remind signers or follow who
+signed, use `prolibu-contracts` (its own preview and yes). Never give the user a signing link
+to forward, and never share the proposal link with a client: the app's Share button makes the
+tracked link.
+
+## Proposals as records
+
+Only when `model` says `"records"`. The deal holds a list of proposals; one is the principal
+(its amount is the deal's). Read `references/proposal-records.md` before the first write.
+
+```
+node .claude/skills/prolibu-proposals/scripts/proposal-records.js <command> <domain> …
+  deals    <domain> <part of the deal name>
+  show     <domain> <dealId>                  proposals in order: status, principal, visible, versions
+  versions <domain> <proposalId>              its versions, oldest first
+  compare  <domain> <proposalId> <versionId>  what a restore would change
+  preview  <domain> '<plan json>'             writes nothing; returns a version
+  apply    <domain> '<plan json>' --version <v> --confirmed
+```
+
+| Action | Plan |
+| --- | --- |
+| New proposal on the deal | `{"action":"create","dealId":"…","title":"…","layoutId":"…","expirationDate":"2026-12-31","status":"Draft"}` |
+| Title, template, expiry | `{"action":"edit","proposalId":"…","title":"…","layoutId":"…","expirationDate":"…"}` |
+| Mark ready / back to draft | `{"action":"status","proposalId":"…","status":"Ready"}` |
+| Go back to a version | `{"action":"restoreVersion","proposalId":"…","versionId":"…"}` |
+
+Same flow as above: `show`, plan, `preview`, stop for an explicit yes, `apply`, report with
+the `previewUrl`. What changes in this model:
+
+- **Versions are automatic and read-only.** The account saves one when a proposal is born and
+  after every content change, only if automatic versions are on (`show` → `settings.autoVersions`;
+  off by default). Nobody can save one by hand: when they are off, say so; never promise history.
+- **Restoring keeps no copy of the current content.** Run `compare` and show the changes first.
+  Status, visibility and the deal stay as they are; the quote is not recalculated.
+- **Only `Draft` and `Ready` are written.** `Approved` and `Denied` follow the deal's stage.
+  Ready sends nothing and does not move the deal.
+- **Never approve or deny here.** Denying any proposal denies the whole deal; approving moves it.
+  Both are done in the app. Publishing to the client (`visibleToClient`), choosing the principal,
+  reordering, cloning and deleting (it deletes the versions too) are in the app as well.
+- **Quote lines are `prolibu-quotes`.** A new proposal is born without lines.
+- A deal in an end-of-flow stage blocks every change unless the account allows edits there.
 
 ## How the platform behaves
 
@@ -131,6 +181,7 @@ Details, variables and edge cases are in `references/proposal-model.md`.
 | "The deal already has the contract…" | One active contract per deal | Work on that contract; to replace a Draft, delete it in the app and generate again |
 | Participants got the e-mail again | A save on a `Ready` contract | Change Ready contracts only in the app, once, on purpose |
 | Versions disappeared | Someone saved `proposalVersions.details` partially | Never write `details` by hand |
+| Which design a proposal uses, or a design must change | Designs are ContentTemplates | `prolibu-document-design` (duplicate before editing) |
 
 ## Verify
 
@@ -143,7 +194,8 @@ Details, variables and edge cases are in `references/proposal-model.md`.
 ## Don't
 
 - Move a contract to `Ready`, resend its e-mail, or call the sign, reject, code or
-  `generate` endpoints (`generate` without `status` creates it `Ready`).
+  `generate` endpoints (`generate` without `status` creates it `Ready`) here: sending and
+  reminders are `prolibu-contracts`.
 - Share the proposal link, publish a version to the client, or e-mail anything.
 - Edit an existing contract template or layout through the API: templates are edited in the
   app's editors. This skill creates new contract templates only.

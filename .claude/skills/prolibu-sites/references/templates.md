@@ -3,7 +3,23 @@
 `./prolibu site create` copies one of these, but it prompts (domain, prefix, type,
 template, git repo, overwrite, git init) and creates both platform records at once. Copy the
 files by hand instead, then apply the fixes below. They were checked by building and
-publishing each template.
+publishing each template. `scripts/site.js check` flags what is left (absolute paths,
+password fields, `/v2/auth/login`, files the page loads that are not in the folder).
+
+## Known issues in the templates (to fix in the templates themselves, separately)
+
+Checked on 2026-11-03 against the server and the test account. Until the templates are
+fixed, apply the fixes in the sections below every time.
+
+| Template | Issue | Evidence |
+| --- | --- | --- |
+| React | `src/api/client.ts` `login()` posts e-mail and password to `/v2/auth/login`. That route does not exist: the server's auth routes are `signin`, `session`, `signout`, `verifyMfa`, `forgot` and `passwordreset`; a POST to `/v2/auth/login` answers 404. | Server auth routes; live POST → 404 |
+| React | `src/pages/Login.tsx` and the `/login` route build a password form; even pointed at `/v2/auth/signin` it would skip Google/Microsoft/Okta sign-in and answer `mfaRequired` to users with MFA. | Code |
+| React | Token read from `window.__PROLIBU_CONFIG__.apiKey` (never written) or `localStorage.prolibu_apiKey` (never set by the platform); the platform's session is `localStorage.apiKey`. On 401 it navigates to `/login` at the domain root. | Code |
+| React | `index.html` loads `/icon.svg` and `/_prolibu_config.js` with absolute paths: both resolve to the domain root (404). | `check` on the template |
+| Plain | `public/script.js` reads `localStorage.apiKey` without unquoting it (401 with the V2 app's session), removes it on any failure (signs the user out of the app) and shows its own e-mail and password form off `*.prolibu.com`. | Code; `check` warnings |
+| Plain | `index.html` loads `_prolibu_config.js`, which a published plain site does not have. | `check` → `missingFile` |
+| Vue | `--template vue` has no files to publish ("Public folder not found"). | CLI run |
 
 ## Plain site (`templates/site/`)
 
@@ -80,5 +96,7 @@ Lay out a Vite + Vue project by hand with the same rules as React:
 
 `site dev|prod` build when `package.json` has a `build` script: `npm install` (if
 `node_modules` is missing or older than `package.json`), `npm run build`, then zip the folder
-named by `settings.json` `outputDir` (default `dist`). That folder must contain
+named by `settings.json` `outputDir` (default `dist`). `site.js` publishes the same folder but
+does not build: run `npm install` and `npm run build` first (`check` warns when the sources
+are newer than the build). That folder must contain
 `index.html` at its root. Assets must be referenced relatively (`./assets/…`).

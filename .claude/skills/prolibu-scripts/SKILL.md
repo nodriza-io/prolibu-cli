@@ -162,6 +162,7 @@ command, file and known CLI bug: `references/cli.md`.
 
 ## Don't
 
+- Copy this configuration to another account by hand: use `prolibu-config-promotion`.
 - Run `script create`, `script sync`, `script test`, or `--watch` in the foreground: they
   prompt or never exit. For tests run jest directly (`references/cli.md`).
 - `PATCH` `code` by hand: always deploy through the CLI.

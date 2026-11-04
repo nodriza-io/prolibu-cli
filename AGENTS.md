@@ -25,10 +25,27 @@ working from memory or from the guide.
 | Pipelines and stages: move a record, required fields | [`prolibu-stages`](.claude/skills/prolibu-stages/SKILL.md) |
 | Tasks, notes, meetings and calls on a record; a record's activity history | [`prolibu-activities`](.claude/skills/prolibu-activities/SKILL.md) |
 | Support tickets: open, assign, reply or note; case types, routing; articles and portal | [`prolibu-support`](.claude/skills/prolibu-support/SKILL.md) |
-| E-mail templates with variables, contact lists and e-mail campaigns (test, launch, schedule); WhatsApp conversations (read only) | [`prolibu-messaging`](.claude/skills/prolibu-messaging/SKILL.md) |
+| E-mail templates with variables, contact lists and e-mail campaigns (test, launch, schedule) | [`prolibu-messaging`](.claude/skills/prolibu-messaging/SKILL.md) |
 | Reports and dashboards: build, add pages, combine reports, goals vs. actuals, zeros | [`prolibu-dashboards`](.claude/skills/prolibu-dashboards/SKILL.md) |
 | Native AI agents: instructions, model, skills, actions, scheduled and record-event triggers, runs and token cost | [`prolibu-ai-agents`](.claude/skills/prolibu-ai-agents/SKILL.md) |
 | Virtual tours: create, upload scenes, update, download | [`prolibu-virtual-tours`](.claude/skills/prolibu-virtual-tours/SKILL.md) |
+| Commercial exceptions and product rules: why a rule blocks a quote, request, approve or reject an exception, create or edit rules | [`prolibu-commercial-exceptions`](.claude/skills/prolibu-commercial-exceptions/SKILL.md) |
+| Booking calendars: setup, free slots, book, move, cancel or confirm appointments, quote-booking diagnosis | [`prolibu-calendars`](.claude/skills/prolibu-calendars/SKILL.md) |
+| Billing: invoice a deal or by hand, record or remove payments, emit or void, receivables | [`prolibu-billing`](.claude/skills/prolibu-billing/SKILL.md) |
+| Send contracts for e-signature, follow and remind signers, withdraw, download signed PDFs | [`prolibu-contracts`](.claude/skills/prolibu-contracts/SKILL.md) |
+| WhatsApp/SMS conversations: read and summarize, reply or send templates, assign, hand back to the AI agent, conversation flows as drafts | [`prolibu-conversations`](.claude/skills/prolibu-conversations/SKILL.md) |
+| Leads: triage, assign by turns, convert without duplicates; follow-up protocols; sellers' goals | [`prolibu-leads`](.claude/skills/prolibu-leads/SKILL.md) |
+| Scoring: explain a score, rules profiles (created inactive), activation, re-score of named records | [`prolibu-scoring`](.claude/skills/prolibu-scoring/SKILL.md) |
+| Public self-service quoter (/pw): wizards, groups, assignment, links; diagnose missing quotes | [`prolibu-proposal-wizard`](.claude/skills/prolibu-proposal-wizard/SKILL.md) |
+| Read-only diagnosis: script did not run, webhook, e-mail or notice not received, sign-in failures, who changed a record | [`prolibu-diagnostics`](.claude/skills/prolibu-diagnostics/SKILL.md) |
+| Projects of tasks and work orders: create, status, reschedule | [`prolibu-projects`](.claude/skills/prolibu-projects/SKILL.md) |
+| Ad leads: Ad Hubs, mirrored Meta forms, ad campaigns, lead routing and counts | [`prolibu-ads`](.claude/skills/prolibu-ads/SKILL.md) |
+| Duplicate contacts and companies: find, merge, archive stale contacts | [`prolibu-data-cleanup`](.claude/skills/prolibu-data-cleanup/SKILL.md) |
+| Read-only access review: roles, record rules, workspaces, who can see a record | [`prolibu-access-review`](.claude/skills/prolibu-access-review/SKILL.md) |
+| Proposal and document designs, fonts, custom views, presentation views | [`prolibu-document-design`](.claude/skills/prolibu-document-design/SKILL.md) |
+| Academy: courses and programs, enrollment, progress, certificates | [`prolibu-academy`](.claude/skills/prolibu-academy/SKILL.md) |
+| Saved filters, default columns, menu links, row actions and widgets | [`prolibu-ui-customization`](.claude/skills/prolibu-ui-customization/SKILL.md) |
+| Promote or compare configuration between accounts (dev to prod) without pushing profiles | [`prolibu-config-promotion`](.claude/skills/prolibu-config-promotion/SKILL.md) |
 | Create a new skill, or rebuild one that does not work | [`prolibu-skill-creator`](.claude/skills/prolibu-skill-creator/SKILL.md) |
 
 Every skill that writes to an account follows

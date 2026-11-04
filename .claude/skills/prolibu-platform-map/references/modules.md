@@ -241,6 +241,26 @@ also add its own Custom Objects; they appear in the account's OpenAPI document b
 | HealthCheck | `healthcheck` | A monitor that checks a URL on an interval and alerts on failure. |
 | LiveStream | `livestream` | Forwards the activity notifications of chosen users (publishers) to a list of subscriber users, for the events in its event subscription. |
 
+## Service routes (no object behind them)
+
+These paths answer under `/v2/<path>/<action>` but have no collection: `GET /v2/<path>` does
+not list anything. Most are admin-only; the ones marked *never* are for the app, not for skills.
+
+| Path | What it does |
+| --- | --- |
+| `aichat` | The in-app AI chat: send a message, conversations, providers, agents, resume. `resume` reaches people. See `prolibu-ai-agents`. |
+| `auditlog` | `getlogs` only: who signed in or changed users, roles, tokens or (when switched on) records. Admin. See `prolibu-diagnostics`. |
+| `auth` | Sign-in, session, sign-out, MFA and password reset. *Never* from a skill: skills use the API key. |
+| `integration` | Third-party lookups (Kaspr limits, credits and profiles). |
+| `oauth` | Lists OAuth providers and connects or disconnects an app. Changing a connection is done in the app. |
+| `permission` | `library`: every permission that can be given to a role. Read only. |
+| `preference` | The account's settings: `read` and `write`, admin only. Writes change the whole account; the public subset is `GET /v2/user/preferences`. |
+| `service` | Utilities: exchange rate, DNS check, object schema, captcha, QR code, vCard, import template, data import and import jobs. Imports: see `prolibu-imports`. |
+| `templates` | `gallery`: the template gallery shown when creating proposals and documents. |
+
+A path that is in neither this list nor the tables above may be a Custom Object of the account:
+check `GET /v2/cob` before saying it does not exist.
+
 ## Optional modules
 
 Few accounts load these modules.

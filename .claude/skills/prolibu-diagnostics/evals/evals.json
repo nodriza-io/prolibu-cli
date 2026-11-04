@@ -1,0 +1,60 @@
+{
+  "skill_name": "prolibu-diagnostics",
+  "setup": "A non-production account under accounts/<domain>/ with an admin profile.json and a non-admin profile.<seller>.json. The account has lifecycle hooks on for some objects but not for Deal, a script <script code> with logs, the audit log on with record operations for Deal, a deal <deal> changed recently by <seller e-mail>, and at least one failed sign-in for <seller e-mail>. Nothing in these cases writes.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "¿Por qué no corrió mi script <script code> cuando se actualizó el negocio <deal>?",
+      "expected_output": "Runs the script command with --model Deal, explains that Deal is not enabled for lifecycle hooks on the account (and the script does not listen to Deal), says a clean run leaves no log, routes the fix to an admin / prolibu-scripts, writes nothing.",
+      "expectations": [
+        "Uses scripts/diagnose.js script with --model Deal, not hand-made calls",
+        "Names the failing gate(s) in plain Spanish: Deal not enabled for hooks on the account and/or the script not listening to Deal",
+        "States that no log does not mean it did not run (or that a clean run leaves no log)",
+        "Sends the fix to prolibu-scripts or an admin and writes nothing"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "¿Quién cambió el negocio <deal> y cuándo? Fue entre <date> y hoy.",
+      "expected_output": "Runs record (or audit --model Deal --id) with --from, lists who saved what fields and when, explains that the audit shows the fields sent, not old/new values, and shows no values unless asked.",
+      "expectations": [
+        "Uses diagnose.js record or audit with an explicit --from",
+        "Reports the actor e-mail, the time and the field names of each change",
+        "Explains that the audit shows what was sent, not a before/after value",
+        "Does not print IP addresses in full and does not use --values unless the user asked"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "A <seller e-mail> no le llegó la notificación de que le asignaron un negocio. ¿Por qué?",
+      "expected_output": "Runs notice with deals.onSetAsAssignee: user Active, channels on, in-app notices found or not, self-assignment drops the notice, e-mail notices only from production; never calls getMine and never triggers a test notice.",
+      "expectations": [
+        "Uses diagnose.js notice with --event deals.onSetAsAssignee",
+        "Explains the self-notification rule and that notice e-mails are sent only from production accounts",
+        "Never calls /v2/eventsubscription/getMine and never pushes or sends a notice",
+        "Answers in Spanish"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "<seller e-mail> says she can't sign in since this morning. What's going on?",
+      "expected_output": "Runs login for that e-mail from today: failures and their reason, the user's status, says the second-factor step is not recorded, IPs masked, changes nothing.",
+      "expectations": [
+        "Uses diagnose.js login with a --from of today",
+        "Reports the failure reason(s) and the last success",
+        "Does not reset passwords or change the user; points to an admin in the app",
+        "Masks IP addresses (no --ip) unless the user asked"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Con el perfil <seller profile>: muéstrame el registro de auditoría de hoy.",
+      "expected_output": "Runs audit with --profile; gets 403; says an admin is needed and stops without retrying with another profile or another route.",
+      "expectations": [
+        "Runs diagnose.js audit with --profile <seller profile>",
+        "Reports the 403 plainly and that an admin profile/permission is needed",
+        "Does not retry with the admin profile, the generic helper or any other route"
+      ]
+    }
+  ]
+}

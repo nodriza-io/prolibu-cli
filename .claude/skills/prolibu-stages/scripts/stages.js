@@ -29,6 +29,7 @@ const STAGE_SELECT = 'stageName stageCode stageType index active endFlowStage pe
 // a stage made by hand called "Won" does not trigger what Approved does.
 const FACTORY = {
   dealApproved: '76a6f41079d81268f83fede4',
+  leadConverted: 'd55e41069c71267e72fe0004', // moving a lead here converts it
   dealDenied: '76a6f41079d81268f83fede5',
   contactAttempted: '3396e41069c71267e72feda0',
   contactClient: '3396e41069c71267e72feda4',
@@ -344,6 +345,11 @@ function checkMove({
       + 'The server would accept it and the record would vanish from its board.');
   }
   if (target.active === false) blockers.push(`"${target.stageName}" is inactive: the app does not offer it.`);
+  const toConverted = target.stageCode === 'lead-stage-converted' || String(target._id) === FACTORY.leadConverted;
+  if (modelName === 'Lead' && (toConverted || (set && set.converted === true))) {
+    blockers.push('Converting a lead creates a contact and cannot be undone. Use prolibu-leads (a "convert" plan), '
+      + 'which checks for duplicate contacts first.');
+  }
   if (current && String(current._id) === String(target._id)) {
     blockers.push(`The record is already in "${target.stageName}". Sending it again would restart its time in stage.`);
   }

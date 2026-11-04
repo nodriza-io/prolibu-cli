@@ -1,6 +1,6 @@
 ---
 name: prolibu-messaging
-description: Build e-mail templates with variables, contact lists and e-mail campaigns in Prolibu the way the app does it — check every {{variable}} against what a campaign can fill, preview the e-mail rendered for a real contact, count who would really receive it (unsubscribed, bounced, consent), save campaigns only as drafts, and send only after a separate yes, defaulting to one test e-mail to the user's own address. Also reads WhatsApp channels, conversations and messages (read only). Use it whenever someone wants an e-mail template, a mailing list, a newsletter or campaign, a test send, to schedule or pause a campaign, to see who opened it, or to look at WhatsApp conversations; or reports variables that came out empty, "[object Object]" in an e-mail, a campaign that cannot be saved, or contacts that did not receive it. Spanish triggers: "plantilla de correo", "campaña de correo", "lista de contactos", "envío de prueba", "programar campaña", "variables vacías", "conversaciones de WhatsApp".
+description: Build e-mail templates with variables, contact lists and e-mail campaigns in Prolibu the way the app does it — check every {{variable}} against what a campaign can fill, preview the e-mail rendered for a real contact, count who would really receive it (unsubscribed, bounced, consent), save campaigns only as drafts, and send only after a separate yes, defaulting to one test e-mail to the user's own address. Use it whenever someone wants an e-mail template, a mailing list, a newsletter or campaign, a test send, to schedule or pause a campaign, to see who opened it; or reports variables that came out empty, "[object Object]" in an e-mail, a campaign that cannot be saved, or contacts that did not receive it. Spanish triggers: "plantilla de correo", "campaña de correo", "lista de contactos", "envío de prueba", "programar campaña", "variables vacías".
 ---
 
 # Prolibu Messaging
@@ -115,10 +115,9 @@ Details and evidence are in `references/messaging-model.md`. Read it for cases o
   the script edits only `Paused` drafts. `pause` stops the e-mails not sent yet; sent ones stay
   sent.
 - **A scheduled date does nothing alone:** only `send --live` schedules.
-- **WhatsApp is read only here.** Sending, retrying, saving a WhatsApp template (it goes to Meta
-  or Twilio for review) and changing channels, numbers or flows all reach real people or outside
-  services: send the user to the app. Outside 24 h from the customer's last message, only an
-  approved template can be sent (`whatsappWindowOpen` in `conversations`).
+- **WhatsApp and SMS conversations live in `prolibu-conversations`** (reading, replies,
+  approved templates, assignment, AI handback, conversation flows). Creating or editing
+  WhatsApp templates (they go to Meta or Twilio for review) stays in the app.
 
 ## Symptoms
 
@@ -133,6 +132,7 @@ Details and evidence are in `references/messaging-model.md`. Read it for cases o
 | Second test fails | One e-mail per contact per campaign | Another test contact, or a new campaign |
 | 400 "Forbidden…" on send, pause or stats | Not creator, assignee or collaborator | The owner does it, or adds the user as collaborator |
 | A paused campaign relaunched: sent at the old time, or some never got it | Queued jobs keep their time and id for 7 days | To reschedule or edit a launched campaign, make a new one |
+| The layout of presentations sent by a campaign | It is a layout template | `prolibu-document-design` |
 
 ## Verify
 
@@ -150,8 +150,8 @@ Details and evidence are in `references/messaging-model.md`. Read it for cases o
   immediately by default), `POST /v2/email/notify` or `POST /v2/message/send` by hand, or use an
   AI assistant's send-email tool. Only `send` in this script sends.
 - Set `sequence`, `consentRequest` or a presentation on a campaign: do it in the app.
-- Edit a block-editor template's HTML, or create or change WhatsApp templates, channels, phone
-  numbers or conversation flows. Never read `ChannelProvider` (credentials).
+- Edit a block-editor template's HTML, or create or change WhatsApp templates, channels or phone
+  numbers (conversation flows are `prolibu-conversations`). Never read `ChannelProvider`.
 - Add an unsubscribe link, or try to re-subscribe a contact.
 - Read `profile.json` or call the API with `curl`: reads go through this script (`show`,
   `contacts <id>`) or the generic helper.

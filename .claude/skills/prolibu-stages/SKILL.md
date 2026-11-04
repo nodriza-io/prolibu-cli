@@ -130,6 +130,7 @@ Details, factory ids and per-model effects are in `references/stage-model.md`.
 | 403 "Document key '…' is protected, cannot be modified." on a stage | A factory stage field outside its editable list | Only name, color, index, active, end-flow, percentage and field lists change |
 | 403 "Document protected." when deleting a stage | It is a factory stage | Deactivate it instead |
 | The history shows a move that did not happen | A refused move still writes its history row | Trust the record; `show` marks it `notApplied` |
+| A work order or its task plan must be created | Work orders are built from projects | `prolibu-projects` |
 
 ## Verify
 
@@ -139,8 +140,10 @@ Details, factory ids and per-model effects are in `references/stage-model.md`.
 
 ## Don't
 
+- Copy this configuration to another account by hand: use `prolibu-config-promotion`.
 - Change a record's stage with a hand-made PATCH or the generic helper. Use `move`.
 - Move a record to a stage of another pipeline, an inactive stage, or the stage it is in.
+- Move a lead to Converted: it creates a contact. `move` refuses it; use `prolibu-leads`.
 - Invent a denial or loss reason, or move to a closing stage without the user's separate yes.
 - Approve a deal to "test" anything: it creates a work order and may email the customer.
 - Use `/v2/deal/approve`: it is the customer's approval from the proposal page.

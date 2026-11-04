@@ -45,6 +45,7 @@ function byIds(collection, xquery) {
 function tool(name, args) {
   state.toolCalls.push({ name, args });
   if (name === 'describeModel') {
+    if (args.modelName === 'Deal') return sse({ modelName: 'Deal', attrs: { dealName: { type: 'String', _type: 'string' }, proposal: { sentAt: { type: 'Date', _type: 'date' } }, closeDate: { type: 'Date', _type: 'date' }, createdAt: { type: 'Date', _type: 'date' }, stage: { type: 'String', _type: 'stage' } } });
     if (args.modelName !== 'Goal') return sse('Model "Nope" not found', true);
     return sse({ modelName: 'Goal', attrs: { _id: { type: 'ObjectId', hidden: true }, assignee: { type: 'ObjectId', ref: 'User', _type: 'objectid' }, dates: { startAt: { type: 'Date', _type: 'date' } }, targetValue: { type: 'Number', _type: 'number' } } });
   }
@@ -114,6 +115,20 @@ async function fakeFetch(url, init) {
     const rec = col[one[2]] || Object.values(col).find((r) => r.reportCode === one[2] || r.dashboardCode === one[2]);
     return rec ? respond(200, rec) : respond(404, { statusCode: 404, error: 'Not found' });
   }
+  if (u.pathname === '/v2/stage') {
+    const xquery = JSON.parse(q.xquery);
+    const data = xquery.stageCode === 'deal-stage-won' ? [{ _id: 'won', stageCode: 'deal-stage-won' }] : [];
+    return respond(200, { pagination: { count: data.length }, data });
+  }
+  if (u.pathname === '/v2/deal') {
+    const xquery = q.xquery ? JSON.parse(q.xquery) : {};
+    let rows = state.deals.filter((d) => Object.entries(xquery).every(([k, v]) => (v === null ? d[k] == null : d[k] === v)));
+    if (q.sort) {
+      const key = q.sort.replace(/^-/, '');
+      rows = rows.filter((d) => d[key] != null).sort((a, b) => (a[key] < b[key] ? 1 : -1));
+    }
+    return respond(200, { pagination: { count: rows.length }, data: rows.slice(0, Number(q.limit || 10)) });
+  }
   const list = u.pathname.match(/^\/v2\/(report|page|widget|dashboard)$/);
   if (list) {
     const col = { report: state.reports, page: state.pages, widget: state.widgets, dashboard: state.dashboards }[list[1]];
@@ -164,6 +179,7 @@ beforeEach(() => {
   calls = [];
   seq = 0;
   state = {
+    deals: [],
     mcp: true,
     toolCalls: [],
     reports: {
@@ -430,6 +446,34 @@ describe('reads', () => {
     const paths = JSON.parse(out).fields.map((f) => f.path);
     expect(paths).toEqual(['assignee', 'dates.startAt', 'targetValue']);
     expect(await run(['fields', D, 'Nope'])).toBe(1);
+  });
+
+  test('dates says how many records leave each date field empty, inside a filter', async () => {
+    state.deals = [
+      { _id: '1', stage: 'won', closeDate: '2026-07-10', createdAt: '2026-01-02' },
+      { _id: '2', stage: 'won', closeDate: null, createdAt: '2026-11-01' },
+      { _id: '3', stage: 'won', createdAt: '2026-11-02' },
+      { _id: '4', stage: 'open', closeDate: '2026-11-03', createdAt: '2026-11-03' },
+    ];
+    expect(await run(['dates', D, 'Deal', '--where', '{"stage":"deal-stage-won"}'])).toBe(0);
+    const result = JSON.parse(out);
+    expect(result.records).toBe(3);
+    expect(result.dates).toEqual([
+      { path: 'closeDate', filled: 1, empty: 2, latest: '2026-07-10' },
+      { path: 'createdAt', filled: 3, empty: 0, latest: '2026-11-02' },
+      { path: 'proposal.sentAt', filled: 0, empty: 3, latest: null },
+    ]);
+    expect(calls.every((c) => c.method === 'GET' || c.path === '/v2/mcpsession/ses')).toBe(true);
+  });
+
+  test('dates refuses a stage code the account does not have', async () => {
+    expect(await run(['dates', D, 'Deal', '--where', '{"stage":"deal-stage-nope"}'])).toBe(2);
+    expect(err).toContain('deal-stage-nope');
+  });
+
+  test('dates refuses a filter that is not a JSON object', async () => {
+    expect(await run(['dates', D, 'Deal', '--where', '[1]'])).toBe(2);
+    expect(await run(['dates', D, 'Deal', '--where', '{"$where":"1"}'])).toBe(2);
   });
 
   test('schema reads the live tool catalog', async () => {
