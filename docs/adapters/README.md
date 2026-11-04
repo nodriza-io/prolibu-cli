@@ -259,7 +259,6 @@ Include:
 
 Add your adapter to:
 - `/docs/README.md` - Integration Adapters section
-- `/docs/QUICK_REFERENCE.md` - Available adapters list
 
 ---
 
@@ -1397,7 +1396,6 @@ When creating a new adapter, follow this checklist:
 - [ ] Document API quirks and limitations
 - [ ] Add troubleshooting section
 - [ ] Update `/docs/README.md` with new adapter
-- [ ] Update `/docs/QUICK_REFERENCE.md`
 
 ---
 
