@@ -73,7 +73,7 @@ It serves the folder in headless Chrome as `https://<domain>/site/__ui-review__/
 account's real Cobalt and real data (the profile's key acts as the session inside that browser
 only; any request that would change data is blocked), at 1920, 1440, 1024 and 390 px. It reports
 `cutOff`, `unevenCards`, `misalignedActions`, `tooManyPrimaryButtons`, `tooManyColors`,
-`coloredCategories`, `darkSurface`, `floatingSidePanel`, `clippedButtonLabel`, `smallText`, `clippedText`, `smallTouchTargets`, `brokenImages`, HTTP
+`coloredCategories`, `darkSurface`, `floatingSidePanel`, `clippedButtonLabel`, `unusedSpace`, `smallText`, `clippedText`, `smallTouchTargets`, `brokenImages`, HTTP
 errors and console errors, and saves a screenshot per width.
 
 1. Fix every finding and run it again until it reports none.

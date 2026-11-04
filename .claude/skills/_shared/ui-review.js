@@ -214,6 +214,45 @@ function auditPage(hueFamilySource) {
       if (bottoms.length > 1 && Math.max(...bottoms) - Math.min(...bottoms) > 4) misaligned.push({ container: describe(container), bottoms });
     }
   }
+  // 3b) A card grid that wraps into several rows while a card or more of free width sits beside
+  // it on one side only (a left-aligned max-width): the cards could use that space.
+  const underfilled = [];
+  for (const container of light) {
+    const kids = [...container.children].filter(isVisible);
+    if (kids.length < 2 || !kids.every((k) => k.tagName === 'CO-CARD' || (k.children.length === 1 && k.firstElementChild.tagName === 'CO-CARD'))) continue;
+    const tops = new Set(kids.map((k) => Math.round(k.getBoundingClientRect().top / 8)));
+    if (tops.size < 2) continue;
+    const box = container.getBoundingClientRect();
+    const card = Math.min(...kids.map((k) => k.getBoundingClientRect().width));
+    let path = container;
+    for (let up = container.parentElement; up && up !== document.body; path = up, up = up.parentElement) {
+      const r = up.getBoundingClientRect();
+      const cs = getComputedStyle(up);
+      let leftEdge = r.left + parseFloat(cs.paddingLeft);
+      let rightEdge = r.right - parseFloat(cs.paddingRight);
+      // Space taken by other content beside the grid (a side panel, a filter column) is not free.
+      for (const other of [...up.children].filter((c) => c !== path && isVisible(c))) {
+        const o = other.getBoundingClientRect();
+        if (o.bottom <= box.top || o.top >= box.bottom) continue;
+        if (o.left >= box.right - 1) rightEdge = Math.min(rightEdge, o.left);
+        if (o.right <= box.left + 1) leftEdge = Math.max(leftEdge, o.right);
+      }
+      const left = box.left - leftEdge;
+      const right = rightEdge - box.right;
+      if (Math.max(left, right) >= card && Math.abs(left - right) >= card) {
+        underfilled.push({ container: describe(container), freeLeft: Math.round(left), freeRight: Math.round(right), cardWidth: Math.round(card) });
+        break;
+      }
+    }
+  }
+  if (underfilled.length) {
+    findings.push({
+      rule: 'unusedSpace',
+      message: 'The cards wrap into more rows while a card-wide strip stays empty on one side. Let the grid take the width (auto-fill) and, if it needs a max-width, center it (margin-inline: auto).',
+      rows: underfilled.slice(0, 3),
+    });
+  }
+
   if (uneven.length) {
     findings.push({
       rule: 'unevenCards',
