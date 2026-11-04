@@ -82,6 +82,12 @@ API key stored in `accounts/{domain}/profile.json`:
 
 All API calls use `Authorization: Bearer {apiKey}` header against `https://{domain}/v2`.
 
+Agents never read, copy or print that key. `.claude/settings.json` denies the Read tool on
+`accounts/**/profile*.json`, and a Bash hook (`.claude/hooks/guard-account-keys.js`) refuses
+commands that name a profile file, glob an account folder or pull `apiKey` out with inline
+code. Call the API through `node .claude/skills/_shared/prolibu-api.js <domain> <METHOD> <path>`
+or the skill's own script; they read the key themselves and never print it.
+
 The `--apikey` flag overrides the stored key. If neither exists, the CLI prompts interactively.
 
 ## Commands
