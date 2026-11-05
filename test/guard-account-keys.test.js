@@ -16,6 +16,8 @@ describe('guard-account-keys', () => {
     'cat accounts/*/profile.json',
     'cd accounts/dev12.prolibu.com && cat profile.json',
     'grep apiKey accounts/dev12.prolibu.com/profile.json',
+    'test -f accounts/x/profile.json && cat accounts/x/profile.json',
+    'ls accounts/x/profile.json | xargs cat',
     "node -e \"const p=require('fs').readFileSync(process.argv[1]);console.log(JSON.parse(p).apiKey)\" x",
   ])('blocks %s', (command) => {
     expect(verdict(command)).toMatch(/Blocked/);
@@ -32,6 +34,9 @@ describe('guard-account-keys', () => {
     'git status --short',
     'cat accounts/dev12.prolibu.com/sites/x/public/index.html',
     'npx jest test/prolibu-sites.test.js',
+    'test -f accounts/dev12.prolibu.com/profile.json && echo "profile OK"',
+    'ls accounts/ && ls accounts/dev12.prolibu.com/ 2>/dev/null && test -f accounts/dev12.prolibu.com/profile.json && echo ok',
+    '[ -f accounts/x/profile.vendedor.json ] || echo missing',
   ])('allows %s', (command) => {
     expect(verdict(command)).toBeNull();
   });

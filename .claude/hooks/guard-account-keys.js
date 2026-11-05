@@ -15,8 +15,18 @@ const REASON =
 // A search in the repo's code for the word is fine; one aimed at accounts/ is not.
 const SEARCH = /^\s*(grep|rg|git)\b/;
 
-function verdict(command) {
-  if (typeof command !== 'string' || !command) return null;
+// Steps that only ask whether a file exists, or list a folder, never read it. They are
+// dropped before the checks, as long as nothing is piped out of them.
+const EXISTENCE_ONLY = /^\s*(test\s+-[efs]\s+\S+|\[\[?\s+-[efs]\s+\S+\s+\]\]?|ls\b[^|<>`$]*)\s*$/;
+
+function dropExistenceChecks(command) {
+  return command.split(/&&|\|\||;/).filter((step) => !EXISTENCE_ONLY.test(step)).join(' ; ');
+}
+
+function verdict(original) {
+  if (typeof original !== 'string' || !original) return null;
+  const command = dropExistenceChecks(original);
+  if (!command.trim()) return null;
   const touchesAccounts = /(^|[\s'"=/])accounts\//.test(command) || /\bcd\s+[^;&|]*accounts\b/.test(command);
   const isRepoSearch = SEARCH.test(command) && !touchesAccounts;
 
