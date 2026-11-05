@@ -50,7 +50,7 @@ working from memory or from the guide.
 
 Every skill that writes to an account follows
 [`_shared/WRITE-FLOW.md`](.claude/skills/_shared/WRITE-FLOW.md): read first, show a plain
-summary, write only after an explicit yes, read back. Anything visual (a site, a picker, a form page) is built with Cobalt, the app's design
+summary, write only after an explicit yes, read back. A piece of a larger setup is built to fit the pieces already on the account (same keys, same fields). Anything visual (a site, a picker, a form page) is built with Cobalt, the app's design
 system ([`_shared/COBALT.md`](.claude/skills/_shared/COBALT.md)), to the design bar in
 [`_shared/UI-QUALITY.md`](.claude/skills/_shared/UI-QUALITY.md), and checked with
 `_shared/ui-review.js` and its screenshots before it is published. The API's own rules (filters with

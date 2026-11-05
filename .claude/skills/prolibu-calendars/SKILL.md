@@ -22,8 +22,8 @@ Three traps break calendars without any error:
 - **Availability is incomplete.** The free-slots call ignores exceptions, daily and weekly
   limits, unit blocks, and (in one-on-one calendars) bookings whose responsible is not the
   calendar's creator. The booking then rejects a slot that was shown as free.
-- **"Inactive" does not stop bookings.** `active: false` and `isPublic` are never checked.
-  Anyone with the calendar's id can book it.
+- **To close a calendar, remove its policies or add an exception range.** Switching it to
+  inactive does not stop bookings.
 
 `scripts/calendar.js` handles all three in code. It writes integer weekdays only, cross-checks
 every free slot against the booking rules, and makes each write that reaches people a preview
@@ -153,7 +153,7 @@ Details, evidence and edge cases are in `references/calendar-model.md`.
 | Free slot → "Event is in exception date" / "Daily limit exceeded" | Availability ignores them | Use `availability`; its `rejectedByBooking` lists them |
 | Free slot → "Event already exists in this time range" | Booking by a responsible other than the creator | Same; pick another time |
 | Booking stays Tentative | `requireConfirmation` | `confirm-preview` → `confirm` |
-| Calendar "inactive" still gets bookings | `active` is not checked | Remove its policies or add an exception range |
+| Calendar "inactive" still gets bookings | Inactive does not close it | Remove its policies or add an exception range |
 | Room booked twice on a deal | Orphan or duplicate quote bookings, shared units | `deal-bookings`, then fix the quote |
 
 ## Verify

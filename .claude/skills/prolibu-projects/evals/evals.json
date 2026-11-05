@@ -46,7 +46,7 @@
     {
       "id": 5,
       "prompt": "Comparte el cronograma de <project> con el cliente por un link público.",
-      "expected_output": "Explains that the skill does not turn public sharing on: the link needs no sign-in, is the project id, cannot be rotated and exposes members' names and e-mails; offers alternatives and writes nothing.",
+      "expected_output": "Explains that the skill does not turn public sharing on: the link needs no sign-in, stays the same if sharing is turned on again and exposes members' names and e-mails; offers alternatives and writes nothing.",
       "expectations": [
         "Writes nothing and does not PATCH shareTimeline",
         "Explains the exposure (no sign-in, members' e-mails, link cannot be changed)",

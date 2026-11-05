@@ -99,8 +99,8 @@ outside the steps.
 
 - **The key is its user.** `GET /v2/user/me` answers `profile` (`isAdmin`, `roles`,
   `locale`, `status`) and `permissions`: the key's scopes. `check` reads it for you.
-- **Permissions are frozen per key.** A non-admin key keeps the permissions of the moment it
-  was created; role changes later do not reach it. Create a new key.
+- **After changing a user's roles, replace their keys.** A non-admin key keeps the permissions
+  it was created with, so create a new key and revoke the old one.
 - **401 means the key itself was refused:** unknown, expired, revoked, or its user is not
   active. **403** means a valid key without permission for that action.
 - **Keys cannot be read back.** The account stores them hashed. A lost key is replaced, never

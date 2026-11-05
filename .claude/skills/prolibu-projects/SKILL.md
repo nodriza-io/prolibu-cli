@@ -114,9 +114,9 @@ Evidence and details are in `references/projects-model.md`.
   days of the project's calendar (and its reminder with it), one save per task. Done tasks
   and tasks without dates stay. The app has no "move the whole project" button: it only pushes
   successors when a task overlaps them.
-- **Public timeline.** A project can share its timeline by link, without sign-in. The link is
-  the project's id, never changes, and shows the tasks (descriptions, checklists) and members'
-  names and e-mails. This skill only turns sharing **off** (`unshare`); turning it on is the
+- **Public timeline.** A project can share its timeline by link, without sign-in. Anyone with
+  the link sees the tasks (descriptions, checklists) and members' names and e-mails, and the
+  link stays the same if sharing is turned on again. This skill only turns sharing **off** (`unshare`); turning it on is the
   user's decision in the app, after you tell them this.
 - **Deleting** is not done here. Deleting a project leaves its tasks without a project, except
   a work order's project, whose tasks are deleted with it.

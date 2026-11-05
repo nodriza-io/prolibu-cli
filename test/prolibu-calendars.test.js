@@ -217,7 +217,7 @@ describe('setup', () => {
     const plan = JSON.stringify({ items: [{ kind: 'calendar', id: CAL, set: { isPublic: false } }, { kind: 'productLink', set: { calendar: CAL } }] });
     expect(await run(['setup-preview', D, plan])).toBe(3);
     const text = json().blockers.join(' ');
-    expect(text).toMatch(/never checked/);
+    expect(text).toMatch(/isPublic.*does nothing/);
     expect(text).toMatch(/prolibu-catalog/);
   });
 
