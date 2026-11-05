@@ -7,9 +7,9 @@ const { parseArgs, resolveServedDir, fileForPath, hueFamily, REVIEW_PREFIX } = r
 const ROOT = path.resolve(__dirname, '..');
 
 describe('ui-review arguments', () => {
-  test('defaults to three widths with the session on', () => {
+  test('defaults to four widths with the session on', () => {
     const opts = parseArgs(['dev12.prolibu.com', 'accounts/x/sites/y']);
-    expect(opts).toMatchObject({ domain: 'dev12.prolibu.com', folder: 'accounts/x/sites/y', widths: [1440, 1024, 390], session: true });
+    expect(opts).toMatchObject({ domain: 'dev12.prolibu.com', folder: 'accounts/x/sites/y', widths: [1920, 1440, 1024, 390], session: true });
   });
 
   test('takes widths, a profile and no session', () => {
