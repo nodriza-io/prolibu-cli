@@ -38,8 +38,8 @@ calculate, discounts, service charge, currencies, events) are in
 - To edit a line that arrived, find it by `uuid`, change editable fields only, send the full list.
   When changing a discount, send both `discountRate` and `discountAmount` (the other one 0):
   when both are set, `discountAmount` wins.
-- `cost` comes back to anyone who can call the route. Do not show it to sellers unless the
-  account wants that.
+- `cost` comes back in the product data. Do not show it on the page unless the account wants
+  sellers to see it.
 
 ## Events mode (`quoteMode === 'Events'`)
 

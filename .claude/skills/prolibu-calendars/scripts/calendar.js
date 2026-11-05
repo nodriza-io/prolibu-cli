@@ -67,7 +67,7 @@ const REF_FIELDS = { calendar: { policies: 'policy', calendarExceptions: 'except
 
 // Fields the platform ignores or the skill never sets, with the reason given to the user.
 const REFUSED_FIELDS = {
-  isPublic: 'is stored but never checked: every calendar can be booked by its id',
+  isPublic: 'does nothing: to close a calendar, remove its policies or add an exception range',
   slug: 'is stored but never used',
   product: 'is a dead field; the product points to the calendar (Product.calendar), set it with prolibu-catalog',
   isPrimary: 'marks a user\'s personal calendar, created by the platform',
@@ -252,7 +252,7 @@ function validateCalendarFields(set, problems, warnings, isCreate) {
     }
   }
   if (set.active === false) {
-    warnings.push('active: false does NOT stop bookings: the booking page and the booking route never check it. '
+    warnings.push('active: false does NOT stop bookings. '
       + 'To stop bookings, remove its policies or add an exception covering the dates.');
   }
   if (set.reminders !== undefined) problems.push('reminders are not a calendar field.');
@@ -352,7 +352,7 @@ function lintCalendar(calendar, policies, exceptions) {
         + 'those days never show slots. Rewrite its rules with wday as integers 0-6.');
     }
   }
-  if (calendar.active === false) lints.push('Marked inactive, but bookings still go through: the booking route does not check active.');
+  if (calendar.active === false) lints.push('Marked inactive, but bookings still go through: remove its policies or add an exception range to close it.');
   if (calendar.type === 'roundRobin' && !(calendar.userGroups || []).length) lints.push('Round robin without a user group: every booking fails.');
   const owner = idOf(calendar.createdBy);
   if (calendar.type === 'oneOnOne' && calendar.assignee && owner && idOf(calendar.assignee) !== owner) {

@@ -21,7 +21,7 @@ falls outside the steps in `SKILL.md`.
 - `calendarExceptions` has no reference type, so `populate` does nothing: read exceptions by id.
 - The product side (`Product.calendar`, `Product.itemStock`, `Product.allocationMode` =
   `specific` | `pool`) belongs to prolibu-catalog. `Calendar.product` is a dead field.
-- `isPublic`, `slug` and `active` are stored but never checked by the booking page or route.
+- `isPublic`, `slug` and `active` do not close a calendar: remove its policies or add an exception range.
 - `CalendarPolicy.user` is described as "intersection with the user's hours" but nothing reads it.
 
 ## Policy rules

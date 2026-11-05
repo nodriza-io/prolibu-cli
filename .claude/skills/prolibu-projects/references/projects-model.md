@@ -97,10 +97,8 @@ or creator.
 
 ## Public timeline
 
-`PATCH /v2/group/{id}` with `shareTimeline.enabled: true` creates a short link to
-`/ui/spa/timelines/<group id>`. The page calls `GET /v2/task/timeline/<group id>` **without
-authentication**. It returns the group (members with names and e-mails) and every task
-(without `collaborators`; without assignee or stage only when the hide options are on;
-creators' names and e-mails, descriptions, checklists and attachment and comment ids included). The id is the
-link: it cannot be rotated. Turning sharing off makes the call answer 403; turning it on again
-revives the same link.
+`PATCH /v2/group/{id}` with `shareTimeline.enabled: true` creates a short link
+(`shareTimeline.timelineUrl`) that opens without sign-in. It shows the group (members with names
+and e-mails) and every task (without assignee or stage only when the hide options are on;
+creators, descriptions and checklists included). Turning sharing off closes the link; turning it
+on again opens the same link.
