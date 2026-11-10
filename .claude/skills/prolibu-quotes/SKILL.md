@@ -1,6 +1,6 @@
 ---
 name: prolibu-quotes
-description: Add, change or remove products on a Prolibu deal's quote (proposal) the way the app does it — find the deal, pick real catalog products from the right price list, set quantities, discounts and event days, preview the server's totals, then save after the user agrees. Use it whenever someone asks to quote, price or add products or services to a deal, change a quantity or discount on a quote, remove a line, or reports quote lines that came out "virtual", totals that look wrong, lines that vanished after saving, or a 409 when saving a quote. Spanish triggers: "cotización", "cotizar", "agregar productos al negocio", "propuesta", "descuento en la cotización", "líneas virtuales".
+description: Add, change or remove products on a Prolibu deal's quote (proposal) the way the app does it — find the deal, pick real catalog products from the right price list, set quantities, discounts (also discounts that expire at a date and hour, Real-Time or Limited-Time) and event days, preview the server's totals, then save after the user agrees. Use it whenever someone asks to quote, price or add products or services to a deal, change a quantity or discount on a quote, remove a line, or reports quote lines that came out "virtual", totals that look wrong, lines that vanished after saving, or a 409 when saving a quote. Spanish triggers: "cotización", "cotizar", "agregar productos al negocio", "propuesta", "descuento en la cotización", "líneas virtuales", "descuento por tiempo", "descuento hasta el", "oferta por tiempo limitado", "Real-Time", "Limited-Time".
 ---
 
 # Prolibu Quotes
@@ -43,6 +43,11 @@ In plain business terms:
 2. **Which products, and how many?** For an events quote, also **which day** each one is for.
 3. **Which price list?** Only ask when the deal's currency leaves more than one choice.
 4. **Any discount?** As a percentage or an amount per unit.
+5. **Does the discount expire?** If so: until which date and hour, and how it ends.
+   - **Limited-Time**: the full discount until the end, then 0.
+   - **Real-Time**: the discount shrinks evenly until the end, then 0. Example: 10% on
+     1,000,000 for one day is 100,000 off at the start and 50,000 off after 12 hours.
+   - If the user did not say which, ask. Never pick one for them.
 
 If the account has several domains under `accounts/`, ask which one.
 
@@ -83,6 +88,21 @@ If the account has several domains under `accounts/`, ask which one.
    - `day` (YYYY-MM-DD) sets an events line's dates in the user's time zone. If the script
      says it cannot find one, ask the user for the account's time zone and add
      `"timeZone": "<IANA zone>"` to the plan.
+   - **A discount that expires** goes in `"timeDiscount"`, next to the line's discount:
+
+     ```json
+     { "dealId": "<deal _id>",
+       "update": [{ "uuid": "<line uuid>", "discountRate": 0.1 }],
+       "timeDiscount": { "strategy": "Real-Time", "endAt": "2026-11-14T18:00" } }
+     ```
+
+     - `endAt` (and the optional `startFrom`) is a local time `YYYY-MM-DDTHH:mm` in the
+       user's time zone, or an ISO instant with a zone. A new window starts now.
+     - Changing a window the quote already has keeps its start; add `"startFrom": "now"` only
+       when the user wants it to start over.
+     - To remove the time limit: `"timeDiscount": { "off": true }`. Every line gets its full
+       discount back, with no end date. Line discounts are not touched.
+     - A plan may carry only `timeDiscount`.
 6. **Preview.** Run `preview <domain> '<plan json>'`. It calculates on the server and writes
    nothing. Tell the user, in plain language and in the quote currency:
    - what is added, changed and removed;
@@ -90,13 +110,21 @@ If the account has several domains under `accounts/`, ask which one.
    - `serverAddedLines`: included products or an automatic service charge, added by the
      account's own rules;
    - every `warning`;
-   - that saving turns the deal's proposal on, if `turnsProposalOn` is true.
+   - that saving turns the deal's proposal on, if `turnsProposalOn` is true;
+   - when `timeDiscount` is not null: the window in local time, its `rule` in plain words,
+     each discounted line with its discount now, and every one of its `warnings`. Use only
+     these figures: the server calculates the discount for "now" only, so never work out
+     what it will be at another moment.
 7. **Wait for an explicit yes.** Changing or removing existing lines needs its own yes.
 8. **Save.** Run `apply <domain> '<same plan json>' --deal-version <dealVersion> --confirmed`,
    with `dealVersion` from the preview. It refuses when the deal changed since that preview
-   (preview again and show the user), or when the deal is blocked.
+   (preview again and show the user), or when the deal is blocked. If the preview returned
+   `resolvedTimeDiscount`, put it in the plan as `timeDiscount`, exactly as it came: apply
+   only takes the exact instants the user saw.
 9. **Report.** On `"saved": true`, give the user the saved total and the deal name. On
-   `problems`, show them and say nothing was hidden.
+   `problems`, show them and say nothing was hidden. After saving a discount that expires,
+   tell the user that the quote builder's time-discount simulator shows what the customer
+   pays at any other moment.
 
 ## How the platform behaves
 
@@ -119,6 +147,11 @@ falls outside the steps above.
   Only when the user confirms an admin turned that on, add `--allow-end-flow-stage` to `apply`.
 - **Approvals can make a save stale.** An approval in the meantime makes the save answer 409.
   Run preview again and show the user the new result.
+- **A discount that expires applies to the whole quote.** The window lives on the quote
+  (`timeSensitiveDiscounts`), and its clock runs on every line that has a discount. The
+  server recalculates it to "now" on every save. When the deal reaches a closing stage, the
+  discount is kept as it was. If the deal is reopened after the window ends, it is
+  recalculated and becomes 0. Nothing notifies the customer; never promise reminders.
 - **The AI assistant's proposal tools are not for this.** If the Prolibu MCP server is
   connected, its `createProposal`, `updateProposal` and `calculateQuote` tools only make
   virtual lines, and `updateProposal` turns catalog lines into virtual ones. Use this skill
@@ -137,6 +170,9 @@ falls outside the steps above.
 | "Virtual line items has been disabled…" | A line without a product, on an account that forbids them | Use catalog products |
 | 400 "This deal is in the … stage" | Closed deal | Tell the user; an admin decides |
 | 409 when saving | An approval changed the quote | Preview again |
+| A new discount on a line has no effect | The quote has a time window and the line kept its old original discount | Change it through the script: it drops the line's original |
+| A discount that expires is 0 | The window has not started, has ended, or the deal was reopened after the end | Run a preview and read `timeDiscount.status`; set a new window if the user wants |
+| A line's discount rate looks wrong under a time window | The stored rate is not the rate asked for | Read `originalDiscountRate` |
 | A product rule blocks the save ("no puede ser superior", "está bloqueado", "viola la regla de la excepción comercial") | A rule limits that field, or an approved exception pins it | `prolibu-commercial-exceptions`: diagnose, then request an exception |
 
 ## Verify
@@ -153,6 +189,9 @@ falls outside the steps above.
 - Search without `--pricebook` and pick an entry the user did not choose: it may come from a
   price list they cannot see.
 - Retry a blocked or rejected save another way.
+- Set `lostDiscountAmount`, `remainingDiscountAmount`, `discountAppliedAt`, `finalized` or
+  `numberOfNotifications`: the server owns them.
+- Quote an amount for a future moment of a time window.
 
 ## Writing to an account
 

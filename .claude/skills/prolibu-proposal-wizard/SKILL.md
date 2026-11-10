@@ -115,7 +115,8 @@ Explain each finding in plain words:
   an existing contact kept its owner. `readable: false` means a user this profile cannot see.
 - Wrong prices: `priceChanged` (the list changed since), lines without an entry (preset lines,
   or a charge the account adds), the time-sensitive discount override, an advisor price list.
-  Price fixes belong to **prolibu-catalog**.
+  Price fixes belong to **prolibu-catalog**. To put, change or remove a discount that expires
+  on a proposal that already exists, use **prolibu-quotes**.
 - `twins`: the same visitor twice within a minute (double submit).
 
 **Public page check.** `public-check <wizard>` reads the page as an anonymous visitor, without
