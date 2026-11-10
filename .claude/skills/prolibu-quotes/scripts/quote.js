@@ -302,7 +302,12 @@ async function timeZoneFor(client, plan, storedQuote) {
     || Boolean(plan.timeDiscount) || Boolean(tsd && tsd.enabled);
   if (!needed) return undefined;
   const me = await call(client, 'GET', '/v2/user/me');
-  return (me.locale && me.locale.timeZone) || (me.profile && me.profile.locale && me.profile.locale.timeZone) || undefined;
+  const own = (me.locale && me.locale.timeZone) || (me.profile && me.profile.locale && me.profile.locale.timeZone);
+  if (own) return own;
+  // A user without a zone of their own works in the account's zone, as the app does.
+  const pref = await call(client, 'GET', '/v2/preference/read');
+  const account = pref && (pref.preference || pref);
+  return (account && account.locale && account.locale.timeZone) || undefined;
 }
 
 async function prepare(client, plan, { forApply = false, now = new Date() } = {}) {

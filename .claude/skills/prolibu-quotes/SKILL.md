@@ -152,6 +152,8 @@ falls outside the steps above.
   server recalculates it to "now" on every save. When the deal reaches a closing stage, the
   discount is kept as it was. If the deal is reopened after the window ends, it is
   recalculated and becomes 0. Nothing notifies the customer; never promise reminders.
+  If the user wants the clock on one line only, say the platform does not allow it, and let
+  them choose; do not suggest workarounds such as changing prices.
 - **The AI assistant's proposal tools are not for this.** If the Prolibu MCP server is
   connected, its `createProposal`, `updateProposal` and `calculateQuote` tools only make
   virtual lines, and `updateProposal` turns catalog lines into virtual ones. Use this skill

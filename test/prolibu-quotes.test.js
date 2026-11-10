@@ -51,7 +51,8 @@ async function fakeFetch(url, init) {
       pagination: { count: 1 },
     });
   }
-  if (init.method === 'GET' && u.pathname === '/v2/user/me') return respond(200, { locale: { timeZone: 'America/Bogota' } });
+  if (init.method === 'GET' && u.pathname === '/v2/user/me') return respond(200, state.me || { locale: { timeZone: 'America/Bogota' } });
+  if (init.method === 'GET' && u.pathname === '/v2/preference/read') return respond(200, { preference: { locale: { timeZone: 'America/Lima' } } });
   if (init.method === 'PUT' && u.pathname === '/v2/quote/calculate') {
     const q = JSON.parse(init.body);
     // Like the server's engine: with the clock on, a line keeps its first discount as the
@@ -441,5 +442,14 @@ describe('saving a time window', () => {
     state.mutateSaved = (deal) => { deal.proposal.quote.lineItems[0].originalDiscountAmount = 0.5; };
     expect(await run(['apply', D, applyPlan(resolved), '--deal-version', 'T1', '--confirmed'])).toBe(1);
     expect(JSON.parse(out).problems.join(' ')).toMatch(/Chair/);
+  });
+});
+
+describe('time zone for local times', () => {
+  test('without a user time zone, the account time zone is used', async () => {
+    state.me = { profile: { locale: { language: 'es' } } };
+    expect(await run(['preview', D, plan({ timeDiscount: { strategy: 'Limited-Time', endAt: '2030-01-10T18:00' } })])).toBe(0);
+    expect(JSON.parse(out).resolvedTimeDiscount.endAt).toBe('2030-01-10T23:00:00.000Z');
+    expect(JSON.parse(out).timeDiscount.after.endAtLocal).toBe('2030-01-10 18:00 (America/Lima)');
   });
 });
