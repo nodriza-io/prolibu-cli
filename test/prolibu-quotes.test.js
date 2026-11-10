@@ -52,6 +52,7 @@ async function fakeFetch(url, init) {
     });
   }
   if (init.method === 'GET' && u.pathname === '/v2/user/me') return respond(200, state.me || { locale: { timeZone: 'America/Bogota' } });
+  if (init.method === 'GET' && u.pathname === '/v2/preference/read' && state.prefStatus) return respond(state.prefStatus, { error: 'forbidden' });
   if (init.method === 'GET' && u.pathname === '/v2/preference/read') return respond(200, { preference: { locale: { timeZone: 'America/Lima' } } });
   if (init.method === 'PUT' && u.pathname === '/v2/quote/calculate') {
     const q = JSON.parse(init.body);
@@ -60,7 +61,7 @@ async function fakeFetch(url, init) {
     const tsdOn = Boolean(q.timeSensitiveDiscounts && q.timeSensitiveDiscounts.enabled);
     const lines = q.lineItems.map((l) => {
       const line = { ...l, total: (l.price || 0) * (l.quantity || 1) };
-      const asked = line.discountAmount || (line.price || 0) * (line.discountRate || 0);
+      const asked = line.discountAmount || (typeof line.specialPrice === 'number' ? line.specialPrice : (line.price || 0)) * (line.discountRate || 0);
       if (tsdOn) {
         if (line.originalDiscountAmount === undefined) line.originalDiscountAmount = asked;
         line.discountAmount = line.originalDiscountAmount;
@@ -451,5 +452,33 @@ describe('time zone for local times', () => {
     expect(await run(['preview', D, plan({ timeDiscount: { strategy: 'Limited-Time', endAt: '2030-01-10T18:00' } })])).toBe(0);
     expect(JSON.parse(out).resolvedTimeDiscount.endAt).toBe('2030-01-10T23:00:00.000Z');
     expect(JSON.parse(out).timeDiscount.after.endAtLocal).toBe('2030-01-10 18:00 (America/Lima)');
+  });
+});
+
+describe('review fixes', () => {
+  const resolved = { strategy: 'Real-Time', startFrom: '2030-01-01T00:00:00.000Z', endAt: '2030-01-10T23:00:00.000Z' };
+
+  test('a line with a special price is not reported as failed after a correct save', async () => {
+    state.deal.proposal.quote.lineItems = [{ ...existingLine, specialPrice: 8 }];
+    const p = plan({ update: [{ uuid: 'u-old', discountRate: 0.1 }], timeDiscount: resolved });
+    expect(await run(['apply', D, p, '--deal-version', 'T1', '--confirmed'])).toBe(0);
+    expect(JSON.parse(out)).toMatchObject({ saved: true, problems: [] });
+  });
+
+  test('a failed account time zone lookup does not block a preview that only shows times', async () => {
+    state.me = { profile: {} };
+    state.prefStatus = 403;
+    state.deal.proposal.quote.timeSensitiveDiscounts = {
+      enabled: true, strategy: 'Limited-Time', startFrom: '2030-01-01T00:00:00.000Z', endAt: '2030-01-05T00:00:00.000Z',
+    };
+    expect(await run(['preview', D, plan({ update: [{ uuid: 'u-old', quantity: 3 }] })])).toBe(0);
+    expect(JSON.parse(out).timeDiscount.after.endAtLocal).toBe('2030-01-05 00:00 (UTC)');
+  });
+
+  test('a failed lookup still stops a plan that needs the zone for a local time', async () => {
+    state.me = { profile: {} };
+    state.prefStatus = 403;
+    expect(await run(['preview', D, plan({ timeDiscount: { strategy: 'Real-Time', endAt: '2030-01-10T18:00' } })])).not.toBe(0);
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
   });
 });

@@ -298,16 +298,23 @@ function blockers({ deal, stage }, { allowEndFlowStage = false } = {}) {
 async function timeZoneFor(client, plan, storedQuote) {
   if (plan.timeZone) return plan.timeZone;
   const tsd = storedQuote && storedQuote.timeSensitiveDiscounts;
-  const needed = (plan.add || []).some((change) => change.day !== undefined)
-    || Boolean(plan.timeDiscount) || Boolean(tsd && tsd.enabled);
-  if (!needed) return undefined;
-  const me = await call(client, 'GET', '/v2/user/me');
-  const own = (me.locale && me.locale.timeZone) || (me.profile && me.profile.locale && me.profile.locale.timeZone);
-  if (own) return own;
-  // A user without a zone of their own works in the account's zone, as the app does.
-  const pref = await call(client, 'GET', '/v2/preference/read');
-  const account = pref && (pref.preference || pref);
-  return (account && account.locale && account.locale.timeZone) || undefined;
+  // Required to read a local date or time; otherwise only used to show times, so a failed
+  // lookup must not block the preview (times then show in UTC).
+  const required = (plan.add || []).some((change) => change.day !== undefined) || td.needsTimeZone(plan.timeDiscount);
+  const forDisplay = Boolean(plan.timeDiscount) || Boolean(tsd && tsd.enabled);
+  if (!required && !forDisplay) return undefined;
+  try {
+    const me = await call(client, 'GET', '/v2/user/me');
+    const own = (me.locale && me.locale.timeZone) || (me.profile && me.profile.locale && me.profile.locale.timeZone);
+    if (own) return own;
+    // A user without a zone of their own works in the account's zone, as the app does.
+    const pref = await call(client, 'GET', '/v2/preference/read');
+    const account = pref && (pref.preference || pref);
+    return (account && account.locale && account.locale.timeZone) || undefined;
+  } catch (err) {
+    if (required) throw err;
+    return undefined;
+  }
 }
 
 async function prepare(client, plan, { forApply = false, now = new Date() } = {}) {
@@ -367,11 +374,15 @@ function timeDiscountProblems(result, saved) {
     }
   }
   if (!tsd.enabled) return problems;
+  // The expected discount is the one the server calculated before saving (it prices on the
+  // special price, not the list price), never a recomputation here.
   const lines = new Map((saved.lineItems || []).map((line) => [line.uuid, line]));
+  const calculated = new Map((result.calculated.lineItems || []).map((line) => [line.uuid, line]));
   for (const change of result.built.discountChanges || []) {
     const line = lines.get(change.uuid);
-    if (!line) continue;
-    const asked = change.discountAmount || (line.price || 0) * (change.discountRate || 0);
+    const before = calculated.get(change.uuid);
+    if (!line || !before) continue;
+    const asked = before.originalDiscountAmount;
     if (typeof line.originalDiscountAmount !== 'number' || Math.abs(line.originalDiscountAmount - asked) > 0.01) {
       problems.push(`${line.productName}: the saved discount is ${line.originalDiscountAmount} per unit, not ${asked}.`);
     }
