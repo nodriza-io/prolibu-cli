@@ -131,6 +131,7 @@ function buildQuote(storedQuote, plan, formatted, {
   const isEvents = quote.quoteMode === 'Events';
   const warnings = [];
   const added = [];
+  const discountChanges = [];
 
   for (const [i, change] of (plan.update || []).entries()) {
     const line = byUuid.get(change.uuid);
@@ -139,7 +140,10 @@ function buildQuote(storedQuote, plan, formatted, {
     const edits = { ...change };
     delete edits.uuid;
     const valid = validateEdits(edits, `update[${i}]`);
-    if ('discountRate' in valid || 'discountAmount' in valid) td.clearOriginals(line);
+    if ('discountRate' in valid || 'discountAmount' in valid) {
+      td.clearOriginals(line);
+      discountChanges.push({ uuid: line.uuid, discountRate: valid.discountRate, discountAmount: valid.discountAmount });
+    }
     Object.assign(line, valid);
   }
 
@@ -209,7 +213,7 @@ function buildQuote(storedQuote, plan, formatted, {
     quote.timeSensitiveDiscounts = td.withoutServerFields(quote.timeSensitiveDiscounts);
   }
   return {
-    quote, added, removed: [...removeSet], dismissed, warnings, timeDiscount,
+    quote, added, removed: [...removeSet], dismissed, warnings, timeDiscount, discountChanges,
   };
 }
 
@@ -343,6 +347,33 @@ function proposalTitle(deal, quote) {
   return (deal.proposal && deal.proposal.title) || quote.quoteName || deal.dealName || '';
 }
 
+// What the read-back must show after saving a time window: the window as resolved, and each
+// line whose discount the plan set keeps that discount as its original.
+function timeDiscountProblems(result, saved) {
+  const problems = [];
+  const resolved = result.built.timeDiscount;
+  const tsd = saved.timeSensitiveDiscounts || {};
+  if (resolved && resolved.off && tsd.enabled) problems.push('The time window is still on after saving.');
+  if (resolved && !resolved.off) {
+    if (!tsd.enabled) problems.push('The time window is not on after saving.');
+    if (tsd.strategy !== resolved.strategy) problems.push(`Saved strategy is ${tsd.strategy}, not ${resolved.strategy}.`);
+    for (const key of ['startFrom', 'endAt']) {
+      if (Date.parse(tsd[key]) !== Date.parse(resolved[key])) problems.push(`Saved ${key} is ${tsd[key]}, not ${resolved[key]}.`);
+    }
+  }
+  if (!tsd.enabled) return problems;
+  const lines = new Map((saved.lineItems || []).map((line) => [line.uuid, line]));
+  for (const change of result.built.discountChanges || []) {
+    const line = lines.get(change.uuid);
+    if (!line) continue;
+    const asked = change.discountAmount || (line.price || 0) * (change.discountRate || 0);
+    if (typeof line.originalDiscountAmount !== 'number' || Math.abs(line.originalDiscountAmount - asked) > 0.01) {
+      problems.push(`${line.productName}: the saved discount is ${line.originalDiscountAmount} per unit, not ${asked}.`);
+    }
+  }
+  return problems;
+}
+
 // ─── Commands ──────────────────────────────────────────────────────────────────
 
 async function cmdShow(client, [dealId]) {
@@ -449,7 +480,7 @@ async function cmdApply(client, [planArg], flags, ctx) {
   }
   if (!flags.confirmed) throw new UsageError('Refusing to write without --confirmed. Run preview, show it to the user and wait for a yes.');
   const plan = readPlan(planArg, ctx.rootDir);
-  const result = await prepare(client, plan);
+  const result = await prepare(client, plan, { forApply: true });
   if (result.deal.updatedAt !== flags.dealVersion) {
     throw new Blocked('The deal changed since the preview. Run preview again and show the user the new result.');
   }
@@ -484,6 +515,7 @@ async function cmdApply(client, [planArg], flags, ctx) {
       problems.push(`Existing line ${line.productName} (${line.uuid}) disappeared.`);
     }
   }
+  problems.push(...timeDiscountProblems(result, saved));
   return {
     saved: problems.length === 0,
     deal: { _id: after.deal._id, dealName: after.deal.dealName, updatedAt: after.deal.updatedAt },

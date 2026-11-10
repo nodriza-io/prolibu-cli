@@ -79,6 +79,7 @@ async function fakeFetch(url, init) {
     const body = JSON.parse(init.body);
     state.deal = { ...state.deal, proposal: { ...state.deal.proposal, ...body.proposal }, updatedAt: 'T2' };
     if (state.saveAsVirtual) state.deal.proposal.quote.lineItems.forEach((l) => { delete l.pricebookEntry; });
+    if (state.mutateSaved) state.mutateSaved(state.deal);
     return respond(200, state.deal);
   }
   return respond(404, { error: `unexpected ${init.method} ${u.pathname}` });
@@ -405,5 +406,40 @@ describe('time-limited discounts', () => {
     const s = quote.summarizeQuote({ lineItems: [discounted({ discountRate: 0.0066 })] });
     expect(s.lines[0]).toMatchObject({ originalDiscountAmount: 10, originalDiscountRate: 0.1 });
     expect(s.lines[0]).not.toHaveProperty('discountRate');
+  });
+});
+
+describe('saving a time window', () => {
+  const resolved = { strategy: 'Real-Time', startFrom: '2030-01-01T00:00:00.000Z', endAt: '2030-01-10T23:00:00.000Z' };
+  const applyPlan = (timeDiscount) => plan({ update: [{ uuid: 'u-old', discountRate: 0.1 }], timeDiscount });
+
+  test('apply refuses "now" or a local time: it takes only the preview\'s resolved window', async () => {
+    expect(await run(['apply', D, applyPlan({ ...resolved, startFrom: 'now' }), '--deal-version', 'T1', '--confirmed'])).toBe(2);
+    expect(err).toMatch(/resolvedTimeDiscount/);
+    err = '';
+    expect(await run(['apply', D, applyPlan({ ...resolved, endAt: '2030-01-10T18:00' }), '--deal-version', 'T1', '--confirmed'])).toBe(2);
+    expect(err).toMatch(/resolvedTimeDiscount/);
+    expect(calls.some((c) => c.method === 'PATCH')).toBe(false);
+  });
+
+  test('apply saves the resolved window and checks it on the read-back', async () => {
+    expect(await run(['apply', D, applyPlan(resolved), '--deal-version', 'T1', '--confirmed'])).toBe(0);
+    const patch = calls.find((c) => c.method === 'PATCH');
+    expect(patch.body.proposal.quote.timeSensitiveDiscounts).toMatchObject({ enabled: true, ...resolved });
+    expect(JSON.parse(out)).toMatchObject({ saved: true, problems: [] });
+  });
+
+  test('a saved window that differs from the plan is a problem', async () => {
+    state.mutateSaved = (deal) => { deal.proposal.quote.timeSensitiveDiscounts.endAt = '2030-01-11T00:00:00.000Z'; };
+    expect(await run(['apply', D, applyPlan(resolved), '--deal-version', 'T1', '--confirmed'])).toBe(1);
+    const res = JSON.parse(out);
+    expect(res.saved).toBe(false);
+    expect(res.problems.join(' ')).toMatch(/endAt/);
+  });
+
+  test('a clocked line saved without the asked discount as its original is a problem', async () => {
+    state.mutateSaved = (deal) => { deal.proposal.quote.lineItems[0].originalDiscountAmount = 0.5; };
+    expect(await run(['apply', D, applyPlan(resolved), '--deal-version', 'T1', '--confirmed'])).toBe(1);
+    expect(JSON.parse(out).problems.join(' ')).toMatch(/Chair/);
   });
 });
