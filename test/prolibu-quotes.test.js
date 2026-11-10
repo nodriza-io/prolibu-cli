@@ -51,9 +51,25 @@ async function fakeFetch(url, init) {
       pagination: { count: 1 },
     });
   }
+  if (init.method === 'GET' && u.pathname === '/v2/user/me') return respond(200, { locale: { timeZone: 'America/Bogota' } });
   if (init.method === 'PUT' && u.pathname === '/v2/quote/calculate') {
     const q = JSON.parse(init.body);
-    const lines = q.lineItems.map((l) => ({ ...l, total: (l.price || 0) * (l.quantity || 1) }));
+    // Like the server's engine: with the clock on, a line keeps its first discount as the
+    // original and starts from it; with the clock off, the original comes back.
+    const tsdOn = Boolean(q.timeSensitiveDiscounts && q.timeSensitiveDiscounts.enabled);
+    const lines = q.lineItems.map((l) => {
+      const line = { ...l, total: (l.price || 0) * (l.quantity || 1) };
+      const asked = line.discountAmount || (line.price || 0) * (line.discountRate || 0);
+      if (tsdOn) {
+        if (line.originalDiscountAmount === undefined) line.originalDiscountAmount = asked;
+        line.discountAmount = line.originalDiscountAmount;
+      } else if (line.originalDiscountAmount !== undefined) {
+        line.discountAmount = line.originalDiscountAmount;
+        delete line.originalDiscountAmount;
+        delete line.originalDiscountRate;
+      }
+      return line;
+    });
     const dismissed = (q.autoPercentOfTotal && q.autoPercentOfTotal.dismissed) || [];
     if (!dismissed.includes('preference::quote') && !lines.some((l) => l.uuid === 'u-auto')) lines.push({ ...autoCharge, uuid: 'u-auto-new' });
     return respond(200, { ...q, lineItems: lines, total: lines.reduce((s, l) => s + (l.total || 0), 0) });
@@ -288,5 +304,106 @@ describe('plans with a time window', () => {
   test('timeDiscount must be an object', async () => {
     expect(await run(['preview', D, plan({ timeDiscount: 5 })])).toBe(2);
     expect(err).toMatch(/object/);
+  });
+});
+
+describe('time-limited discounts', () => {
+  const SERVER = { lostDiscountAmount: 9, remainingDiscountAmount: 9, discountAppliedAt: 'x', finalized: false, cutRate: 0.5 };
+  const window = (extra) => ({
+    enabled: true, strategy: 'Limited-Time', startFrom: '2030-01-01T00:00:00.000Z', endAt: '2030-01-05T00:00:00.000Z', ...extra,
+  });
+  const calcBody = () => calls.filter((c) => c.method === 'PUT' && c.path === '/v2/quote/calculate').pop().body;
+  const discounted = (extra) => ({
+    uuid: 'u-disc', lineId: 'l-d', productName: 'Lamp', product: 'p3', pricebookEntry: 'e3', quantity: 1, price: 100,
+    discountRate: 0.1, discountAmount: 10, originalDiscountAmount: 10, originalDiscountRate: 0.1, currency: 'USD', ...extra,
+  });
+
+  test('turning the clock on sends the window and none of the server fields', async () => {
+    state.deal.proposal.quote.timeSensitiveDiscounts = { ...SERVER, numberOfNotifications: 3 };
+    expect(await run(['preview', D, plan({
+      update: [{ uuid: 'u-old', discountRate: 0.1 }],
+      timeDiscount: { strategy: 'Real-Time', endAt: '2030-01-10T18:00' },
+    })])).toBe(0);
+    const tsd = calcBody().timeSensitiveDiscounts;
+    expect(tsd).toMatchObject({ enabled: true, strategy: 'Real-Time', endAt: '2030-01-10T23:00:00.000Z', numberOfNotifications: 3 });
+    for (const key of Object.keys(SERVER)) expect(tsd).not.toHaveProperty(key);
+    const res = JSON.parse(out);
+    expect(res.resolvedTimeDiscount).toEqual({ strategy: 'Real-Time', startFrom: tsd.startFrom, endAt: '2030-01-10T23:00:00.000Z' });
+    expect(res.resolvedTimeDiscount.startFrom).toMatch(/Z$/);
+    expect(res.timeDiscount.after.endAtLocal).toBe('2030-01-10 18:00 (America/Bogota)');
+    expect(res.timeDiscount.rule).toMatch(/shrinks evenly/);
+  });
+
+  test('a changed discount on a clocked line drops its original; untouched lines keep theirs', async () => {
+    state.deal.proposal.quote.timeSensitiveDiscounts = window();
+    state.deal.proposal.quote.lineItems = [discounted(), discounted({ uuid: 'u-disc2', productName: 'Desk' })];
+    expect(await run(['preview', D, plan({ update: [{ uuid: 'u-disc', discountRate: 0.2 }] })])).toBe(0);
+    const [changed, untouched] = calcBody().lineItems;
+    expect(changed).not.toHaveProperty('originalDiscountAmount');
+    expect(changed).not.toHaveProperty('originalDiscountRate');
+    expect(untouched.originalDiscountAmount).toBe(10);
+    const res = JSON.parse(out);
+    expect(res.timeDiscount).toBeTruthy();
+    expect(res.timeDiscount.warnings.join(' ')).toMatch(/Desk/);
+  });
+
+  test('off turns the clock off and leaves every line discount alone', async () => {
+    state.deal.proposal.quote.timeSensitiveDiscounts = window();
+    state.deal.proposal.quote.lineItems = [discounted({ discountAmount: 4 })];
+    expect(await run(['preview', D, plan({ timeDiscount: { off: true } })])).toBe(0);
+    const body = calcBody();
+    expect(body.timeSensitiveDiscounts).toMatchObject({ enabled: false, strategy: 'Limited-Time', endAt: '2030-01-05T00:00:00.000Z' });
+    expect(body.lineItems[0]).toMatchObject({ discountAmount: 4, originalDiscountAmount: 10 });
+    const res = JSON.parse(out);
+    expect(res.timeDiscount.status).toBe('off');
+    expect(res.timeDiscount.warnings.join(' ')).toMatch(/full discount back.*Lamp/);
+    expect(res.resolvedTimeDiscount).toEqual({ off: true });
+  });
+
+  test('other discounted lines are named, and a replaced window is flagged', async () => {
+    state.deal.proposal.quote.timeSensitiveDiscounts = window();
+    state.deal.proposal.quote.lineItems = [existingLine, discounted()];
+    await run(['preview', D, plan({ update: [{ uuid: 'u-old', discountRate: 0.1 }], timeDiscount: { endAt: '2030-01-10T18:00' } })]);
+    const res = JSON.parse(out);
+    const text = res.timeDiscount.warnings.join(' ');
+    expect(text).toMatch(/Lamp/);
+    expect(text).not.toMatch(/Chair.*also/);
+    expect(text).toMatch(/replaces/);
+    expect(res.resolvedTimeDiscount.startFrom).toBe('2030-01-01T00:00:00.000Z');
+    expect(res.timeDiscount.lines.find((l) => l.uuid === 'u-old').touchedByPlan).toBe(true);
+    expect(res.timeDiscount.lines.find((l) => l.uuid === 'u-disc').touchedByPlan).toBe(false);
+  });
+
+  test('a clock with no discounted line is reported as doing nothing', async () => {
+    expect(await run(['preview', D, plan({ timeDiscount: { strategy: 'Limited-Time', endAt: '2030-01-10T18:00' } })])).toBe(0);
+    expect(JSON.parse(out).timeDiscount.warnings.join(' ')).toMatch(/does nothing/);
+  });
+
+  test('a window that starts later warns that the discount is 0 until then', async () => {
+    await run(['preview', D, plan({
+      update: [{ uuid: 'u-old', discountRate: 0.1 }],
+      timeDiscount: { strategy: 'Limited-Time', startFrom: '2030-01-02T08:00', endAt: '2030-01-10T18:00' },
+    })]);
+    const res = JSON.parse(out);
+    expect(res.timeDiscount.status).toBe('pending');
+    expect(res.timeDiscount.warnings.join(' ')).toMatch(/0 until/);
+  });
+
+  test('every clocked preview warns about reopening and whole days in the app', async () => {
+    await run(['preview', D, plan({ update: [{ uuid: 'u-old', discountRate: 0.1 }], timeDiscount: { strategy: 'Real-Time', endAt: '2030-01-10T18:00' } })]);
+    const text = JSON.parse(out).timeDiscount.warnings.join(' ');
+    expect(text).toMatch(/reopened/);
+    expect(text).toMatch(/whole days/);
+  });
+
+  test('a quote without a clock and a plan without timeDiscount gets no time block', async () => {
+    await run(['preview', D, plan({ update: [{ uuid: 'u-old', quantity: 3 }] })]);
+    expect(JSON.parse(out).timeDiscount).toBeNull();
+  });
+
+  test('a clocked line shows its original discount instead of the stored rate', () => {
+    const s = quote.summarizeQuote({ lineItems: [discounted({ discountRate: 0.0066 })] });
+    expect(s.lines[0]).toMatchObject({ originalDiscountAmount: 10, originalDiscountRate: 0.1 });
+    expect(s.lines[0]).not.toHaveProperty('discountRate');
   });
 });

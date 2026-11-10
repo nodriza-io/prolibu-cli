@@ -122,7 +122,9 @@ function readPlan(arg, rootDir) {
 
 // Builds the quote to send: the stored quote untouched, plus the plan's changes.
 // `formatted` maps each add index to the line formatLineItem returned for it.
-function buildQuote(storedQuote, plan, formatted, { timeZone, newUuid = () => crypto.randomUUID() } = {}) {
+function buildQuote(storedQuote, plan, formatted, {
+  timeZone, now = new Date(), forApply = false, newUuid = () => crypto.randomUUID(),
+} = {}) {
   const quote = clone(storedQuote) || {};
   const lines = Array.isArray(quote.lineItems) ? quote.lineItems : [];
   const byUuid = new Map(lines.map((line) => [line.uuid, line]));
@@ -136,7 +138,9 @@ function buildQuote(storedQuote, plan, formatted, { timeZone, newUuid = () => cr
     if (isAutoCharge(line)) throw new UsageError(`update[${i}]: ${line.productName} is an automatic charge; the server prices it.`);
     const edits = { ...change };
     delete edits.uuid;
-    Object.assign(line, validateEdits(edits, `update[${i}]`));
+    const valid = validateEdits(edits, `update[${i}]`);
+    if ('discountRate' in valid || 'discountAmount' in valid) td.clearOriginals(line);
+    Object.assign(line, valid);
   }
 
   const dismissed = [];
@@ -196,7 +200,17 @@ function buildQuote(storedQuote, plan, formatted, { timeZone, newUuid = () => cr
     warnings.push('A line without a catalog entry sits before catalog lines. Keep catalog lines first, '
       + 'as the app does: reorder the lines in the app before relying on this quote.');
   }
-  return { quote, added, removed: [...removeSet], dismissed, warnings };
+  // The time window: server-written fields never travel back; the plan's change, if any, applies.
+  let timeDiscount = null;
+  if (plan.timeDiscount) {
+    timeDiscount = td.resolveTimeDiscount(plan.timeDiscount, storedQuote && storedQuote.timeSensitiveDiscounts, { timeZone, now, forApply });
+    td.applyTimeDiscount(quote, timeDiscount);
+  } else if (quote.timeSensitiveDiscounts) {
+    quote.timeSensitiveDiscounts = td.withoutServerFields(quote.timeSensitiveDiscounts);
+  }
+  return {
+    quote, added, removed: [...removeSet], dismissed, warnings, timeDiscount,
+  };
 }
 
 function money(value) {
@@ -204,6 +218,8 @@ function money(value) {
 }
 
 function summarizeLine(line) {
+  // Under a time window the stored rate is not the rate asked for: show the original instead.
+  const clocked = line.originalDiscountAmount !== undefined;
   return {
     uuid: line.uuid,
     product: line.productName,
@@ -211,7 +227,9 @@ function summarizeLine(line) {
     kind: lineKind(line),
     quantity: line.quantity,
     price: money(line.price),
-    discountRate: line.discountRate,
+    ...(clocked
+      ? { originalDiscountAmount: line.originalDiscountAmount, originalDiscountRate: line.originalDiscountRate }
+      : { discountRate: line.discountRate }),
     discountAmount: line.discountAmount,
     currency: line.currency,
     total: money(line.total),
@@ -273,14 +291,17 @@ function blockers({ deal, stage }, { allowEndFlowStage = false } = {}) {
   return found;
 }
 
-async function timeZoneFor(client, plan) {
+async function timeZoneFor(client, plan, storedQuote) {
   if (plan.timeZone) return plan.timeZone;
-  if (!(plan.add || []).some((change) => change.day !== undefined)) return undefined;
+  const tsd = storedQuote && storedQuote.timeSensitiveDiscounts;
+  const needed = (plan.add || []).some((change) => change.day !== undefined)
+    || Boolean(plan.timeDiscount) || Boolean(tsd && tsd.enabled);
+  if (!needed) return undefined;
   const me = await call(client, 'GET', '/v2/user/me');
   return (me.locale && me.locale.timeZone) || (me.profile && me.profile.locale && me.profile.locale.timeZone) || undefined;
 }
 
-async function prepare(client, plan) {
+async function prepare(client, plan, { forApply = false, now = new Date() } = {}) {
   const loaded = await loadDeal(client, plan.dealId);
   const formatted = [];
   for (const [i, change] of (plan.add || []).entries()) {
@@ -289,9 +310,12 @@ async function prepare(client, plan) {
     }
     formatted.push(await call(client, 'GET', `/v2/quote/formatLineItem?${new URLSearchParams({ pricebookEntryId: change.pricebookEntryId })}`));
   }
-  const timeZone = await timeZoneFor(client, plan);
   const storedQuote = (loaded.deal.proposal && loaded.deal.proposal.quote) || {};
-  const built = buildQuote(storedQuote, plan, formatted, { timeZone });
+  const timeZone = await timeZoneFor(client, plan, storedQuote);
+  if (!timeZone && td.needsTimeZone(plan.timeDiscount)) {
+    throw new UsageError('timeDiscount uses a local time but no time zone was found. Ask the user and add "timeZone" to the plan.');
+  }
+  const built = buildQuote(storedQuote, plan, formatted, { timeZone, now, forApply });
   const calculated = await call(client, 'PUT', '/v2/quote/calculate', { data: built.quote });
   const sent = new Set(built.quote.lineItems.map((line) => line.uuid));
   const serverAdded = (calculated.lineItems || []).filter((line) => !sent.has(line.uuid)).map(summarizeLine);
@@ -307,7 +331,12 @@ async function prepare(client, plan) {
     }
   }
   if (money(calculated.total) === null) warnings.push('The calculated total is not a number: a line is missing its price. Do not save.');
-  return { ...loaded, built, calculated, serverAdded, warnings, storedQuote };
+  const timeBlock = td.timeDiscountPreview({
+    storedQuote, calculated, plan, resolved: built.timeDiscount, addedUuids: built.added, timeZone, now,
+  });
+  return {
+    ...loaded, built, calculated, serverAdded, warnings, storedQuote, timeBlock,
+  };
 }
 
 function proposalTitle(deal, quote) {
@@ -402,11 +431,14 @@ async function cmdPreview(client, [planArg], flags, ctx) {
     removedLines: result.built.removed,
     dismissedAutoCharges: result.built.dismissed,
     serverAddedLines: result.serverAdded,
+    timeDiscount: result.timeBlock,
+    resolvedTimeDiscount: td.resolvedForApply(result.built.timeDiscount),
     warnings: result.warnings,
     blockers: found,
     nextStep: found.length
       ? 'Blocked: tell the user why; do not apply.'
-      : 'Show this to the user. STOP HERE and end your turn; never write in the same turn as this preview. Only after the user answers with an explicit yes in a later message, run apply with the same plan and --deal-version set to dealVersion.',
+      : 'Show this to the user. STOP HERE and end your turn; never write in the same turn as this preview. Only after the user answers with an explicit yes in a later message, run apply with the same plan and --deal-version set to dealVersion'
+        + (result.built.timeDiscount ? ', replacing the plan\'s "timeDiscount" with "resolvedTimeDiscount" exactly.' : '.'),
   };
 }
 
