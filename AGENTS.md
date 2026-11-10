@@ -19,7 +19,7 @@ working from memory or from the guide.
 | Import contacts, companies or deals from CSV/Excel without duplicates; bulk edits; import results | [`prolibu-imports`](.claude/skills/prolibu-imports/SKILL.md) |
 | Add fields to an object, or create a custom object | [`prolibu-custom-fields`](.claude/skills/prolibu-custom-fields/SKILL.md) |
 | Catalog: products, price lists and prices, taxes, volume discounts, coupons; load a catalog from Excel | [`prolibu-catalog`](.claude/skills/prolibu-catalog/SKILL.md) |
-| Add, change or remove products on a deal's quote | [`prolibu-quotes`](.claude/skills/prolibu-quotes/SKILL.md) |
+| Add, change or remove products on a deal's quote, including discounts that expire | [`prolibu-quotes`](.claude/skills/prolibu-quotes/SKILL.md) |
 | Set up a deal's proposal and template, its versions, contract templates and contracts ready for e-signature | [`prolibu-proposals`](.claude/skills/prolibu-proposals/SKILL.md) |
 | A product picker or configurator inside the quote editor | [`prolibu-extended-quote-sites`](.claude/skills/prolibu-extended-quote-sites/SKILL.md) |
 | Pipelines and stages: move a record, required fields | [`prolibu-stages`](.claude/skills/prolibu-stages/SKILL.md) |
