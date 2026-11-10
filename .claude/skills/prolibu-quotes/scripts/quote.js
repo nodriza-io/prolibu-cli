@@ -22,6 +22,7 @@ const crypto = require('crypto');
 const {
   createClient, assertDataFileAllowed, UsageError, DEFAULT_ROOT,
 } = require('../../_shared/prolibu-api');
+const td = require('./time-discount');
 
 // Line fields this script lets a plan set. The server keeps more editable fields
 // (taxes, cost, percentOfTotal…), but those are left to the app on purpose.
@@ -57,29 +58,12 @@ function lineKind(line) {
   return 'virtual';
 }
 
-// Offset of a time zone at a given instant, in ms (positive east of UTC).
-function zoneOffsetMs(epoch, timeZone) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-  }).formatToParts(new Date(epoch));
-  const get = (type) => Number(parts.find((p) => p.type === type).value);
-  return Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second')) - epoch;
-}
-
-function midnightIn(year, month, day, timeZone) {
-  const wall = Date.UTC(year, month - 1, day);
-  let epoch = wall;
-  for (let i = 0; i < 2; i += 1) epoch = wall - zoneOffsetMs(epoch, timeZone);
-  return new Date(epoch).toISOString();
-}
-
 // An events-quote line covers one day: local midnight to the next local midnight (exclusive).
 function eventDay(ymd, timeZone) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd));
   if (!match) throw new UsageError(`Invalid day "${ymd}". Use YYYY-MM-DD.`);
   const [y, m, d] = match.slice(1).map(Number);
-  return { startDate: midnightIn(y, m, d, timeZone), endDate: midnightIn(y, m, d + 1, timeZone) };
+  return { startDate: td.midnightIn(y, m, d, timeZone), endDate: td.midnightIn(y, m, d + 1, timeZone) };
 }
 
 function validateEdits(edits, where) {
