@@ -279,3 +279,14 @@ describe('commands', () => {
     expect(out + err).not.toContain('SECRET123');
   });
 });
+
+describe('plans with a time window', () => {
+  test('a plan may only change the time window', async () => {
+    expect(await run(['preview', D, plan({ timeDiscount: { off: true } })])).not.toBe(2);
+  });
+
+  test('timeDiscount must be an object', async () => {
+    expect(await run(['preview', D, plan({ timeDiscount: 5 })])).toBe(2);
+    expect(err).toMatch(/object/);
+  });
+});

@@ -40,3 +40,65 @@ describe('time-discount helpers', () => {
       .toThrow(/YYYY-MM-DDTHH:mm/);
   });
 });
+
+describe('resolveTimeDiscount', () => {
+  const opts = { now: NOW, timeZone: BOGOTA, forApply: false };
+  const stored = {
+    enabled: true, strategy: 'Limited-Time', startFrom: '2026-11-09T00:00:00.000Z', endAt: '2026-11-12T00:00:00.000Z',
+  };
+
+  test('a new window starts now', () => {
+    expect(td.resolveTimeDiscount({ strategy: 'Real-Time', endAt: '2026-11-14T18:00' }, undefined, opts)).toEqual({
+      enabled: true, strategy: 'Real-Time', startFrom: NOW.toISOString(), endAt: '2026-11-14T23:00:00.000Z',
+      replaces: false, keptStoredStart: false,
+    });
+  });
+
+  test('changing an existing window keeps its start and strategy', () => {
+    expect(td.resolveTimeDiscount({ endAt: '2026-11-16T18:00' }, stored, opts)).toEqual({
+      enabled: true, strategy: 'Limited-Time', startFrom: '2026-11-09T00:00:00.000Z', endAt: '2026-11-16T23:00:00.000Z',
+      replaces: true, keptStoredStart: true,
+    });
+  });
+
+  test('"now" restarts an existing window', () => {
+    const r = td.resolveTimeDiscount({ startFrom: 'now', endAt: '2026-11-16T18:00' }, stored, opts);
+    expect(r.startFrom).toBe(NOW.toISOString());
+    expect(r.keptStoredStart).toBe(false);
+  });
+
+  test('a disabled stored window counts as none', () => {
+    expect(() => td.resolveTimeDiscount({ endAt: '2026-11-16T18:00' }, { ...stored, enabled: false }, opts)).toThrow(/strategy/);
+  });
+
+  test('the strategy is required and must be exact', () => {
+    expect(() => td.resolveTimeDiscount({ endAt: '2026-11-14T18:00' }, undefined, opts)).toThrow(/strategy/);
+    expect(() => td.resolveTimeDiscount({ strategy: 'realtime', endAt: '2026-11-14T18:00' }, undefined, opts)).toThrow(/Real-Time/);
+    expect(() => td.resolveTimeDiscount({ strategy: 'Real-Time' }, undefined, opts)).toThrow(/endAt/);
+  });
+
+  test('the window must end in the future and after its start', () => {
+    expect(() => td.resolveTimeDiscount({ strategy: 'Real-Time', endAt: '2026-11-09T18:00' }, undefined, opts)).toThrow(/future/);
+    const late = { ...stored, startFrom: '2026-11-20T00:00:00.000Z', endAt: '2026-11-25T00:00:00.000Z' };
+    expect(() => td.resolveTimeDiscount({ endAt: '2026-11-14T18:00' }, late, opts)).toThrow(/before/);
+  });
+
+  test('off stands alone', () => {
+    expect(td.resolveTimeDiscount({ off: true }, stored, opts)).toEqual({ off: true });
+    expect(() => td.resolveTimeDiscount({ off: true, strategy: 'Real-Time' }, stored, opts)).toThrow(/off/);
+  });
+
+  test('unknown keys are refused', () => {
+    expect(() => td.resolveTimeDiscount({ strategy: 'Real-Time', endAt: '2026-11-14T18:00', numberOfNotifications: 3 }, undefined, opts))
+      .toThrow(/numberOfNotifications/);
+  });
+
+  test('apply takes only the resolved instants', () => {
+    expect(() => td.resolveTimeDiscount({ strategy: 'Real-Time', startFrom: 'now', endAt: '2026-11-14T23:00:00.000Z' }, undefined, { ...opts, forApply: true }))
+      .toThrow(/resolvedTimeDiscount/);
+    expect(() => td.resolveTimeDiscount({ strategy: 'Real-Time', endAt: '2026-11-14T23:00:00.000Z' }, undefined, { ...opts, forApply: true }))
+      .toThrow(/resolvedTimeDiscount/);
+    expect(td.resolveTimeDiscount({ strategy: 'Real-Time', startFrom: NOW.toISOString(), endAt: '2026-11-14T23:00:00.000Z' }, undefined, { ...opts, forApply: true }).endAt)
+      .toBe('2026-11-14T23:00:00.000Z');
+  });
+});

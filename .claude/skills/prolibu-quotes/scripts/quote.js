@@ -111,8 +111,11 @@ function readPlan(arg, rootDir) {
   for (const key of ['add', 'update', 'remove']) {
     if (plan[key] !== undefined && !Array.isArray(plan[key])) throw new UsageError(`"${key}" must be an array.`);
   }
-  if (!(plan.add || []).length && !(plan.update || []).length && !(plan.remove || []).length) {
-    throw new UsageError('The plan changes nothing: add "add", "update" or "remove" entries.');
+  if (plan.timeDiscount !== undefined && (!plan.timeDiscount || typeof plan.timeDiscount !== 'object' || Array.isArray(plan.timeDiscount))) {
+    throw new UsageError('"timeDiscount" must be an object.');
+  }
+  if (!(plan.add || []).length && !(plan.update || []).length && !(plan.remove || []).length && !plan.timeDiscount) {
+    throw new UsageError('The plan changes nothing: add "add", "update", "remove" or "timeDiscount".');
   }
   return plan;
 }

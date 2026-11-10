@@ -57,6 +57,56 @@ function parseInstant(value, {
   throw new UsageError(`${where}: "${value}" is not a date. Use YYYY-MM-DDTHH:mm (local time), an ISO instant with a zone, or "now".`);
 }
 
+const STRATEGIES = ['Real-Time', 'Limited-Time'];
+const PLAN_KEYS = new Set(['strategy', 'endAt', 'startFrom', 'off']);
+
+// Turns the plan's `timeDiscount` into the exact window to save. `stored` is the quote's
+// current `timeSensitiveDiscounts`. Changing a live window keeps its start unless the plan
+// asks for "now"; apply (`forApply`) only takes the exact instants the preview resolved.
+function resolveTimeDiscount(input, stored, { timeZone, now, forApply = false } = {}) {
+  const where = 'timeDiscount';
+  for (const key of Object.keys(input)) {
+    if (!PLAN_KEYS.has(key)) {
+      throw new UsageError(`${where}: "${key}" cannot be set. Allowed: ${[...PLAN_KEYS].join(', ')}. The server keeps the rest.`);
+    }
+  }
+  if (input.off !== undefined) {
+    if (input.off !== true || Object.keys(input).length > 1) {
+      throw new UsageError(`${where}: "off" must be true and come alone.`);
+    }
+    return { off: true };
+  }
+  const live = Boolean(stored && stored.enabled);
+  const parse = (value, key) => parseInstant(value, {
+    timeZone, now, allowNow: !forApply, allowLocal: !forApply, where: `${where}.${key}`,
+  });
+
+  const strategy = input.strategy !== undefined ? input.strategy : (live ? stored.strategy : undefined);
+  if (strategy === undefined) throw new UsageError(`${where}: "strategy" is required (Real-Time or Limited-Time). Ask the user.`);
+  if (!STRATEGIES.includes(strategy)) throw new UsageError(`${where}: strategy must be exactly "Real-Time" or "Limited-Time".`);
+
+  let endAt;
+  if (input.endAt !== undefined) endAt = parse(input.endAt, 'endAt');
+  else if (live && stored.endAt) endAt = new Date(stored.endAt).toISOString();
+  else throw new UsageError(`${where}: "endAt" is required: when does the discount end?`);
+
+  let startFrom;
+  let keptStoredStart = false;
+  if (input.startFrom !== undefined) startFrom = parse(input.startFrom, 'startFrom');
+  else if (live && stored.startFrom) {
+    startFrom = new Date(stored.startFrom).toISOString();
+    keptStoredStart = true;
+  } else startFrom = parse('now', 'startFrom');
+
+  if (Date.parse(endAt) <= now.getTime()) throw new UsageError(`${where}: the end (${endAt}) must be in the future.`);
+  if (Date.parse(startFrom) >= Date.parse(endAt)) {
+    throw new UsageError(`${where}: the start (${startFrom}) must be before the end (${endAt}).`);
+  }
+  return {
+    enabled: true, strategy, startFrom, endAt, replaces: live, keptStoredStart,
+  };
+}
+
 module.exports = {
-  zoneOffsetMs, midnightIn, wallTimeIn, parseInstant,
+  zoneOffsetMs, midnightIn, wallTimeIn, parseInstant, resolveTimeDiscount, STRATEGIES,
 };
