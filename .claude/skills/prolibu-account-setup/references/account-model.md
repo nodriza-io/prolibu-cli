@@ -26,9 +26,9 @@ root. None calls the Prolibu API: they only run git, with the user's own git acc
 
 | Command | Non-interactive form | Asks when | Does |
 | --- | --- | --- | --- |
-| `import` | `--domain <d> --repo <url>` | The flags are missing; or the folder already has files: with a repo it offers *pull*, *delete and re-clone* or *cancel*; without one, *delete it and import?* | `git clone <url> accounts/<d>`, then writes a `.gitignore` (`profile.json`, `dist.zip`, `node_modules/`, `.DS_Store`, `*.log`) **only if the repository has none**, then lists the scripts, sites, plugins and tours found |
+| `import` | `--domain <d> --repo <url>` | The flags are missing; or the folder already has files: with a repo it offers *pull*, *delete and re-clone* or *cancel*; without one, *delete it and import?* | `git clone <url> accounts/<d>`, then writes a `.gitignore` (`profile*.json`, `dist.zip`, `node_modules/`, `.DS_Store`, `*.log`) **only if the repository has none**, then lists the scripts, sites, plugins and tours found |
 | `pull` | `--domain <d>` | No `--domain` (a list of accounts) | If the branch has no upstream, sets it to `origin/<branch>`; then `git pull` |
-| `push` | `--domain <d> -m "<message>"` | No `--domain`, or no message when there are changes | `git status`; if clean, stops. Else `git add .`, `git commit`, `git push` |
+| `push` | `--domain <d> -m "<message>"` | No `--domain`, or no message when there are changes | Refuses if a `profile*.json` is committed. `git status` without the key files; if clean, stops. Else stages everything except `profile*.json` (whatever the `.gitignore` says), `git commit` (no shell), `git push` |
 | `list` | always | never | Folders under `accounts/` with their git remote and items. It does not say whether a key is there: use the skill's `list` |
 
 Without a terminal, a question aborts the command (exit 130) or leaves it waiting: always
@@ -36,13 +36,10 @@ pass the flags.
 
 Traps, reproduced on throwaway local repositories:
 
-- **`push` publishes keys.** `git add .` stages every file that is not ignored. The default
-  `.gitignore` ignores `profile.json` but not `profile.<name>.json`, and a repository that
-  brings its own `.gitignore` keeps it even when it does not mention `profile.json`. Both
-  ended up committed and pushed. `init` adds `profile*.json` to that `.gitignore`; `list`
-  reports every profile that `push` would publish.
-- **`push -m` runs through a shell.** Only `"` is escaped: `$(…)` and backticks in the message
-  are executed. Keep messages to plain words.
+- **A key committed by hand stays in the history.** `push` never stages `profile*.json`, but
+  one committed with plain git blocks `push` until it is untracked, and its key must be
+  rotated. `init` adds `profile*.json` to the `.gitignore`; `list` reports every profile a
+  plain `git add .` would publish.
 - **`import` into an existing folder can delete it** (*delete and re-clone*). The domain is
   not validated: a value with `/` or `..` would clone outside `accounts/`.
 
