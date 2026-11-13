@@ -89,8 +89,8 @@ In plain terms:
    `/mcp` lists its tools as `mcp__prolibu-<label>__<tool>`.
 8. **Send changes back** (only when the user asks): run `list` and stop if any warning says a
    profile would be published. Then `./prolibu account push --domain <domain> -m "<message>"`.
-   It commits everything in the folder (`git add .`) and pushes. Use a message without `$`,
-   backticks, `"` or `\`: the CLI runs it through a shell.
+   It commits everything in the folder except the key files (`profile*.json`) and pushes; it
+   refuses to push while a key file is already committed.
 
 ## How the platform behaves
 

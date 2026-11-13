@@ -2,7 +2,7 @@ module.exports = async function pushAccount(flags) {
   const inquirer = await import('inquirer');
   const path = require('path');
   const fs = require('fs');
-  const { execSync } = require('child_process');
+  const { execSync, execFileSync } = require('child_process');
   const chalk = (await import('chalk')).default;
   const { hasGitRepo } = require('../../core/gitUtil');
 
@@ -68,8 +68,20 @@ module.exports = async function pushAccount(flags) {
     process.exit(1);
   }
 
+  // API keys never leave the machine: profile.json and every profile.<name>.json, whatever the
+  // account's own .gitignore says (a cloned repo keeps its .gitignore).
+  const withoutKeys = ['--', '.', ':(exclude,glob)**/profile*.json'];
+  const git = (args, stdio = 'pipe') => execFileSync('git', args, { cwd: accountDir, stdio });
+
+  const committedKeys = git(['ls-files', '--', ':(glob)**/profile*.json']).toString().trim();
+  if (committedKeys) {
+    console.error(chalk.red(`❌ API key files are committed in '${domain}':\n${committedKeys}`));
+    console.error(chalk.red('Rotate those keys, untrack the files with "git rm --cached <file>", and push again.'));
+    process.exit(1);
+  }
+
   // Show current status
-  const status = execSync('git status --porcelain', { cwd: accountDir, stdio: 'pipe' }).toString().trim();
+  const status = git(['status', '--porcelain', ...withoutKeys]).toString().trim();
   
   if (!status) {
     console.log(chalk.green(`✅ Account '${domain}' is clean, nothing to push.`));
@@ -77,7 +89,7 @@ module.exports = async function pushAccount(flags) {
   }
 
   console.log(chalk.cyan(`\n📋 Changes in '${domain}':\n`));
-  execSync('git status --short', { cwd: accountDir, stdio: 'inherit' });
+  git(['status', '--short', ...withoutKeys], 'inherit');
 
   // Prompt for commit message if not provided
   if (!message) {
@@ -93,10 +105,10 @@ module.exports = async function pushAccount(flags) {
   // Git add, commit, push
   try {
     console.log(chalk.cyan('\n📦 Staging all changes...'));
-    execSync('git add .', { cwd: accountDir, stdio: 'inherit' });
+    git(['add', '--all', ...withoutKeys], 'inherit');
 
     console.log(chalk.cyan(`💾 Committing: "${message}"`));
-    execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: accountDir, stdio: 'inherit' });
+    git(['commit', '-m', message], 'inherit'); // no shell: $(…) or backticks in the message stay text
 
     console.log(chalk.cyan('🚀 Pushing to remote...'));
     execSync('git push', { cwd: accountDir, stdio: 'inherit' });
