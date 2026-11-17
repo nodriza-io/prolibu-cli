@@ -166,7 +166,8 @@ function printLogContent(payload, logType) {
 }
 
 function listenScriptLog(domain, scriptName, env, apiKey, onConnect) {
-  const scriptCode = `${scriptName}-${env}`;
+  // Same code the script was created with: production has no suffix (cli/commands.js, api/scriptClient.js).
+  const scriptCode = env === 'prod' ? scriptName : `${scriptName}-${env}`;
   const channel = `scriptLog-${scriptCode}`;
   const originUrl = domain.startsWith('http') ? domain : `https://${domain}`;
   console.log(`[SOCKET] Attempting to connect to: ${originUrl}`);

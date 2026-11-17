@@ -79,8 +79,6 @@ so a build error leaves it with placeholder code.
 - The README's `require("lib/…")` examples do not resolve.
 - The production copy is named `<p>`, but the platform sets `env = "prod"` only for codes
   ending in `-prod`, so `env` is `"dev"` in both copies.
-- `script prod --watch` listens to the log channel of `<p>-prod`, but the script logs to the
-  channel of `<p>`: console lines never show (the output does).
 - `script create` prints "Scripts '<p>-dev' and '<p>-prod' created"; the second is `<p>`.
 - `script create` rewrites `profile.json` with only `apiKey`.
 
