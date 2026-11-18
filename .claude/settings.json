@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(/accounts/**/profile*.json)",
+      "Edit(/accounts/**/profile*.json)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-account-keys.js\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
