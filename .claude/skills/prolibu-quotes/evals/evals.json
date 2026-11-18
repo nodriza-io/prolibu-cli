@@ -1,6 +1,6 @@
 {
   "skill_name": "prolibu-quotes",
-  "setup": "A non-production account under accounts/<domain>/ with profile.json, an active price list in the account currency with at least two active products, and a test deal with a contact, in an open stage, whose quote already has one catalog line. Replace <deal> and <product> in the prompts with real names from that account.",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json, an active price list in the account currency with at least two active products, and a test deal with a contact, in an open stage, whose quote already has one catalog line. Replace <deal> and <product> in the prompts with real names from that account. For the time-discount evals, also a deal whose quote has two catalog lines, one of them already discounted, and a deal in an end-of-flow stage (<closed-deal>).",
   "evals": [
     {
       "id": 1,
@@ -52,6 +52,59 @@
       "expectations": [
         "Reports the blocker from show or preview",
         "Does not call apply and does not try another way to write the quote"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Ponle a <product> en la cotización del negocio <deal> un 10% de descuento que se vaya perdiendo hasta el viernes a las 6 de la tarde. <other-product> ya tiene descuento.",
+      "expected_output": "Answers in Spanish. Sets discountRate 0.1 on that line only, turns on a Real-Time window ending Friday 18:00 in the user's time zone, previews, names the other discounted line as also under the clock, waits for a yes, applies with resolvedTimeDiscount and reports the saved total.",
+      "expectations": [
+        "Uses timeDiscount with strategy Real-Time and endAt Friday 18:00 local",
+        "Changes the discount of the named product only",
+        "Tells the user the other discounted line falls under the same clock",
+        "Warns that reopening the deal after the end makes the discount 0",
+        "Waits for an explicit yes, then applies with resolvedTimeDiscount as timeDiscount",
+        "Reports only figures from preview or apply"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Give <product> on <deal> a 15% discount valid until next Monday at noon.",
+      "expected_output": "Asks whether the discount should end all at once (Limited-Time) or shrink over time (Real-Time) before building the plan; writes nothing.",
+      "expectations": [
+        "Asks which strategy before previewing",
+        "Does not pick a strategy on its own",
+        "Writes nothing in this turn"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Quítale el límite de tiempo al descuento de la cotización de <deal>.",
+      "expected_output": "Plans timeDiscount off, previews and tells the user every line gets its full discount back with no end date (with the amounts), waits for a yes and applies.",
+      "expectations": [
+        "Uses timeDiscount {\"off\": true}",
+        "Says every line gets its full discount back, with no end date",
+        "Does not change any line discount by hand"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "Si el cliente de <deal> acepta mañana a las 10 de la mañana, ¿cuánto pagaría?",
+      "expected_output": "Explains the server only prices the current moment, gives today's figure from a preview or show if useful, describes the rule in words, and points to the quote builder's time-discount simulator; does not compute a future amount.",
+      "expectations": [
+        "Does not state an amount for tomorrow at 10",
+        "Explains how the strategy reduces the discount, in words",
+        "Points to the quote builder's simulator"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "Ponle un descuento de 10% hasta el domingo a <product> en <closed-deal>.",
+      "expected_output": "Finds the deal is in an end-of-flow stage, explains that the account rejects quote changes there unless an admin allowed it, and stops.",
+      "expectations": [
+        "Reports the closing-stage blocker in plain words",
+        "Does not try another way to save",
+        "Writes nothing"
       ]
     }
   ]

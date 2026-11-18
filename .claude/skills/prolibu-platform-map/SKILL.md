@@ -34,7 +34,7 @@ Answer in the user's language. Object names, API paths and field names stay as w
 | Import contacts, companies or deals from a CSV or Excel file without duplicates, change one field on many records, or read an import's result | `prolibu-imports` |
 | Add fields to an object, or create a Custom Object | `prolibu-custom-fields` |
 | Create or update products, price lists and their prices, taxes, volume discounts or coupons, or load a catalog from Excel | `prolibu-catalog` |
-| Add, change or remove products on a deal's quote | `prolibu-quotes` |
+| Add, change or remove products on a deal's quote, or set discounts that expire (Real-Time or Limited-Time) | `prolibu-quotes` |
 | Turn a deal's proposal on or change its template, save or restore proposal versions, write contract templates, or generate a deal's contract ready for e-signature | `prolibu-proposals` |
 | Build a product picker or configurator inside the quote editor; which site each workspace gets | `prolibu-extended-quote-sites` |
 | Move records between pipeline stages, or understand a pipeline | `prolibu-stages` |
