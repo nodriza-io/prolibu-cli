@@ -510,7 +510,7 @@ async function cmdDeals(client, [ref], flags) {
     xquery,
     select: 'dealName createdAt assignee contact source stage proposal.quote.total proposal.quote.quoteCurrency proposal.quote.lineItems',
     populatePath: [{ path: 'contact', select: 'firstName lastName email assignee' }],
-    sort: '-createdAt',
+    sort: '-_id',
     limit,
   })}`);
   const deals = rowsOf(body);

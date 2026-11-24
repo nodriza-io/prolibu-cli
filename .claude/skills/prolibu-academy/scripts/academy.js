@@ -346,7 +346,7 @@ async function enrollmentsOf(client, userId, courseId) {
   return list(client, 'enrollment', {
     xquery: { assignee: userId, course: courseId },
     select: 'enrollmentCode status progressPercent program completedAt updatedAt createdAt',
-    sort: '-createdAt',
+    sort: '-_id',
     limit: '20',
   });
 }

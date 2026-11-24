@@ -519,7 +519,7 @@ Response (`200`) — one `results` entry per mapping:
 
 1. **Render headlessly:** `GET /v2/form/jsonschema/<formId>` returns the schema (`fields` keyed by field key) — confirm your fields appear and that `mappings`/`access.password` are correctly **omitted** from the public payload.
 2. **Submit a lead:** the `PUT /v2/form/register` call returns `200` with `status: "success"` and a `recordId`. Read it back: `GET /v2/contact/<recordId>` shows `source: "web-form"` from `defaults`.
-3. **Confirm persistence:** `GET /v2/formsubmission?form=<formId>&sort=-createdAt&limit=1` returns the stored submission with `status: "processed"`.
+3. **Confirm persistence:** `GET /v2/formsubmission?form=<formId>&sort=-_id&limit=1` returns the stored submission with `status: "processed"`.
 4. **Confirm the webhook fired:** your `marketing.example.com` receiver logs a `Contact.create` delivery carrying only the `selectedFields`; assert `X-Api-Key` matches before trusting the body.
 5. **Enrichment (if used):** after the after-event runs, the `Contact` shows a split `firstName`/`lastName` and `leadScore: 10`.
 6. **Negative paths:** submit with `POST` instead of `PUT` (it won't hit `register`); omit the required `email` (→ `400`); and send more than 60 submissions to the form within one clock minute to observe the per-form rate limit (`429`; the per-IP limit is 1000 per minute).
@@ -868,7 +868,7 @@ import { api } from './auth.js'
 const me = await api('/user/me')
 document.querySelector('#who').textContent = me.profile.firstName
 
-const deals = await api('/deal?limit=20&select=dealName amount stage&sort=-createdAt')
+const deals = await api('/deal?limit=20&select=dealName amount stage&sort=-_id')
 render(deals.data)                        // list/search wrap in { pagination, data }
 ```
 

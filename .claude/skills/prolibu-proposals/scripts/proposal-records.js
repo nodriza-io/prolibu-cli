@@ -104,7 +104,7 @@ async function proposalVersions(client, proposalId) {
   return rowsOf(await call(client, 'GET', `/v2/proposalversion?${qs({
     xquery: JSON.stringify({ proposal: proposalId }),
     select: 'proposal proposalVersionCode sha256 createdAt creator proposalData.title proposalData.expirationDate proposalData.quote.total proposalData.quote.quoteCurrency',
-    sort: 'createdAt',
+    sort: '_id',
     limit: '100',
   })}`));
 }

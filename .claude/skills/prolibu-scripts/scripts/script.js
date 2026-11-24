@@ -188,7 +188,7 @@ async function findScript(client, scriptCode, fields) {
 
 // The log API cannot filter by script, so this reads the newest Script lines and filters here.
 async function recentLogs(client) {
-  const body = await call(client, 'GET', `/v2/log?logType=Script&sort=-createdAt&limit=${LOG_PAGE}`);
+  const body = await call(client, 'GET', `/v2/log?logType=Script&sort=-_id&limit=${LOG_PAGE}`);
   return Array.isArray(body && body.data) ? body.data : [];
 }
 

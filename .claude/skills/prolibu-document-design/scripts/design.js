@@ -319,7 +319,7 @@ async function cmdPresentations(client, rest, flags) {
   if (rest[0]) xquery.title = { $regex: `(?i)${escapeRegex(rest[0])}` };
   const res = await list(client, 'presentation', {
     limit: 50,
-    sort: '-createdAt',
+    sort: '-_id',
     select: 'title presentationCode contact layout expirationDate tracking.totalViews tracking.lastSeenAt createdAt',
     populatePath: PRESENTATION_POPULATE,
     ...(Object.keys(xquery).length ? { xquery } : {}),

@@ -379,7 +379,7 @@ async function paymentsOf(client, invoiceId) {
   const q = new URLSearchParams({
     xquery: JSON.stringify({ paidInvoices: invoiceId }),
     select: 'paymentCode paidAmount currency paymentMethod specialNote createdAt paidInvoices',
-    sort: 'createdAt',
+    sort: '_id',
     limit: '500',
   });
   return rows(await call(client, 'GET', `/v2/payment?${q}`)).map((p) => ({

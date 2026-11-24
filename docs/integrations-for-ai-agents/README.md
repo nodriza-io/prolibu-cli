@@ -166,7 +166,7 @@ curl -G 'https://<domain>/v2/deal/6408d61d2f88f1d606048139' \
 # List recent deals (list wraps results in { pagination, data })
 curl -G 'https://<domain>/v2/deal/' \
   -H 'Authorization: Bearer <API_KEY>' \
-  --data-urlencode 'sort=-createdAt' --data-urlencode 'limit=5'
+  --data-urlencode 'sort=-_id' --data-urlencode 'limit=5'
 ```
 
 From here, follow the [Integration paths](#integration-paths-pick-the-right-primitive-for-the-goal) table above to whichever surface your use case needs — and read [Best Practices](11-best-practices.md) before you ship.

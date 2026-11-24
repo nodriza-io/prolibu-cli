@@ -366,7 +366,7 @@ async function cmdRecord(client, [model, id], flags) {
   }
 
   const notices = await optional(forbidden, 'notifications', () => get(client, `/v2/notification?${qs({
-    xquery: { values: { docId: id } }, sort: '-createdAt', limit: '20', select: 'eventType assignee createdAt createdBy source',
+    xquery: { values: { docId: id } }, sort: '-_id', limit: '20', select: 'eventType assignee createdAt createdBy source',
     populatePath: [{ path: 'assignee', select: 'firstName lastName email' }],
   })}`));
   const noticeRows = notices ? rowsOf(notices).map((n) => ({ at: n.createdAt, eventType: n.eventType, to: who(n.assignee), source: n.source || null })) : null;
@@ -375,7 +375,7 @@ async function cmdRecord(client, [model, id], flags) {
   const contactId = model === 'Contact' ? id : idOf(record.contact);
   let emails = null;
   if (contactId && ID_RE.test(contactId)) {
-    const body = await optional(forbidden, 'e-mails', () => get(client, `/v2/email?${qs({ xquery: { contact: contactId }, sort: '-createdAt', limit: '20', select: EMAIL_SELECT })}`));
+    const body = await optional(forbidden, 'e-mails', () => get(client, `/v2/email?${qs({ xquery: { contact: contactId }, sort: '-_id', limit: '20', select: EMAIL_SELECT })}`));
     if (body) {
       emails = rowsOf(body).map((e) => emailRow(e, flags));
       for (const e of emails) timeline.push({ at: e.sentAt || e.createdAt, what: `e-mail "${e.subject}" ${e.status}`, to: e.to, source: 'email' });
@@ -434,7 +434,7 @@ async function cmdScript(client, [ref], flags) {
   const logs = await optional(forbidden, 'script logs', async () => {
     const seen = new Map();
     for (const meta of [{ scriptId: idOf(script) }, { scriptCode: script.scriptCode }]) {
-      const body = await get(client, `/v2/log?${qs({ xquery: { logType: 'Script', meta }, sort: '-createdAt', limit: '100', select: 'status message meta createdAt' })}`);
+      const body = await get(client, `/v2/log?${qs({ xquery: { logType: 'Script', meta }, sort: '-_id', limit: '100', select: 'status message meta createdAt' })}`);
       for (const row of rowsOf(body)) seen.set(idOf(row), row);
     }
     return [...seen.values()].filter((l) => inWindow(l.createdAt, window))
@@ -543,7 +543,7 @@ async function cmdEmail(client, rest, flags) {
   const window = windowOf(flags, 30 * DAY_MS);
   const recipient = flags.recipient ? flags.recipient.toLowerCase() : null;
   const xquery = flags.code ? { emailCode: flags.code } : flags.contact ? { contact: flags.contact } : { to: recipient };
-  const body = await get(client, `/v2/email?${qs({ xquery, sort: '-createdAt', limit: '50', select: EMAIL_SELECT })}`);
+  const body = await get(client, `/v2/email?${qs({ xquery, sort: '-_id', limit: '50', select: EMAIL_SELECT })}`);
   const all = rowsOf(body);
   const rows = (flags.code ? all : all.filter((e) => inWindow(e.createdAt, window))).map((e) => emailRow(e, flags));
   const contact = flags.contact ? await contactStatus(client, { _id: flags.contact })
@@ -593,7 +593,7 @@ async function cmdNotice(client, rest, flags) {
   });
   const window = windowOf(flags, 14 * DAY_MS);
   const nq = { assignee: user._id, eventType: flags.event, ...(flags.record ? { values: { docId: flags.record } } : {}) };
-  const notices = await optional(forbidden, 'notifications', () => get(client, `/v2/notification?${qs({ xquery: nq, sort: '-createdAt', limit: '20', select: 'eventType createdAt createdBy source values' })}`));
+  const notices = await optional(forbidden, 'notifications', () => get(client, `/v2/notification?${qs({ xquery: nq, sort: '-_id', limit: '20', select: 'eventType createdAt createdBy source values' })}`));
   const noticeRows = notices ? rowsOf(notices).filter((n) => inWindow(n.createdAt, window)).map((n) => ({
     at: n.createdAt, eventType: n.eventType, createdBy: idOf(n.createdBy) || null, source: n.source || null, record: n.values ? { docId: n.values.docId || null, modelName: n.values.modelName || null } : null,
   })) : null;
@@ -646,7 +646,7 @@ async function cmdLogin(client, [emailArg], flags) {
   }
   const forbidden = [];
   const window = windowOf(flags, 7 * DAY_MS);
-  const body = await get(client, `/v2/loginactivity?${qs({ xquery: { email }, sort: '-createdAt', limit: '50' })}`);
+  const body = await get(client, `/v2/loginactivity?${qs({ xquery: { email }, sort: '-_id', limit: '50' })}`);
   // Keep only the asked e-mail: the server may answer with another filter than the one sent.
   const rows = rowsOf(body).filter((r) => String(r.email || '').toLowerCase() === email && inWindow(r.createdAt, window)).map((r) => ({
     at: r.createdAt, status: r.loginStatus || null, reason: r.reason ? trim(String(r.reason), 200) : null, country: r.country || null, city: r.city || null, browser: r.browser || null, os: r.os || null, device: r.device || null, ip: flags.ip ? r.ip || null : maskIp(r.ip),

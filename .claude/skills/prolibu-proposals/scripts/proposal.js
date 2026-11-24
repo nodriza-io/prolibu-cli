@@ -264,7 +264,7 @@ async function dealContracts(client, dealId) {
   const body = await call(client, 'GET', `/v2/contract?${qs({
     xquery: JSON.stringify({ 'origin.docId': dealId }),
     select: 'contractName status signers skipDealApproval updatedAt',
-    sort: '-createdAt',
+    sort: '-_id',
     limit: '50',
   })}`);
   return rowsOf(body);
@@ -378,7 +378,7 @@ async function cmdContractTemplates(client, [term]) {
   const xquery = { isContractTemplate: true };
   if (term && String(term).trim()) xquery.contractName = { $regex: regex(term) };
   const body = await call(client, 'GET', `/v2/contract?${qs({
-    xquery: JSON.stringify(xquery), select: 'contractName language contractEditor contractDocuments updatedAt', sort: '-createdAt', limit: '25',
+    xquery: JSON.stringify(xquery), select: 'contractName language contractEditor contractDocuments updatedAt', sort: '-_id', limit: '25',
   })}`);
   return {
     total: body && body.pagination ? body.pagination.count : undefined,

@@ -290,7 +290,7 @@ curl -X POST "https://<domain>/v2/mcpsession/ses" \
       "arguments": {
         "modelName": "Deal",
         "query": { "stage": "<negotiationStageId>" },
-        "sort": "-createdAt",
+        "sort": "-_id",
         "limit": 5
       }
     }

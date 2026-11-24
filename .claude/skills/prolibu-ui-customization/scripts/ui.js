@@ -859,7 +859,7 @@ async function cmdFilters(client, rest, flags) {
   if (flags.search) xquery.customFilterName = { $regex: `(?i)${String(flags.search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}` };
   // /search, not the list: roles that may use saved filters have search but not find.
   const body = await call(client, 'GET', `/v2/customfilter/search?${qs({
-    xquery: JSON.stringify(xquery), select: FILTER_SELECT, populatePath: JSON.stringify([{ path: 'createdBy', select: 'email firstName lastName' }]), sort: '-createdAt', limit: '100',
+    xquery: JSON.stringify(xquery), select: FILTER_SELECT, populatePath: JSON.stringify([{ path: 'createdBy', select: 'email firstName lastName' }]), sort: '-_id', limit: '100',
   })}`);
   const data = body.data || [];
   return {

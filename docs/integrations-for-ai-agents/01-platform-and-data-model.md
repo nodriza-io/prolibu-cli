@@ -290,7 +290,7 @@ curl -G 'https://demos.prolibu.com/v2/deal' \
   -H 'Authorization: Bearer <API_KEY>' \
   --data-urlencode 'active=true' \
   --data-urlencode 'select=dealName closeDate createdAt' \
-  --data-urlencode 'sort=-createdAt' \
+  --data-urlencode 'sort=-_id' \
   --data-urlencode 'limit=5'
 ```
 Response (`200`) — the list endpoint wraps results in `{ pagination, data }`:

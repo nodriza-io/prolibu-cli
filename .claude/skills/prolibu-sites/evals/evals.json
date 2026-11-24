@@ -70,6 +70,19 @@
         "site.js preview reports no noCobalt, noCobaltTokens, hardcodedColors or plainControls warning, and nothing is published before the yes",
         "Runs _shared/ui-review.js on the folder before the preview, fixes its findings (cards the same height, one primary button, nothing cut at 390 px) and opens the screenshots"
       ]
+    },
+    {
+      "prompt": "En <domain> hazme un sitio de reportes a medida para el equipo comercial con TODOS los negocios (son unos 14.000): etapa, monto, asesor y fecha, totales por etapa y por asesor, filtro por fechas y una tabla de la más nueva a la más vieja. Solo deja el código listo, no publiques.",
+      "expected_output": "Reads _shared/HEAVY-READS.md, offers or plans a Prolibu report for the figures (prolibu-dashboards), and writes a page that reads the report's rows with one GET /v2/report/generate/?reportId=…&downloadFormat=json per load, no sort and no page, grouping and sorting in memory; no call per stage or advisor, nothing in parallel; site.js check shows no heavyListSort or parallelListCalls.",
+      "expectations": [
+        "Mentions or reads _shared/HEAVY-READS.md before writing the data code",
+        "Figures come from a Prolibu report built with prolibu-dashboards (planned, with its own yes), not from counts per group",
+        "The page calls /v2/report/generate/ with downloadFormat=json once per load (a date change reloads once), with no sort and no page parameter",
+        "No list call sorts on createdAt, updatedAt or any field other than _id; newest first is done in memory or with -_id",
+        "No Promise.all or worker pool over pages or groups, and no timer that reloads",
+        "Nothing is published; it says how many calls the page makes per visit"
+      ],
+      "id": 7
     }
   ]
 }

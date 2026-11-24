@@ -33,9 +33,11 @@ const getPath = (o, p) => p.split('.').reduce((x, k) => (x && typeof x === 'obje
 
 function matches(record, xquery) {
   return Object.entries(xquery || {}).every(([k, v]) => {
+    if (k === '$and') return v.every((part) => matches(record, part));
     const field = getPath(record, k);
     if (v && typeof v === 'object' && !Array.isArray(v)) {
       if (v.$in) return [].concat(field ?? []).some((f) => v.$in.map(String).includes(idOf(f)));
+      if (v.$gt !== undefined) return String(field || '') > v.$gt;
       if (v.$lt !== undefined) return String(field || '') < v.$lt;
       if (v.$gte !== undefined) return String(field || '') >= v.$gte;
       return true;
@@ -66,6 +68,7 @@ async function fakeFetch(url, init) {
     const limit = Number(u.searchParams.get('limit') || 50);
     const page = Number(u.searchParams.get('page') || 1);
     const rows = coll.filter((r) => matches(r, xquery));
+    if (u.searchParams.get('sort') === '_id') rows.sort((x, y) => (String(x._id) < String(y._id) ? -1 : 1));
     return respond(200, { pagination: { count: rows.length }, query: xquery, data: rows.slice((page - 1) * limit, page * limit) });
   }
   if (init.method === 'POST') {
@@ -304,6 +307,33 @@ describe('read commands', () => {
     const { code, json } = await run(['inactive', '--before', '2025-01-01']);
     expect(code).toBe(0);
     expect(json.contacts.map((c) => c.email)).toEqual(['old@example.org']);
+  });
+
+  test('inactive pages contacts with a cursor on _id, never sorting on a field without an index', async () => {
+    // The first 480 sent a form recently, so the first page leaves few candidates and the scan goes on.
+    for (let i = 0; i < 620; i += 1) {
+      state.contact.push({
+        _id: `7${String(i).padStart(23, '0')}`, firstName: `Old ${i}`, email: `old${i}@example.org`, updatedAt: '2024-02-01', submissions: i < 480 ? { lastAt: '2025-06-01' } : undefined,
+      });
+    }
+    const { code, json } = await run(['inactive', '--before', '2025-01-01', '--limit', '200']);
+    expect(code).toBe(0);
+    const reads = calls.filter((c) => c.path === '/v2/contact');
+    expect(reads.length).toBe(2);
+    expect(reads.every((c) => c.query.sort === '_id' && !c.query.page)).toBe(true);
+    const second = JSON.parse(reads[1].query.xquery);
+    const sorted = state.contact.filter((c) => String(c.updatedAt) < '2025-01-01').map((c) => c._id).sort();
+    expect(second.$and).toEqual(expect.arrayContaining([{ _id: { $gt: sorted[499] } }]));
+    expect(json.notChangedSince).toBe(621);
+    expect(json.inactiveShown).toBe(141);
+  });
+
+  test('inactive narrows the e-mail check to e-mails created since the date by _id, which is indexed', async () => {
+    await run(['inactive', '--before', '2025-01-01']);
+    const mails = calls.filter((c) => c.path === '/v2/email');
+    expect(mails.length).toBeGreaterThan(0);
+    const since = (Date.parse('2025-01-01T00:00:00Z') / 1000).toString(16).padStart(8, '0') + '0'.repeat(16);
+    for (const c of mails) expect(JSON.parse(c.query.xquery).$and).toEqual(expect.arrayContaining([{ _id: { $gte: since } }]));
   });
 
   test('inactive needs a date', async () => {

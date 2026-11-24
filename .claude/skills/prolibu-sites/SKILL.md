@@ -1,6 +1,6 @@
 ---
 name: prolibu-sites
-description: Build, check, publish, roll back and fix a hosted Site on a Prolibu account — a plain HTML page or a React/Vue app served at https://<domain>/site/<siteCode>/, on the same origin as the app. Covers the folder layout, Static vs SPA, checking a build before upload (index.html, relative paths, size, secrets), publishing the dev and prod copies with a preview and a read-back of what visitors get, putting the previous version back, the sign-in gate and turning a site off, the session in localStorage (never a password form), and calling the API or an Endpoint from the page. Use it whenever someone wants a landing page, portal, dashboard, internal tool or single-page app on a Prolibu domain, or reports a site answering 403 AccessDenied, a blank page or 404 assets, "Malicious content detected", "must contain an index.html", a login that does not work, or a page that does not see the signed-in user. Spanish triggers: "sitio", "publicar un sitio", "página en Prolibu", "SPA", "portal", "login del sitio", "site dev", "volver a la versión anterior del sitio", "despublicar".
+description: Build, check, publish, roll back and fix a hosted Site on a Prolibu account — a plain HTML page or a React/Vue app served at https://<domain>/site/<siteCode>/, on the same origin as the app. Covers the folder layout, Static vs SPA, checking a build before upload (index.html, relative paths, size, secrets), publishing the dev and prod copies with a preview and a read-back of what visitors get, putting the previous version back, the sign-in gate and turning a site off, the session in localStorage (never a password form), and calling the API or an Endpoint from the page. Use it whenever someone wants a landing page, portal, dashboard, internal tool or single-page app on a Prolibu domain, or wants a custom report page or a page with totals or a table over many records (it routes the figures to a Prolibu report and reads its rows in one streamed call), or reports a site answering 403 AccessDenied, a blank page or 404 assets, "Malicious content detected", "must contain an index.html", a login that does not work, or a page that does not see the signed-in user. Spanish triggers: "sitio", "publicar un sitio", "página en Prolibu", "SPA", "portal", "login del sitio", "site dev", "volver a la versión anterior del sitio", "despublicar", "sitio de reportes", "reporte a medida", "página con todos los negocios".
 ---
 
 # Prolibu Sites
@@ -42,6 +42,8 @@ puts the token in `localStorage.apiKey`, and `assets/prolibu-session.js` reads i
 1. **What is it for, and who opens it?** Signed-in users of the account, or anyone.
 2. **What data does it show?** None; the visitor's own Prolibu data (session); or data or a
    third-party service the visitor must not reach directly (an Endpoint does that part).
+   Totals, counts or a table over many records (a "custom report") follow
+   [Pages that read many records](#pages-that-read-many-records) before any code.
 3. **Plain pages, or an app with routes?** Routes mean `SPA`.
 4. **Which account, and which prefix?** The prefix becomes the URL: lowercase, hyphens.
 
@@ -114,6 +116,31 @@ reads the key itself). Answer in the user's language, in plain words.
 7. **Publish for real** only when the user asks for it, after its own yes: preview and
    publish `<prefix>` with `--prod`. A yes to another question is not a yes to prod.
 
+## Pages that read many records
+
+A page many people open runs its calls on every visit. One heavy call per visit is enough to
+take down every account on the server (a report site paging about 14,000 deals sorted
+by `createdAt` did). Before writing code, read [`../_shared/HEAVY-READS.md`](../_shared/HEAVY-READS.md),
+then build it this way:
+
+1. **Figures come from a Prolibu report.** Totals, counts, sums by stage, advisor or month,
+   funnels and goals: build the report with `prolibu-dashboards` first. Often that report (or
+   a dashboard) is the whole answer; offer it before a custom site.
+2. **Rows come from that report, in one call.** The page calls
+   `ProlibuSession.api('/report/generate/?reportId=<reportCode>&downloadFormat=json&xquery=' + encodeURIComponent(JSON.stringify(period)))`
+   once per load, with no `sort` and no `page`, and groups, sums, filters and sorts the rows in
+   memory. The answer is a JSON array of flat rows keyed by the report's columns
+   (`stage.stageName`, `assignee.firstName`…), already limited to what the visitor may see. A date filter changes the period and reloads once; other filters work on the loaded
+   rows. The report's columns decide what the page gets, so it never asks for more.
+3. **A paged table** that cannot load all rows asks for 25–50 at a time, `select` only its
+   columns, `sort=-_id` (newest first) or `_id`. Never `sort=-createdAt` or another field.
+4. **No loops over pages, no call per group, nothing in parallel** to the same object, no
+   timers that reload.
+
+`preview` blocks a page that pages through an object sorted on another field, or that runs
+those calls in parallel (`heavyListSort`, `parallelListCalls`), and warns on bulk list reads
+(`bulkListRead`).
+
 ## Roll back, take down, change type
 
 - **Put the previous version back:** `preview <domain> <code> <backup.path>`, yes, then
@@ -170,6 +197,7 @@ teaches users to type their password into pages.
 | Signed-in visitor asked to sign in again | Token sent with its JSON quotes → 401 | Use `prolibu-session.js` |
 | Users signed out of the app after the site | Page removed `localStorage.apiKey` | Never remove it; redirect to sign-in |
 | Gate change has no effect | Cached for up to 60 s | Wait; `show` again |
+| Page slow for everyone; the whole server slow or down while it is open | Paging or counting a large object sorted or filtered on fields without an index | [Pages that read many records](#pages-that-read-many-records); take the site down (`--active off`) first if it is live |
 
 ## Don't
 

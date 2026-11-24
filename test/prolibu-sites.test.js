@@ -283,6 +283,21 @@ describe('site.js', () => {
     expect(json.warnings.map((w) => w.rule)).toEqual(['noCobalt']);
   });
 
+  test('check blocks a page that pages a big object sorted by date, and passes the report stream', async () => {
+    const heavy = goodSite('heavy', PAGE.replace('</head>', '<script src="app.js"></script></head>'));
+    write(`accounts/${D}/sites/heavy/public/app.js`, "for (let page = 1; page <= last; page++) rows.push(...(await ProlibuSession.api('/deal?limit=500&sort=createdAt&page=' + page)).data);");
+    const bad = await run('check', D, heavy);
+    expect(bad.code).toBe(3);
+    expect(bad.json.blockers).toEqual([expect.objectContaining({ rule: 'heavyListSort', file: 'app.js', field: 'createdAt' })]);
+    expect(bad.json.blockers[0].level).toBeUndefined();
+    expect(bad.json.warnings.map((w) => w.rule)).toContain('bulkListRead');
+    const light = goodSite('light', PAGE.replace('</head>', '<script src="app.js"></script></head>'));
+    write(`accounts/${D}/sites/light/public/app.js`, "const rows = await ProlibuSession.api('/report/generate/?reportId=RPT-1&downloadFormat=json');");
+    const ok = await run('check', D, light);
+    expect(ok.code).toBe(0);
+    expect(ok.json.blockers).toEqual([]);
+  });
+
   test('check still blocks other paths under /ui/static', async () => {
     const dir = goodSite('ui', PAGE.replace('</head>', '<script src="/ui/static/other/app.js"></script></head>'));
     const { code, json } = await run('check', D, dir);

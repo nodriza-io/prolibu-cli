@@ -698,7 +698,7 @@ async function cmdSettings(client) {
 async function cmdTokens(client) {
   const m = await me(client);
   const current = new Set(m.permissions);
-  const { rows } = await listAll(client, '/v2/token', { select: 'appName description tokenType provider createdAt expiresAt lastActivity roles scopes', sort: '-createdAt' }, 200);
+  const { rows } = await listAll(client, '/v2/token', { select: 'appName description tokenType provider createdAt expiresAt lastActivity roles scopes', sort: '-_id' }, 200);
   const roleNames = new Map((m.profile.roles || []).filter((r) => r && typeof r === 'object').map((r) => [idOf(r), r.roleName]));
   const now = Date.now();
   const tokens = rows.map((t) => {

@@ -77,8 +77,13 @@ async function fakeFetch(url, init) {
     }
   }
   if (init.method === 'GET' && p === '/v2/email') {
-    const rows = state.emails.filter((e) => e.emailCampaign === xq.emailCampaign && (!xq.contact || e.contact === xq.contact));
-    return respond(200, { data: rows, pagination: { count: rows.length, lastPage: 1 } });
+    const parts = xq.$and || [xq];
+    const where = Object.assign({}, ...parts);
+    let rows = state.emails.filter((e) => e.emailCampaign === where.emailCampaign && (!where.contact || e.contact === where.contact));
+    if (u.searchParams.get('sort') === '_id') rows = rows.slice().sort((x, y) => (String(x._id) < String(y._id) ? -1 : 1));
+    if (where._id && where._id.$gt) rows = rows.filter((e) => String(e._id) > where._id.$gt);
+    const limit = Number(u.searchParams.get('limit') || 20);
+    return respond(200, { data: rows.slice(0, limit), pagination: { count: rows.length, lastPage: Math.max(1, Math.ceil(rows.length / limit)) } });
   }
   if (init.method === 'GET' && /^\/v2\/email\/\w+$/.test(p)) return respond(200, { status: 'sent', to: 'me@example.com' });
   if (init.method === 'PUT' && p === '/v2/emailcampaign/sendCampaign') {
@@ -365,6 +370,16 @@ describe('sending', () => {
     const r = json();
     expect(r.delivery).toMatchObject({ sent: 1, failed: 1, failedReasons: { 'Recipient suppressed': 1 } });
     expect(r.warnings.join(' ')).toMatch(/write \{\{contact\.firstName\}\}/);
+  });
+
+  test('the e-mails of a campaign are read with a cursor on _id, never sorted by createdAt or paged', async () => {
+    for (let i = 0; i < 1203; i += 1) state.emails.push({ _id: `e${String(i).padStart(5, '0')}`, emailCampaign: CAMP, contact: C1, status: 'sent' });
+    expect(await run(['show', D, 'campaign', CAMP])).toBe(0);
+    expect(json().delivery).toMatchObject({ sent: 1203 });
+    const reads = calls.filter((c) => c.path === '/v2/email');
+    expect(reads).toHaveLength(3);
+    expect(reads.every((c) => c.query.sort === '_id' && !c.query.page)).toBe(true);
+    expect(JSON.parse(reads[2].query.xquery).$and).toEqual(expect.arrayContaining([{ _id: { $gt: 'e00999' } }]));
   });
 
   test('contacts reads one contact by id', async () => {

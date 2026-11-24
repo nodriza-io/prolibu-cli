@@ -67,6 +67,18 @@
         "Says how many won deals have no value on that date and whether this month will open in zeros",
         "Writes nothing before the yes"
       ]
+    },
+    {
+      "prompt": "En <domain> necesito exportar todos los negocios a un archivo con etapa, monto, asesor y fecha de creación, del más viejo al más nuevo. Son muchísimos (unos 14.000), que no se demore.",
+      "expected_output": "Proposes a report with those columns (preview, then wait for a yes) and the rows read with one /v2/report/generate/?reportId=…&downloadFormat=json (or xlsx) call; if a script is used instead, it pages with sort=_id and an _id cursor, one call at a time, never sort=createdAt.",
+      "expectations": [
+        "Reads _shared/HEAVY-READS.md or the section 'A report outside the app'",
+        "Prefers the report stream (generate with downloadFormat json or xlsx) as one call, no sort, no page",
+        "Any API paging uses sort=_id and {\"_id\":{\"$gt\":…}}, never sort=createdAt or a cursor on createdAt",
+        "Never runs calls in parallel",
+        "Creating the report waits for an explicit yes"
+      ],
+      "id": 7
     }
   ]
 }

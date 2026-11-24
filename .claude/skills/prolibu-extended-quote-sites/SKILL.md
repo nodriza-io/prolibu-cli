@@ -106,6 +106,10 @@ Lines (details: `references/products-and-lines.md`):
 
 - **Search** with `GET /v2/quote/productSearch?term=&limit=20&page=1&xquery={"active":true}&pricebookId=<id>`;
   filter entries by `currency === quoteCurrency` (no currency yet → show each row's).
+  Search as the seller types; never load the whole catalog, loop over pages, sort a list on a
+  field other than `_id` or run list calls in parallel: every seller who opens the picker runs
+  them against the database all accounts share ([`../_shared/HEAVY-READS.md`](../_shared/HEAVY-READS.md);
+  `lint` flags `HEAVY_LIST_SORT` and `PARALLEL_LIST_CALLS` as errors).
 - **Build** each line with `GET /v2/quote/formatLineItem?pricebookEntryId=<entry._id>` (the body
   is the line), add a `uuid`, change only editable fields (`quantity`, `unitMultiplier`, dates,
   discounts, notes, `description`, `customFields`). Never hand-build lines: without

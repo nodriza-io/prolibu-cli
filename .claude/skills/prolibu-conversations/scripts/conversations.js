@@ -226,7 +226,7 @@ async function windowState(client, conv, now) {
     // Fallback, like the app: a recent inbound message of this channel type in the thread.
     const body = await call(client, 'GET', `/v2/message?${qs({
       xquery: JSON.stringify({ conversation: conv._id, direction: 'inbound' }),
-      select: 'eventType channelType createdAt', sort: '-createdAt', limit: '20',
+      select: 'eventType channelType createdAt', sort: '-_id', limit: '20',
     })}`);
     const hit = (body.data || []).find((m) => (!m.eventType || MESSAGE_EVENT_TYPES.includes(m.eventType))
       && (!m.channelType || m.channelType === conv.channelType));
@@ -394,11 +394,11 @@ async function cmdShow(client, [id], flags, ctx) {
     call(client, 'GET', `/v2/message?${qs({
       xquery: JSON.stringify({ conversation: conv._id }),
       select: 'direction eventType contentType body templateName status errorCode errorMessage sentBy createdAt',
-      sort: '-createdAt', limit: String(n),
+      sort: '-_id', limit: String(n),
     })}`),
     call(client, 'GET', `/v2/message?${qs({
       xquery: JSON.stringify({ conversation: conv._id, status: { $in: ['failed', 'undelivered'] } }),
-      select: 'contentType templateName status errorCode errorMessage createdAt', sort: '-createdAt', limit: '10',
+      select: 'contentType templateName status errorCode errorMessage createdAt', sort: '-_id', limit: '10',
     })}`),
   ]);
   const contact = idOf(conv.contact) ? await resolveContact(client, idOf(conv.contact)).catch(() => null) : null;
@@ -973,7 +973,7 @@ async function cmdSend(client, [arg], flags, ctx) {
   } else {
     const body = await call(client, 'GET', `/v2/message?${qs({
       xquery: JSON.stringify({ conversation: p.conv._id, direction: 'outbound', createdAt: { $gte: startedAt } }),
-      select: 'status errorCode errorMessage createdAt', sort: '-createdAt', limit: '1',
+      select: 'status errorCode errorMessage createdAt', sort: '-_id', limit: '1',
     })}`);
     msg = (body.data || [])[0] || null;
   }

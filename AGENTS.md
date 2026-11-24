@@ -27,6 +27,7 @@ working from memory or from the guide.
 | Support tickets: open, assign, reply or note; case types, routing; articles and portal | [`prolibu-support`](.claude/skills/prolibu-support/SKILL.md) |
 | E-mail templates with variables, contact lists and e-mail campaigns (test, launch, schedule) | [`prolibu-messaging`](.claude/skills/prolibu-messaging/SKILL.md) |
 | Reports and dashboards: build, add pages, combine reports, goals vs. actuals, zeros | [`prolibu-dashboards`](.claude/skills/prolibu-dashboards/SKILL.md) |
+| Custom report page or site, export of all records, reading many records: report first, one streamed read, sort only by `_id` | [`prolibu-dashboards`](.claude/skills/prolibu-dashboards/SKILL.md) + [`_shared/HEAVY-READS.md`](.claude/skills/_shared/HEAVY-READS.md) |
 | Native AI agents: instructions, model, skills, actions, scheduled and record-event triggers, runs and token cost | [`prolibu-ai-agents`](.claude/skills/prolibu-ai-agents/SKILL.md) |
 | Virtual tours: create, upload scenes, update, download | [`prolibu-virtual-tours`](.claude/skills/prolibu-virtual-tours/SKILL.md) |
 | Commercial exceptions and product rules: why a rule blocks a quote, request, approve or reject an exception, create or edit rules | [`prolibu-commercial-exceptions`](.claude/skills/prolibu-commercial-exceptions/SKILL.md) |
@@ -55,7 +56,8 @@ system ([`_shared/COBALT.md`](.claude/skills/_shared/COBALT.md)), to the design 
 [`_shared/UI-QUALITY.md`](.claude/skills/_shared/UI-QUALITY.md), and checked with
 `_shared/ui-review.js` and its screenshots before it is published. The API's own rules (filters with
 `xquery`, populate depth, how `PATCH` merges) are in
-[`api-conventions.md`](.claude/skills/prolibu-platform-map/references/api-conventions.md).
+[`api-conventions.md`](.claude/skills/prolibu-platform-map/references/api-conventions.md); reading many records without overloading the shared database is in
+[`_shared/HEAVY-READS.md`](.claude/skills/_shared/HEAVY-READS.md).
 
 ## Other references
 

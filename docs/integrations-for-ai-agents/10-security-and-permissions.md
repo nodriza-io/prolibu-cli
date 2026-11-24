@@ -421,7 +421,7 @@ Consume it — the record filter applies automatically:
 curl -G 'https://<domain>/v2/deal' \
   -H 'Authorization: Bearer 64d266180886c6dc9b5f74cc-1691511959894' \
   --data-urlencode 'limit=20' \
-  --data-urlencode 'sort=-createdAt'
+  --data-urlencode 'sort=-_id'
 ```
 
 Response (`200`) — only records visible to the service user appear:

@@ -153,7 +153,7 @@ async function upsertDeal(order) {
 Prolibu webhooks are **best-effort** — one attempt, no built-in retry, no HMAC. A delivery can be lost entirely, and one change can still produce more than one event (with stage history on, a stage move fires two `Deal.update` events). Your receiver must:
 
 - **Dedupe** on a stable key derived from the payload — for an `update`, e.g. `afterUpdateDoc._id` + `afterUpdateDoc.updatedAt`. Skip work you've already committed.
-- **Reconcile** on a schedule to catch anything missed: poll the REST API for records changed since your last checkpoint, `GET /v2/<object>/?xquery={"updatedAt":{"$gt":"<lastCheckpoint>"}}&sort=updatedAt`. The filter parameter is `xquery`; a `query` parameter is ignored and returns every record.
+- **Reconcile** on a schedule to catch anything missed: poll the REST API for records changed since your last checkpoint, `GET /v2/<object>/?xquery={"updatedAt":{"$gt":"<lastCheckpoint>"}}&sort=_id&limit=500`, paging with a cursor on `_id` and at most hourly ([§10](#10-worked-example-b--incremental-sync-with-a-checkpoint-cursor)). The filter parameter is `xquery`; a `query` parameter is ignored and returns every record.
 
 See [Webhooks & Events](06-webhooks-and-events.md) §4–5 for the full pattern. If a change must *never* be missed, prefer a **script on a record event** (reliable, in-transaction) over a webhook — [Automation & Scripts](05-automation-and-scripts.md).
 
@@ -392,35 +392,41 @@ race loser   → 400 (Duplicated value) caught → re-read → 200 (PATCH the wi
 
 Pull everything changed since the last run, page through it at the cap, and persist a resumable checkpoint. This is the reconcile companion to fire-and-forget webhooks.
 
+Every account on a server shares one database, and `updatedAt` has no index: each call that
+filters on it reads the whole collection. So page with a cursor on `_id` (the only field every
+object indexes), never with `sort=updatedAt` plus `page` (that re-reads **and re-sorts** the whole
+collection on every page; enough of those at once take down every account on the server), make
+one call at a time, and run the reconcile no more than hourly.
+
 ```js
 async function incrementalSync(object, lastCheckpoint, onRecord) {
   let checkpoint = lastCheckpoint;              // ISO string from your store
-  let page = 1;
+  let lastId = null;                            // cursor on _id inside this run
 
   while (true) {
-    const query = encodeURIComponent(JSON.stringify({ updatedAt: { $gt: checkpoint } }));
-    const res = await prolibu(
-      `/${object}/?xquery=${query}&sort=updatedAt&page=${page}&limit=500`,
-    );
+    const and = [{ updatedAt: { $gt: lastCheckpoint } }];
+    if (lastId) and.push({ _id: { $gt: lastId } });
+    const query = encodeURIComponent(JSON.stringify({ $and: and }));
+    const res = await prolibu(`/${object}/?xquery=${query}&sort=_id&limit=500`);
 
     for (const rec of res.data) {
       await onRecord(rec);                      // your idempotent downstream write
-      checkpoint = rec.updatedAt;               // advance as you go
+      if (rec.updatedAt > checkpoint) checkpoint = rec.updatedAt;
     }
 
-    if (page >= res.pagination.lastPage) break;
-    page += 1;
+    if (res.data.length < 500) break;
+    lastId = res.data[res.data.length - 1]._id;
   }
-  return checkpoint;                            // persist for the next run
+  return checkpoint;                            // persist only after the run completes
 }
 ```
 
 ```bash
-# The single page underneath, as a curl for clarity:
+# The first page underneath, as a curl for clarity:
 curl -G 'https://<domain>/v2/deal/' \
   -H 'Authorization: Bearer <API_KEY>' \
   --data-urlencode 'xquery={"updatedAt":{"$gt":"2026-06-30T00:00:00.000Z"}}' \
-  --data-urlencode 'sort=updatedAt' \
+  --data-urlencode 'sort=_id' \
   --data-urlencode 'limit=500'
 ```
 
@@ -433,7 +439,10 @@ Response `200`:
 }
 ```
 
-Sorting by `updatedAt` and advancing the checkpoint per record makes the sync **resumable**: if it dies mid-run, the next invocation picks up from the last persisted `updatedAt` and processes no record twice (as long as `onRecord` is idempotent — §3).
+The checkpoint is persisted only when the run finishes: if it dies mid-run, the next one starts
+again from the previous checkpoint and replays some records, which `onRecord` must handle
+(idempotent — §3). The `_id` cursor keeps each run from skipping or repeating records while it
+pages.
 
 ---
 
