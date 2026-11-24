@@ -12,7 +12,7 @@
 // is blocked, so a review never writes to the account.
 //
 //   node .claude/skills/_shared/ui-review.js <domain> <site folder>
-//        [--widths 1440,1024,390] [--height 900] [--wait 3000] [--profile <name>] [--no-session] [--out <dir>]
+//        [--widths 1920,1440,1024,390] [--height 900] [--wait 3000] [--profile <name>] [--no-session] [--out <dir>]
 
 const fs = require('fs');
 const os = require('os');
@@ -36,7 +36,7 @@ const CHROME_PATHS = [
 ].filter(Boolean);
 
 function parseArgs(argv) {
-  const opts = { widths: [1440, 1024, 390], height: 900, wait: 3000, session: true, profile: undefined, out: undefined };
+  const opts = { widths: [1920, 1440, 1024, 390], height: 900, wait: 3000, session: true, profile: undefined, out: undefined };
   const positional = [];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -69,7 +69,7 @@ function parseArgs(argv) {
       positional.push(arg);
     }
   }
-  if (positional.length !== 2) throw new UsageError('Usage: ui-review.js <domain> <site folder> [--widths 1440,1024,390] [--profile <name>] [--no-session] [--out <dir>]');
+  if (positional.length !== 2) throw new UsageError('Usage: ui-review.js <domain> <site folder> [--widths 1920,1440,1024,390] [--profile <name>] [--no-session] [--out <dir>]');
   const [domain, folder] = positional;
   validateTarget(domain, '/v2/');
   return { domain, folder, ...opts };
@@ -214,6 +214,45 @@ function auditPage(hueFamilySource) {
       if (bottoms.length > 1 && Math.max(...bottoms) - Math.min(...bottoms) > 4) misaligned.push({ container: describe(container), bottoms });
     }
   }
+  // 3b) A card grid that wraps into several rows while a card or more of free width sits beside
+  // it on one side only (a left-aligned max-width): the cards could use that space.
+  const underfilled = [];
+  for (const container of light) {
+    const kids = [...container.children].filter(isVisible);
+    if (kids.length < 2 || !kids.every((k) => k.tagName === 'CO-CARD' || (k.children.length === 1 && k.firstElementChild.tagName === 'CO-CARD'))) continue;
+    const tops = new Set(kids.map((k) => Math.round(k.getBoundingClientRect().top / 8)));
+    if (tops.size < 2) continue;
+    const box = container.getBoundingClientRect();
+    const card = Math.min(...kids.map((k) => k.getBoundingClientRect().width));
+    let path = container;
+    for (let up = container.parentElement; up && up !== document.body; path = up, up = up.parentElement) {
+      const r = up.getBoundingClientRect();
+      const cs = getComputedStyle(up);
+      let leftEdge = r.left + parseFloat(cs.paddingLeft);
+      let rightEdge = r.right - parseFloat(cs.paddingRight);
+      // Space taken by other content beside the grid (a side panel, a filter column) is not free.
+      for (const other of [...up.children].filter((c) => c !== path && isVisible(c))) {
+        const o = other.getBoundingClientRect();
+        if (o.bottom <= box.top || o.top >= box.bottom) continue;
+        if (o.left >= box.right - 1) rightEdge = Math.min(rightEdge, o.left);
+        if (o.right <= box.left + 1) leftEdge = Math.max(leftEdge, o.right);
+      }
+      const left = box.left - leftEdge;
+      const right = rightEdge - box.right;
+      if (Math.max(left, right) >= card && Math.abs(left - right) >= card) {
+        underfilled.push({ container: describe(container), freeLeft: Math.round(left), freeRight: Math.round(right), cardWidth: Math.round(card) });
+        break;
+      }
+    }
+  }
+  if (underfilled.length) {
+    findings.push({
+      rule: 'unusedSpace',
+      message: 'The cards wrap into more rows while a card-wide strip stays empty on one side. Let the grid take the width (auto-fill) and, if it needs a max-width, center it (margin-inline: auto).',
+      rows: underfilled.slice(0, 3),
+    });
+  }
+
   if (uneven.length) {
     findings.push({
       rule: 'unevenCards',
@@ -304,7 +343,39 @@ function auditPage(hueFamilySource) {
     findings.push({ rule: 'smallText', message: `${small.length} texts under 12px. Body text is 13–14px; secondary text 12px at least.`, elements: small.slice(0, 6).map(describe) });
   }
 
-  // 7) Text clipped without an ellipsis.
+  // 6b) A full-height side panel that does not touch the screen edge (a centered max-width
+  // around the whole layout leaves a blank strip beside it that reads as a cut).
+  const panels = light.filter((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.height < window.innerHeight * 0.85 || r.width > vw * 0.45 || r.width < 160) return false;
+    const cs = getComputedStyle(el);
+    const ruled = parseFloat(cs.borderLeftWidth) > 0 || parseFloat(cs.borderRightWidth) > 0;
+    const gapLeft = r.left;
+    const gapRight = vw - r.right;
+    return ruled && Math.min(gapLeft, gapRight) > 24 && (parseFloat(cs.borderLeftWidth) > 0 ? gapRight > 24 : gapLeft > 24);
+  });
+  if (panels.length) {
+    findings.push({
+      rule: 'floatingSidePanel',
+      message: 'A full-height side panel stops short of the screen edge, leaving a blank strip that looks cut. Let the layout span the full width so the panel touches the edge; put the max-width on the main content instead.',
+      elements: panels.slice(0, 4).map((el) => `${describe(el)} (${Math.round(vw - el.getBoundingClientRect().right)}px from the right edge)`),
+    });
+  }
+
+  // 7) Text clipped without an ellipsis, including the label inside a co-button.
+  // The label is a text node inside the shadow <button>: compare its measured width with the room inside the padding.
+  const clippedLabels = light.filter((el) => {
+    const button = el.tagName === 'CO-BUTTON' && el.shadowRoot && el.shadowRoot.querySelector('button');
+    if (!button) return false;
+    const range = document.createRange();
+    range.selectNodeContents(button);
+    const cs = getComputedStyle(button);
+    const room = button.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    return range.getBoundingClientRect().width > room + 1;
+  });
+  if (clippedLabels.length) {
+    findings.push({ rule: 'clippedButtonLabel', message: 'A button label does not fit its button and is cut. Give the button more room (stack the actions, widen the panel) or shorten the label.', elements: clippedLabels.slice(0, 6).map(describe) });
+  }
   const clipped = light.filter((el) => {
     const cs = getComputedStyle(el);
     return el.scrollWidth > el.clientWidth + 1 && cs.overflowX !== 'visible' && cs.textOverflow !== 'ellipsis'
