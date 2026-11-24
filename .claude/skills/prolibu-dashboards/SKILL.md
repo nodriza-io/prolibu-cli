@@ -1,6 +1,6 @@
 ---
 name: prolibu-dashboards
-description: Build and change Prolibu reports and dashboards the way the app does it — one report per entity with its pages of KPIs, charts and tables, other entities brought in as datasets (goals vs. actuals), and dashboards that show pages of several reports together — through the platform's own report tools, which validate on the server and write nothing when something does not check out. Use it whenever someone asks for a dashboard, report, board or KPI page ("a sales dashboard by advisor with the funnel and the goal"), wants to add a page, chart or report to an existing one, or reports a dashboard that shows zeros, "--", empty boxes or figures that do not match. Spanish triggers: "tablero", "créame un tablero", "dashboard con varios reportes", "reporte de ventas", "agrega una página al tablero", "meta vs. real", "el tablero muestra ceros".
+description: Build and change Prolibu reports and dashboards the way the app does it — one report per entity with its pages of KPIs, charts and tables, other entities brought in as datasets (goals vs. actuals), and dashboards that show pages of several reports together — through the platform's own report tools, which validate on the server and write nothing when something does not check out. Use it whenever someone asks for a dashboard, report, board or KPI page ("a sales dashboard by advisor with the funnel and the goal"), wants to add a page, chart or report to an existing one, wants a "custom report" page, site or export over many records (the report comes first; the page reads its rows in one streamed call), or reports a dashboard that shows zeros, "--", empty boxes or figures that do not match. Spanish triggers: "tablero", "créame un tablero", "dashboard con varios reportes", "reporte de ventas", "agrega una página al tablero", "meta vs. real", "el tablero muestra ceros", "reporte a medida", "sitio de reportes", "exportar todos los negocios".
 ---
 
 # Prolibu Dashboards
@@ -45,6 +45,24 @@ node .claude/skills/prolibu-dashboards/scripts/dashboard.js <command> <domain> �
 
 Output is JSON. Exit codes: 0 ok, 1 API error, 2 usage error (nothing sent), 3 blocked
 (nothing written).
+
+## A report outside the app: custom pages and exports
+
+"A custom report site", "a page with all the deals and totals", "export every deal": the
+figures and the rows still come from a report. Paging an object from a page or a script, or
+one count per stage or advisor, makes the database read the whole collection on every call;
+that took every account of a server down once. Read
+[`../_shared/HEAVY-READS.md`](../_shared/HEAVY-READS.md), then:
+
+1. **Offer the report first.** Build it here (columns for every field the page shows, the
+   period in `timeRange`, the figures as widgets). Most requests end here: give its link.
+2. **A page or file that needs the rows** reads them with one call per load:
+   `GET /v2/report/generate/?reportId=<reportCode>&downloadFormat=json`, plus
+   `&xquery=<period filter in $and>` when there is a period. No `sort`, no `page`: the server
+   streams a single pass with the caller's permissions and only the report's columns, the way
+   the app's report viewer does. The answer is a JSON array of flat rows (`stage.stageName`).
+   Group, sum and sort in memory. The page itself is built with `prolibu-sites`.
+3. **A spreadsheet** is the same call with `downloadFormat=xlsx`.
 
 ## Ask the user first
 

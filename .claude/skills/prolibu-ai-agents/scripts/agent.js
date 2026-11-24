@@ -688,7 +688,7 @@ async function cmdRuns(client, [ref], flags) {
   if (!agent) throw new Blocked(`No agent ${ref}.`);
   const limit = Math.min(Number(flags.limit) || 20, 100);
   const { rows, count } = await list(client, 'conversation', {
-    xquery: { aiAgentProfile: String(agent._id) }, select: 'title status aiModel aiCredential aiUsage aiContext.origin createdAt', sort: '-createdAt', limit,
+    xquery: { aiAgentProfile: String(agent._id) }, select: 'title status aiModel aiCredential aiUsage aiContext.origin createdAt', sort: '-_id', limit,
   });
   const providers = await loadProviders(client);
   const priceOf = (cred, model) => {
@@ -716,7 +716,7 @@ async function cmdRuns(client, [ref], flags) {
     };
   });
   // Log.meta is free-form: the server drops a filter on it, so the agent's failures are picked here.
-  const logs = (await list(client, 'log', { xquery: { logType: 'AiAgent' }, select: 'status message meta createdAt', sort: '-createdAt', limit: 200 })).rows
+  const logs = (await list(client, 'log', { xquery: { logType: 'AiAgent' }, select: 'status message meta createdAt', sort: '-_id', limit: 200 })).rows
     .filter((l) => l.meta && (String(l.meta.agentId) === String(agent._id) || l.meta.agentCode === agent.agentCode));
   return {
     agent: { agentName: agent.agentName, agentCode: agent.agentCode },

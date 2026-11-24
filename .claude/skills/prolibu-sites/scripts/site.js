@@ -24,6 +24,7 @@ const crypto = require('crypto');
 const zlib = require('zlib');
 const { createClient, loadApiKey, UsageError, DEFAULT_ROOT } = require('../../_shared/prolibu-api');
 const { cobaltFindings, isCobaltAsset } = require('../../_shared/cobalt-check');
+const { heavyReadFindings } = require('../../_shared/heavy-read-check');
 
 const BLOCKED = 3;
 const SITE_CODE_RE = /^[A-Za-z0-9._-]{1,128}$/;
@@ -385,6 +386,7 @@ function checkFiles({ files, limits, keys }) {
     warnings.push({ rule: 'noRobotsMeta', file: 'index.html', message: 'The platform sends no X-Robots-Tag. For an internal or private page add <meta name="robots" content="noindex, nofollow"> and <meta name="referrer" content="no-referrer">.' });
   }
   for (const finding of cobaltFindings(files)) warnings.push(finding);
+  for (const { level, ...finding } of heavyReadFindings(files)) (level === 'blocker' ? blockers : warnings).push(finding);
   if (files.length > MANY_FILES) warnings.push({ rule: 'manyFiles', message: `${files.length} files: the server stores each one separately and the publish will be slow.` });
   return { blockers, warnings };
 }

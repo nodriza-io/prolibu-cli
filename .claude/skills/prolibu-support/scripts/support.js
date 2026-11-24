@@ -273,7 +273,7 @@ async function loadPrefs(client) {
 }
 
 async function loadHubs(client) {
-  const res = await client.request('GET', `/v2/emailhub?${qs({ select: HUB_SELECT, sort: 'createdAt', limit: '100' })}`);
+  const res = await client.request('GET', `/v2/emailhub?${qs({ select: HUB_SELECT, sort: '_id', limit: '100' })}`);
   return res.ok ? rows(res.body) : null;
 }
 

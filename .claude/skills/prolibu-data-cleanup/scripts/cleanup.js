@@ -580,20 +580,32 @@ async function cmdShow(client, rest) {
   return { object: model, record: recordView(model, record), pointingAtIt: refSummary(report) };
 }
 
+// The smallest ObjectId created on a day (YYYY-MM-DD, UTC): its first 8 hex digits are the
+// creation time in seconds, so `_id >= objectIdFrom(day)` filters by creation through the index.
+function objectIdFrom(day) {
+  return Math.floor(Date.parse(`${day}T00:00:00Z`) / 1000).toString(16).padStart(8, '0') + '0'.repeat(16);
+}
+
 async function cmdInactive(client, rest, flags) {
   const before = flags.before;
   if (!DATE_RE.test(String(before || ''))) throw new UsageError('Give --before YYYY-MM-DD (no activity since that day).');
   const limit = flags.limit || 50;
   const candidates = [];
-  let page = 1;
   let scanned = 0;
   let total = 0;
+  let lastId = null;
+  // Only _id is indexed on every object: page with a cursor on it (sorting on updatedAt reads and
+  // sorts the whole collection on every page). E-mails are checked from the first _id created on
+  // that day, so the database walks the _id index instead of every e-mail (HEAVY-READS.md).
+  const sinceId = objectIdFrom(before);
   while (candidates.length < limit && scanned < MAX_SCAN) {
+    const and = [{ updatedAt: { $lt: before } }];
+    if (lastId) and.push({ _id: { $gt: lastId } });
     const body = await call(client, 'GET', `/v2/contact?${qs({
-      xquery: { updatedAt: { $lt: before } }, select: 'firstName lastName email submissions updatedAt createdAt tags', limit: String(PAGE), page: String(page), sort: 'updatedAt',
+      xquery: { $and: and }, select: 'firstName lastName email submissions updatedAt createdAt tags', limit: String(PAGE), sort: '_id',
     })}`);
     const rows = rowsOf(body);
-    total = (body.pagination && body.pagination.count) || total;
+    if (!lastId) total = (body.pagination && body.pagination.count) || 0;
     scanned += rows.length;
     const fresh = rows.filter((c) => !(c.submissions && c.submissions.lastAt && String(c.submissions.lastAt) >= before));
     const ids = fresh.map(idOf);
@@ -601,11 +613,13 @@ async function cmdInactive(client, rest, flags) {
     for (let i = 0; i < ids.length; i += 100) {
       const part = ids.slice(i, i + 100);
       for (const d of await list(client, 'deal', { xquery: { contact: { $in: part }, updatedAt: { $gte: before } }, select: 'contact', limit: '500' })) busy.add(idOf(d.contact));
-      for (const e of await list(client, 'email', { xquery: { contact: { $in: part }, createdAt: { $gte: before } }, select: 'contact', limit: '500' })) busy.add(idOf(e.contact));
+      for (const e of await list(client, 'email', { xquery: { $and: [{ _id: { $gte: sinceId } }, { createdAt: { $gte: before } }, { contact: { $in: part } }] }, select: 'contact', limit: '500' })) busy.add(idOf(e.contact));
     }
     candidates.push(...fresh.filter((c) => !busy.has(idOf(c))));
     if (rows.length < PAGE) break;
-    page += 1;
+    const next = idOf(rows[rows.length - 1]);
+    if (!next || next === lastId) break;
+    lastId = next;
   }
   const shown = candidates.slice(0, limit);
   return {

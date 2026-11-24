@@ -107,7 +107,7 @@ function safeRemote(url) {
 }
 
 // Git state of an account folder that is its own repository (`./prolibu account import`).
-// `exposed` = `./prolibu account push` (git add .) would publish that file.
+// `exposed` = committed (then `account push` refuses) or a plain `git add .` would publish it.
 function accountGit(dir, files) {
   if (!fs.existsSync(path.join(dir, '.git'))) return null;
   const remote = git(dir, ['remote', 'get-url', 'origin']);

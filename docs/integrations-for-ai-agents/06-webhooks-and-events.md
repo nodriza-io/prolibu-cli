@@ -399,7 +399,7 @@ The header value is stored in clear text on the webhook and returned on every re
 Because there is no built-in retry or dead-letter queue, also implement **idempotency** and **reconcile**:
 
 - **Idempotency:** the same record can produce several deliveries (every update fires, even one that changes nothing), and your handler may crash mid-processing. Derive a stable key from the payload (for `update`, e.g. `afterUpdateDoc._id` plus `afterUpdateDoc.updatedAt`) and skip work you've already done.
-- **Reconcile:** on a schedule (see [§3](#3-scheduled-automations)), poll the REST API for records changed since your last successful checkpoint (`GET /v2/<object>/?xquery={"updatedAt":{"$gt":"<lastCheckpoint>"}}&sort=updatedAt`, URL-encoded). The JSON filter parameter is `xquery`; a `query` parameter is ignored and returns every record. This closes any gap left by a webhook your endpoint missed.
+- **Reconcile:** on a schedule (see [§3](#3-scheduled-automations)), poll the REST API for records changed since your last successful checkpoint (`GET /v2/<object>/?xquery={"updatedAt":{"$gt":"<lastCheckpoint>"}}&sort=_id&limit=500`, URL-encoded; page with a cursor on `_id`, never `sort=updatedAt` plus `page`, and run it at most hourly: `updatedAt` has no index, see [Best practices §10](11-best-practices.md#10-worked-example-b--incremental-sync-with-a-checkpoint-cursor)). The JSON filter parameter is `xquery`; a `query` parameter is ignored and returns every record. This closes any gap left by a webhook your endpoint missed.
 
 ---
 

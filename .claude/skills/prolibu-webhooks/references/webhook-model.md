@@ -136,5 +136,8 @@ has an on/off toggle per row, which saves `active` alone.
 4. Do not trust the body for anything important: read the record again through the API by its
    `_id`.
 5. Close gaps with a scheduled reconcile: records changed since the last checkpoint,
-   `GET /v2/<object>?xquery={"updatedAt":{"$gt":"<checkpoint>"}}&sort=updatedAt`. The filter
-   goes in `xquery`; a `query` parameter is ignored and returns everything.
+   `GET /v2/<object>?xquery={"updatedAt":{"$gt":"<checkpoint>"}}&sort=_id&limit=500`, and each
+   next page adds `{"_id":{"$gt":"<last _id>"}}` inside `$and`. The filter goes in `xquery`; a
+   `query` parameter is ignored and returns everything. `updatedAt` has no index, so every call
+   reads the whole collection: never `sort=updatedAt` with `page`, one call at a time, at most
+   hourly ([`../../_shared/HEAVY-READS.md`](../../_shared/HEAVY-READS.md)).

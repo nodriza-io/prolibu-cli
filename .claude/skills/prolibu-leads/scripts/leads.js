@@ -387,7 +387,7 @@ async function cmdLeads(client, args, flags) {
   if (flags.source) query.source = flags.source;
   if (flags.assignee) query.assignee = idOf(await userByEmail(client, flags.assignee));
   const params = {
-    xquery: query, select: LEAD_SELECT, sort: 'createdAt', limit: String(flags.limit || 50),
+    xquery: query, select: LEAD_SELECT, sort: '_id', limit: String(flags.limit || 50),
     populatePath: [{ path: 'assignee', select: 'firstName lastName email' }],
   };
   const body = flags.search
@@ -600,7 +600,7 @@ async function cmdDiagnose(client, [ref], flags) {
       const protocol = protocolRes.ok ? protocolRes.body : null;
       const emails = await list(client, 'email', {
         xquery: { contact: idOf(record), contactProtocol: idOf(run.contactProtocol) },
-        select: 'subject status stepIndex runId createdAt sentAt error', sort: 'createdAt', limit: '100',
+        select: 'subject status stepIndex runId createdAt sentAt error', sort: '_id', limit: '100',
       });
       const thisRun = run.runId ? emails.filter((e) => e.runId === run.runId) : emails;
       const steps = ((protocol && protocol.flow) || []).map((s, i) => {
@@ -691,7 +691,7 @@ async function leadsOfPlan(client, plan, stages) {
     if (f.source !== undefined) query.source = String(f.source);
     if (f.unassigned === true) query.assignee = null;
     const limit = Math.min(Number(f.limit) || MAX_LEADS, MAX_LEADS);
-    const body = await call(client, 'GET', `/v2/lead?${qs({ xquery: query, select: LEAD_SELECT, sort: 'createdAt', limit: String(limit) })}`);
+    const body = await call(client, 'GET', `/v2/lead?${qs({ xquery: query, select: LEAD_SELECT, sort: '_id', limit: String(limit) })}`);
     const total = (body.pagination && body.pagination.count) ?? rowsOf(body).length;
     return { leads: rowsOf(body), total };
   }

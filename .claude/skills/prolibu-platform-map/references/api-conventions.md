@@ -43,7 +43,11 @@ examples below show the path and query; the helper adds the host and the key.
 - `limit` defaults to 20. Anything above 500 is cut to 500 without an error. `limit=0` or a
   page below 1 answers `400 Invalid pagination parameters`. A page past the end is an empty
   `data`.
-- There is no default order. When you page, always `sort`.
+- There is no default order. When you page, sort by `_id` (`sort=_id`, or `-_id` for newest
+  first): it is the only field every object indexes. Sorting on any other field, `createdAt`
+  included, makes the database read and sort the whole collection on every page, and enough of
+  those calls at once take down every account on the server. Reading more than one page, or
+  totals over a whole object, follows [`../../_shared/HEAVY-READS.md`](../../_shared/HEAVY-READS.md).
 
 ## `select`, `sort`
 
@@ -51,7 +55,7 @@ examples below show the path and query; the helper adds the host and the key.
   `-` excludes: `select=-notes -tasks`. Do not mix the two forms (`400`). Without `select`,
   every field comes back except secrets.
 - `sort` lists fields separated by **commas**; `-` means descending:
-  `sort=-updatedAt,firstName`. A space-separated sort, or a field that does not exist,
+  `sort=stageName,-_id`. A space-separated sort, or a field that does not exist,
   answers `400 Sort field does not exist`.
 
 ## Filters

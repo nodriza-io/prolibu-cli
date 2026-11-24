@@ -1131,7 +1131,7 @@ function jobSummary(job) {
 async function cmdJobs(client, args, flags) {
   const limit = flags.limit ? Number(flags.limit) : 10;
   if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new UsageError('--limit must be between 1 and 50.');
-  const body = await call(client, 'GET', `/v2/service/importjobs?${new URLSearchParams({ limit: String(limit), sort: '-createdAt' })}`);
+  const body = await call(client, 'GET', `/v2/service/importjobs?${new URLSearchParams({ limit: String(limit), sort: '-_id' })}`);
   return { total: body.total, jobs: (body.docs || []).map(jobSummary) };
 }
 

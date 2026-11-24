@@ -731,7 +731,7 @@ async function cmdSubmissions(client, [id], flags = {}) {
   const query = new URLSearchParams({
     xquery: JSON.stringify({ form: id }),
     select: 'status mappingResults source submittedBy data createdAt',
-    sort: '-createdAt',
+    sort: '-_id',
     limit: String(flags.limit || 10),
   });
   const body = await call(client, 'GET', `/v2/formsubmission?${query}`);

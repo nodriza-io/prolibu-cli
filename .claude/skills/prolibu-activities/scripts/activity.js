@@ -433,7 +433,7 @@ async function gather(client, plan) {
 async function listByOrigin(client, typeKey, parentId, select, limit = 50) {
   const T = TYPES[typeKey];
   const body = await call(client, 'GET', `/v2/${T.path}?${qs({
-    xquery: JSON.stringify({ 'origin.docId': parentId }), select, sort: '-createdAt', limit,
+    xquery: JSON.stringify({ 'origin.docId': parentId }), select, sort: '-_id', limit,
   })}`);
   return body.data || [];
 }

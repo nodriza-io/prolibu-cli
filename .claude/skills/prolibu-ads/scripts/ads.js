@@ -330,7 +330,7 @@ async function submissionsEnabled(client) {
 
 async function lastLead(client, xquery) {
   const rows = await list(client, 'contactsubmission', {
-    xquery: { 'adCampaignMeta.provider': { $exists: true }, ...xquery }, sort: '-createdAt', limit: 1, select: 'createdAt',
+    xquery: { 'adCampaignMeta.provider': { $exists: true }, ...xquery }, sort: '-_id', limit: 1, select: 'createdAt',
   }, 'Reading lead submissions');
   return rows[0] ? rows[0].createdAt : null;
 }
@@ -421,7 +421,7 @@ async function cmdForms(client, rest, flags) {
 }
 
 async function cmdCampaigns(client, rest, flags) {
-  const params = { select: 'adCampaignCode adCampaignName assignmentGroup createdAt updatedAt', sort: '-createdAt', limit: flags.limit || 50 };
+  const params = { select: 'adCampaignCode adCampaignName assignmentGroup createdAt updatedAt', sort: '-_id', limit: flags.limit || 50 };
   const xquery = {};
   if (flags.search) xquery.$or = [{ adCampaignName: { $regex: `(?i)${escapeRegex(flags.search)}` } }, { adCampaignCode: flags.search.trim() }];
   if (flags.withGroup) xquery.assignmentGroup = { $exists: true, $ne: null };
@@ -492,7 +492,7 @@ async function cmdReport(client, rest, flags) {
     else xquery['adCampaignMeta.campaignName'] = exactI(flags.campaign);
   }
   const { rows, truncated } = await scan(client, 'contactsubmission', {
-    xquery, sort: 'createdAt', select: `contact sequence createdAt adCampaign ${META_SELECT}`,
+    xquery, sort: '_id', select: `contact sequence createdAt adCampaign ${META_SELECT}`,
   }, MAX_REPORT_PAGES);
   const result = tally(rows, by);
   const zones = [...new Set(rows.map((r) => r.adCampaignMeta && r.adCampaignMeta.accountTimezone).filter(Boolean))];
@@ -560,7 +560,7 @@ async function cmdDiagnose(client, rest) {
     ad: { id: idOf(contact.adCampaign) || null, code: meta.adCampaignCode || null, name: meta.adCampaignName || null },
   };
   const subs = await list(client, 'contactsubmission', {
-    contact: String(contact._id), sort: 'createdAt', limit: 50, select: `sequence createdAt source adCampaign refId ${META_SELECT}`,
+    contact: String(contact._id), sort: '_id', limit: 50, select: `sequence createdAt source adCampaign refId ${META_SELECT}`,
   }, 'Reading submissions');
   out.submissions = subs.map((s) => ({
     sequence: s.sequence, at: s.createdAt, source: s.source || null,
@@ -686,7 +686,7 @@ async function resolveCampaignRefs(client, refs, blockers) {
 async function adsOfMetaCampaign(client, ref, warnings) {
   const xquery = DIGITS_RE.test(ref) ? { 'adCampaignMeta.campaignId': ref } : { 'adCampaignMeta.campaignName': exactI(ref) };
   const { rows, truncated } = await scan(client, 'contactsubmission', {
-    xquery, select: 'adCampaign adCampaignMeta.campaignId adCampaignMeta.campaignName adCampaignMeta.formId', sort: '-createdAt',
+    xquery, select: 'adCampaign adCampaignMeta.campaignId adCampaignMeta.campaignName adCampaignMeta.formId', sort: '-_id',
   }, MAX_SCAN_PAGES);
   if (truncated) warnings.push(`Only the latest ${MAX_SCAN_PAGES * PAGE_SIZE} leads of the Meta campaign were scanned for its ads.`);
   const campaignIds = new Set(rows.map((r) => (r.adCampaignMeta || {}).campaignId).filter(Boolean));

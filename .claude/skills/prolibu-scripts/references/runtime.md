@@ -140,7 +140,7 @@ apply (list envelope `{ pagination, data }`, `PATCH` replaces arrays and mixed f
   `errorStack`. The `at line N` numbers point at `dist/bundle.js`, not `index.js`.
 - It answers 4xx when the run is refused: not found, inactive, no permission, hooks not
   enabled.
-- Stored log lines: `GET /v2/log?logType=Script&sort=-createdAt` with `status` `Info`,
+- Stored log lines: `GET /v2/log?logType=Script&sort=-_id` with `status` `Info`,
   `Warning` or `Failure`, `message`, and `meta.{scriptId, scriptCode, eventName,
   errorStack}`. Every failed run adds a `Failure` line. Lines expire after 7 days. The list
   cannot be filtered by script on the server; `scripts/script.js logs` filters it locally.

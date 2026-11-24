@@ -20,6 +20,7 @@ const fs = require('fs');
 const path = require('path');
 const { createClient, UsageError, DEFAULT_ROOT } = require('../../_shared/prolibu-api');
 const { cobaltFindings } = require('../../_shared/cobalt-check');
+const { heavyReadFindings } = require('../../_shared/heavy-read-check');
 
 const BLOCKED = 3;
 const ID_RE = /^[a-f0-9]{24}$/i;
@@ -176,6 +177,10 @@ function lintSource(files) {
   // Design: the quote editor is a Cobalt app, so the site should look like it.
   for (const f of cobaltFindings(texts.map((t) => ({ rel: t.file, text: t.text })))) {
     add(f.rule.replace(/([A-Z])/g, '_$1').toUpperCase(), 'warning', f.message, f.file ? [f.file] : undefined);
+  }
+  // Load: every seller who opens the picker runs these calls; heavy ones overload the shared database.
+  for (const f of heavyReadFindings(texts.map((t) => ({ rel: t.file, text: t.text })))) {
+    add(f.rule.replace(/([A-Z])/g, '_$1').toUpperCase(), f.level === 'blocker' ? 'error' : 'warning', f.message, [f.file]);
   }
   return {
     files: files.length,

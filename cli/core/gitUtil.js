@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-const DEFAULT_GITIGNORE = `# Secrets
-profile.json
+const DEFAULT_GITIGNORE = `# Secrets (profile.json and profile.<name>.json)
+profile*.json
 
 # Build artifacts
 dist.zip

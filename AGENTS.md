@@ -19,7 +19,7 @@ working from memory or from the guide.
 | Import contacts, companies or deals from CSV/Excel without duplicates; bulk edits; import results | [`prolibu-imports`](.claude/skills/prolibu-imports/SKILL.md) |
 | Add fields to an object, or create a custom object | [`prolibu-custom-fields`](.claude/skills/prolibu-custom-fields/SKILL.md) |
 | Catalog: products, price lists and prices, taxes, volume discounts, coupons; load a catalog from Excel | [`prolibu-catalog`](.claude/skills/prolibu-catalog/SKILL.md) |
-| Add, change or remove products on a deal's quote | [`prolibu-quotes`](.claude/skills/prolibu-quotes/SKILL.md) |
+| Add, change or remove products on a deal's quote, including discounts that expire | [`prolibu-quotes`](.claude/skills/prolibu-quotes/SKILL.md) |
 | Set up a deal's proposal and template, its versions, contract templates and contracts ready for e-signature | [`prolibu-proposals`](.claude/skills/prolibu-proposals/SKILL.md) |
 | A product picker or configurator inside the quote editor | [`prolibu-extended-quote-sites`](.claude/skills/prolibu-extended-quote-sites/SKILL.md) |
 | Pipelines and stages: move a record, required fields | [`prolibu-stages`](.claude/skills/prolibu-stages/SKILL.md) |
@@ -27,6 +27,7 @@ working from memory or from the guide.
 | Support tickets: open, assign, reply or note; case types, routing; articles and portal | [`prolibu-support`](.claude/skills/prolibu-support/SKILL.md) |
 | E-mail templates with variables, contact lists and e-mail campaigns (test, launch, schedule) | [`prolibu-messaging`](.claude/skills/prolibu-messaging/SKILL.md) |
 | Reports and dashboards: build, add pages, combine reports, goals vs. actuals, zeros | [`prolibu-dashboards`](.claude/skills/prolibu-dashboards/SKILL.md) |
+| Custom report page or site, export of all records, reading many records: report first, one streamed read, sort only by `_id` | [`prolibu-dashboards`](.claude/skills/prolibu-dashboards/SKILL.md) + [`_shared/HEAVY-READS.md`](.claude/skills/_shared/HEAVY-READS.md) |
 | Native AI agents: instructions, model, skills, actions, scheduled and record-event triggers, runs and token cost | [`prolibu-ai-agents`](.claude/skills/prolibu-ai-agents/SKILL.md) |
 | Virtual tours: create, upload scenes, update, download | [`prolibu-virtual-tours`](.claude/skills/prolibu-virtual-tours/SKILL.md) |
 | Commercial exceptions and product rules: why a rule blocks a quote, request, approve or reject an exception, create or edit rules | [`prolibu-commercial-exceptions`](.claude/skills/prolibu-commercial-exceptions/SKILL.md) |
@@ -55,7 +56,8 @@ system ([`_shared/COBALT.md`](.claude/skills/_shared/COBALT.md)), to the design 
 [`_shared/UI-QUALITY.md`](.claude/skills/_shared/UI-QUALITY.md), and checked with
 `_shared/ui-review.js` and its screenshots before it is published. The API's own rules (filters with
 `xquery`, populate depth, how `PATCH` merges) are in
-[`api-conventions.md`](.claude/skills/prolibu-platform-map/references/api-conventions.md).
+[`api-conventions.md`](.claude/skills/prolibu-platform-map/references/api-conventions.md); reading many records without overloading the shared database is in
+[`_shared/HEAVY-READS.md`](.claude/skills/_shared/HEAVY-READS.md).
 
 ## Other references
 
@@ -81,6 +83,12 @@ API key stored in `accounts/{domain}/profile.json`:
 ```
 
 All API calls use `Authorization: Bearer {apiKey}` header against `https://{domain}/v2`.
+
+Agents never read, copy or print that key. `.claude/settings.json` denies the Read tool on
+`accounts/**/profile*.json`, and a Bash hook (`.claude/hooks/guard-account-keys.js`) refuses
+commands that name a profile file, glob an account folder or pull `apiKey` out with inline
+code. Call the API through `node .claude/skills/_shared/prolibu-api.js <domain> <METHOD> <path>`
+or the skill's own script; they read the key themselves and never print it.
 
 The `--apikey` flag overrides the stored key. If neither exists, the CLI prompts interactively.
 

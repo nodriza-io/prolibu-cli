@@ -370,7 +370,7 @@ async function loadDeal(client, dealId) {
 // Search, not findOne: a seller may search exceptions but not read one by id.
 const EXCEPTION_SELECT = 'deal status requestType justification approver decisionComment decidedBy decidedAt appliedIn ignoreProductRules createdBy createdAt updatedAt';
 async function findExceptions(client, xquery, { limit = 50, populate = true } = {}) {
-  const params = { xquery, select: EXCEPTION_SELECT, sort: '-createdAt', limit: String(limit) };
+  const params = { xquery, select: EXCEPTION_SELECT, sort: '-_id', limit: String(limit) };
   if (populate) {
     params.populatePath = [
       { path: 'approver', select: 'firstName lastName email' },

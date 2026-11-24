@@ -34,7 +34,7 @@ Answer in the user's language. Object names, API paths and field names stay as w
 | Import contacts, companies or deals from a CSV or Excel file without duplicates, change one field on many records, or read an import's result | `prolibu-imports` |
 | Add fields to an object, or create a Custom Object | `prolibu-custom-fields` |
 | Create or update products, price lists and their prices, taxes, volume discounts or coupons, or load a catalog from Excel | `prolibu-catalog` |
-| Add, change or remove products on a deal's quote | `prolibu-quotes` |
+| Add, change or remove products on a deal's quote, or set discounts that expire (Real-Time or Limited-Time) | `prolibu-quotes` |
 | Turn a deal's proposal on or change its template, save or restore proposal versions, write contract templates, or generate a deal's contract ready for e-signature | `prolibu-proposals` |
 | Build a product picker or configurator inside the quote editor; which site each workspace gets | `prolibu-extended-quote-sites` |
 | Move records between pipeline stages, or understand a pipeline | `prolibu-stages` |
@@ -42,6 +42,7 @@ Answer in the user's language. Object names, API paths and field names stay as w
 | Open, find, assign or answer support tickets; case types, routing, the support mailbox; help articles and the portal | `prolibu-support` |
 | Build e-mail templates with variables, contact lists or e-mail campaigns; test, launch, schedule or pause one | `prolibu-messaging` |
 | Build or change a report or dashboard (KPIs, charts, several reports, goals vs. actuals), or find why one shows zeros | `prolibu-dashboards` |
+| A custom report page or site, an export of all records, or anything that reads many records or totals over a whole object | `prolibu-dashboards` for the report, then `prolibu-sites` for the page; both follow `_shared/HEAVY-READS.md` |
 | Create or change a native AI agent (instructions, model, skills, actions) and the triggers that run it on a schedule or a record event | `prolibu-ai-agents` |
 | Create, update or download virtual tours (car configurators, 360° spaces) | `prolibu-virtual-tours` |
 | See why a product rule blocks a quote; request, edit, withdraw, approve (or counter) or reject a commercial exception; check it reached the quote; create or edit product rules | `prolibu-commercial-exceptions` |
@@ -92,9 +93,10 @@ A request can need two skills (for example a form whose leads go to an external 
    For which fields are writable, read `modelSchemas.<ModelName>` from `GET /v2/user/me`
    (`avoid: always` = set by the platform). If the path is missing, the object is not enabled
    on that account: say so and stop. Never guess a field name.
-3. **Find the records** with a list call: `GET /v2/<path>?xquery=…&select=…&sort=…&limit=…`,
+3. **Find the records** with a list call: `GET /v2/<path>?xquery=…&select=…&sort=_id&limit=…`,
    or `GET /v2/<path>/search?term=<text>`. Check `pagination.count`: a misspelled filter is
-   dropped and returns every record.
+   dropped and returns every record. More than one page, or totals over a whole object:
+   follow [`../_shared/HEAVY-READS.md`](../_shared/HEAVY-READS.md) (sort only by `_id`).
 4. **Resolve references** to `_id` strings: look the related record up first (the contact's
    `_id`, not its name or the whole object).
 5. **Summarize and ask.** Say in plain words what will be created or changed, in which
@@ -149,7 +151,7 @@ Every record also carries `_id`, `createdAt`, `updatedAt`, `createdBy`, `updated
 | A date range returns too much | Two operators on one field; the server kept one | `$and` with one condition each |
 | `400 $options needs a $regex` | Separate `$options` | Inline `(?i)` in `$regex` |
 | `400 Cannot populate '<x>'…` | Field not in the schema | Fix the name, or use `populatePath` |
-| `400 Sort field does not exist` | Space-separated sort, or a wrong field | Commas: `sort=-updatedAt,name` |
+| `400 Sort field does not exist` | Space-separated sort, or a wrong field | Commas: `sort=name,-_id` |
 | `400 Document not found by primaryKey '[object Object]'` | A reference sent as an object | Send its `_id` string |
 | A nested reference shows as an id | `populate=*` is one level | `populatePath` tree |
 | A field "did not save" | Not in the schema, or set by the platform | Read the schema; read the record back |

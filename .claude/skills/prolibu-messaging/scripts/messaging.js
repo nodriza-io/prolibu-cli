@@ -395,25 +395,32 @@ async function loadContactsById(client, ids, select) {
   return found;
 }
 
+// A cursor on _id, one call at a time: sorting a campaign's e-mails by createdAt makes the
+// database sort all of them on every page (_shared/HEAVY-READS.md).
 async function campaignEmailRows(client, campaignId) {
   const rows = [];
-  for (let page = 1; page < 200; page += 1) {
+  let lastId = null;
+  for (let round = 0; round < 200; round += 1) {
+    const where = lastId ? { $and: [{ emailCampaign: campaignId }, { _id: { $gt: lastId } }] } : { emailCampaign: campaignId };
     const body = await call(client, 'GET', `/v2/email?${qs({
-      xquery: JSON.stringify({ emailCampaign: campaignId }), select: 'contact status to error', sort: 'createdAt', limit: '500', page: String(page),
+      xquery: JSON.stringify(where), select: 'contact status to error', sort: '_id', limit: '500',
     })}`);
-    rows.push(...(body.data || []));
-    if (!body.pagination || page >= body.pagination.lastPage) break;
+    const data = body.data || [];
+    rows.push(...data);
+    const next = data.length ? String(idOf(data[data.length - 1])) : null;
+    if (data.length < 500 || !next || next === lastId) break;
+    lastId = next;
   }
   return rows;
 }
 
 // Who of these contact ids an e-mail campaign would reach, by the server's own send gates.
-async function analyzeRecipients(client, ids, { campaignId } = {}) {
+async function analyzeRecipients(client, ids, { campaignId, emailRows } = {}) {
   const all = (ids || []).map(String);
   const unique = [...new Set(all)];
   const found = await loadContactsById(client, unique, 'firstName lastName email emailStatus consent');
   const already = new Map();
-  if (campaignId) (await campaignEmailRows(client, campaignId)).forEach((row) => already.set(String(idOf(row.contact)), row.status));
+  if (campaignId) (emailRows || await campaignEmailRows(client, campaignId)).forEach((row) => already.set(String(idOf(row.contact)), row.status));
   const r = {
     contacts: unique.length, repeatedIds: all.length - unique.length, notFound: [], noEmail: 0,
     unsubscribed: 0, bounced: 0, complained: 0, alreadyEmailed: 0, duplicateEmails: 0,
@@ -852,10 +859,12 @@ async function cmdShow(client, [kind, id], flags, ctx) {
   } catch (err) {
     liveStats = { unavailable: err.hint || err.message };
   }
-  const recipients = await analyzeRecipients(client, (c.contacts || []).map((x) => String(idOf(x))), { campaignId: id });
+  // Read the campaign's e-mails once: both the recipients and the delivery figures use them.
+  const emailRows = await campaignEmailRows(client, id);
+  const recipients = await analyzeRecipients(client, (c.contacts || []).map((x) => String(idOf(x))), { campaignId: id, emailRows });
   // What each recipient's e-mail ended as, with the server's reason for every failure or skip.
   const delivery = { sent: 0, failed: 0, pending: 0, failedReasons: {} };
-  (await campaignEmailRows(client, id)).forEach((row) => {
+  emailRows.forEach((row) => {
     delivery[row.status] = (delivery[row.status] || 0) + 1;
     if (row.status === 'failed') {
       const reason = String(row.error || 'unknown').slice(0, 120);
@@ -1128,7 +1137,7 @@ async function cmdMessages(client, [conversationId], flags) {
   const body = await call(client, 'GET', `/v2/message?${qs({
     xquery: JSON.stringify({ conversation: conversationId }),
     select: 'direction channelType contentType body templateName status errorCode errorMessage createdAt',
-    sort: '-createdAt', limit: String(Math.min(Number(flags.limit) || 30, 200)),
+    sort: '-_id', limit: String(Math.min(Number(flags.limit) || 30, 200)),
   })}`);
   return {
     count: body.pagination ? body.pagination.count : (body.data || []).length,
