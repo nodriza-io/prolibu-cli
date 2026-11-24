@@ -412,11 +412,12 @@ async function cmdDeals(client, [name]) {
   const query = new URLSearchParams({
     xquery: JSON.stringify({ dealName: { $regex: pattern } }),
     select: 'dealName stage updatedAt',
-    sort: '-updatedAt',
+    // Sorted by _id (indexed): updatedAt has no index. Most recently changed first is applied in memory.
+    sort: '-_id',
     limit: '10',
   });
   const body = await call(client, 'GET', `/v2/deal?${query}`);
-  const rows = Array.isArray(body) ? body : body.data || [];
+  const rows = (Array.isArray(body) ? body : body.data || []).slice().sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
   return { deals: rows.map((d) => ({ _id: d._id, dealName: d.dealName, updatedAt: d.updatedAt })) };
 }
 

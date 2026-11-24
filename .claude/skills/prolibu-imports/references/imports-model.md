@@ -88,7 +88,8 @@ Not done by the importer:
   on the user's private channel): counts, percentage, estimated time and the latest row errors.
 - `GET /v2/service/importjobs?status=&modelName=&fileKey=&limit=&skip=&sort=` → `{docs, total}`;
   `GET /v2/service/importjob/<id>`; `DELETE /v2/service/importjob/<id>` cancels (checked about
-  about once a second, every 10 rows). These list and cancel **every user's** jobs, not only yours.
+  once a second, every 10 rows). A non-admin sees and cancels only their own jobs; an admin
+  sees every user's.
 - A job keeps the first 100 row errors (`errors: [{row, error}]`); older jobs kept none.
 - On a non-production account an import of 300 contacts waited about 15 minutes in the queue
   behind other jobs and then took 8 minutes. The JSON body way answered 2 rows in half a second.

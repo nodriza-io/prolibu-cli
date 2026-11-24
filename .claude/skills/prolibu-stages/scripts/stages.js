@@ -556,10 +556,11 @@ async function cmdFind(client, [model, ...words]) {
   const query = new URLSearchParams({
     xquery: JSON.stringify(or.length === 1 ? or[0] : { $or: or }),
     select: [...schema.displayFields, ...schema.fields, 'updatedAt'].join(' '),
-    sort: '-updatedAt',
+    // Sorted by _id (indexed): updatedAt has no index. Most recently changed first is applied in memory.
+    sort: '-_id',
     limit: '10',
   });
-  const rows = rowsOf(await call(client, 'GET', `${schema.path}?${query}`));
+  const rows = rowsOf(await call(client, 'GET', `${schema.path}?${query}`)).slice().sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
   return { model: schema.modelName, records: rows.map((r) => ({ _id: r._id, name: displayName(r, schema), updatedAt: r.updatedAt })) };
 }
 
@@ -606,7 +607,9 @@ async function cmdShow(client, [model, id]) {
   const histQuery = new URLSearchParams({
     xquery: JSON.stringify({ 'origin.modelName': schema.modelName, 'origin.docId': id }),
     select: 'stageField fromStage toStage movedAt movedBy',
-    sort: '-movedAt',
+    // A stage-history row is written by the move itself (it cannot be created later through the
+    // API), so newest _id first is newest move first; _id is indexed, movedAt is not.
+    sort: '-_id',
     limit: '50',
   });
   const histRes = await client.request('GET', `/v2/stagehistory?${histQuery}`);

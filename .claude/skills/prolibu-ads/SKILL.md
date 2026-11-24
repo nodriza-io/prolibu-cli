@@ -72,7 +72,7 @@ today, the workspace by page, and whether its current stage would be reported to
 `adset`, `form`, `page`, `source`, `account`). Each submission is one lead; `newContacts` are
 first-time people and `recontacts` people already in the account. If `notes` names another
 time zone, rerun with `--tz` to match Meta. For a saved report or chart, use
-`prolibu-dashboards`.
+`prolibu-reports-dashboards`.
 
 **Change the team of a campaign or ads.**
 

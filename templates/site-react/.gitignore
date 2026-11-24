@@ -3,3 +3,4 @@ dist
 dist.zip
 .DS_Store
 _prolibu_config.js
+*.tsbuildinfo

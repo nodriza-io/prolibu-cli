@@ -174,6 +174,9 @@ async function fake(url, init = {}) {
   if (![KEY, SELLER_KEY].map((k) => `Bearer ${k}`).includes(auth)) return res(401, { error: 'Unauthorized' });
   if (state.forbidden && u.pathname.startsWith('/v2/site')) return res(403, { error: 'Forbidden. User has no permission to perform "find" on "Site".' });
   if (u.pathname === '/v2/user/me') return res(200, { profile: { _id: ME, email: 'me@example.com' } });
+  if (u.pathname === `/v2/user/${OTHER}`) {
+    return state.otherUserReadable ? res(200, { _id: OTHER, firstName: 'Producto', lastName: 'QA', email: 'producto@example.com' }) : res(403, { statusCode: 403, error: 'Forbidden' });
+  }
   if (u.pathname === '/v2/user/preferences') return res(200, { modules: { tools: { cloudDrive: { uploadRestrictions: { maxFileSizeMB: state.maxMB } } } } });
   if (u.pathname === '/v2/preference/read') {
     if (!state.admin) return res(403, { error: 'Admins only' });
@@ -406,6 +409,16 @@ describe('site.js', () => {
     expect(code).toBe(3);
     expect(json.blockers.map((b) => b.rule)).toEqual(['notCreator']);
     expect(json.nextStep).toContain('do not publish');
+    expect(json.blockers[0].creator).toEqual({ _id: OTHER, name: null, email: null });
+    expect(json.blockers[0].message).toMatch(new RegExp(`the user ${OTHER} created this site.*signs in to the app.*--profile`));
+  });
+
+  test('the creator is named when the key may read users', async () => {
+    state.site = { siteCode: 'demo-dev', siteName: 'x', siteType: 'Static', createdBy: OTHER, updatedAt: 't0' };
+    state.otherUserReadable = true;
+    const { json } = await run('preview', D, 'demo-dev', goodSite());
+    expect(json.blockers[0].creator).toMatchObject({ name: 'Producto QA', email: 'producto@example.com' });
+    expect(json.blockers[0].message).toMatch(/^Producto QA \(producto@example\.com\) created this site.*also for an admin.*Producto QA's API key/);
   });
 
   test('account limits: size cap, blocked extensions and the content scanner', async () => {

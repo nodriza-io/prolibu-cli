@@ -378,11 +378,10 @@ async function loadCalendar(client, calendarId) {
   const policyIds = (calendar.policies || []).map(idOf);
   const exceptionIds = (calendar.calendarExceptions || []).map(idOf);
   const groupIds = (calendar.userGroups || []).map(idOf);
-  const [policies, exceptions, groups] = await Promise.all([
-    policyIds.length ? list(client, 'calendarpolicy', { _id: { $in: policyIds } }, 'calendarPolicyName rules bookingCutoffs updatedAt').then((r) => r.data) : [],
-    exceptionIds.length ? list(client, 'calendarexception', { _id: { $in: exceptionIds } }, 'calendarExceptionsName dates updatedAt').then((r) => r.data) : [],
-    groupIds.length ? list(client, 'usergroup', { _id: { $in: groupIds } }, 'userGroupName userGroupType users timeZone updatedAt').then((r) => r.data) : [],
-  ]);
+  // One call at a time: parallel reads add up on the shared database.
+  const policies = policyIds.length ? (await list(client, 'calendarpolicy', { _id: { $in: policyIds } }, 'calendarPolicyName rules bookingCutoffs updatedAt')).data : [];
+  const exceptions = exceptionIds.length ? (await list(client, 'calendarexception', { _id: { $in: exceptionIds } }, 'calendarExceptionsName dates updatedAt')).data : [];
+  const groups = groupIds.length ? (await list(client, 'usergroup', { _id: { $in: groupIds } }, 'userGroupName userGroupType users timeZone updatedAt')).data : [];
   return { calendar, policies, exceptions, groups };
 }
 
@@ -524,12 +523,11 @@ async function availabilityContext(client, calendarId, { from, to, tz, group, du
   const fromUtc = moment.tz(from, zone).subtract(8, 'days').toISOString();
   const toUtc = moment.tz(to, zone).add(9, 'days').toISOString();
   const query = qs({ startDate: from, endDate: to, timeZone: zone, userGroupId: group, duration });
-  const [server, ev] = await Promise.all([
-    productId
-      ? call(client, 'GET', `/v2/calendar/getavailabilityproduct/${productId}?${qs({ startDate: from, endDate: to, timeZone: zone })}`)
-      : call(client, 'GET', `/v2/calendar/getavailability/${calendar._id}?${query}`),
-    eventsInRange(client, { calendar: calendar._id }, fromUtc, toUtc),
-  ]);
+  // One call at a time: parallel reads add up on the shared database.
+  const server = productId
+    ? await call(client, 'GET', `/v2/calendar/getavailabilityproduct/${productId}?${qs({ startDate: from, endDate: to, timeZone: zone })}`)
+    : await call(client, 'GET', `/v2/calendar/getavailability/${calendar._id}?${query}`);
+  const ev = await eventsInRange(client, { calendar: calendar._id }, fromUtc, toUtc);
   let limitTimeZone = calendar.timeZone;
   const groupDoc = loaded.groups.find((g) => String(g._id) === String(group));
   if (groupDoc && groupDoc.timeZone) limitTimeZone = groupDoc.timeZone;
@@ -920,7 +918,8 @@ async function planBooking(client, plan) {
   if (plan.assigneeId) responsible = [await userContact(client, plan.assigneeId)];
   else if (calendar.type === 'roundRobin') {
     const group = slot.groups.find((g) => String(g._id) === String(plan.userGroupId)) || slot.groups[0];
-    responsible = await Promise.all(((group && group.users) || []).map((u) => userContact(client, u)));
+    // One call at a time: parallel reads add up on the shared database.
+    for (const u of (group && group.users) || []) responsible.push(await userContact(client, u));
   } else responsible = [await userContact(client, calendar.assignee || calendar.createdBy)];
   const body = {
     title: plan.title || `${calendar.calendarName} — ${plan.name}`,

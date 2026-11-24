@@ -34,11 +34,12 @@ collection. Keep the
 
 | Need | Do this |
 | --- | --- |
-| Figures: totals, counts, sums by stage, advisor or month; a funnel; goals | A Prolibu **report** (`prolibu-dashboards`). The page links to it or a dashboard shows it. |
+| Figures: totals, counts, sums by stage, advisor or month; a funnel; goals | A Prolibu **report** (`prolibu-reports-dashboards`). The page links to it or a dashboard shows it. |
 | The rows of a report, in a page or a file | **One** call: `GET /v2/report/generate/?reportId=<reportCode>&downloadFormat=json`, plus `&xquery=<period>` when there is one. No `sort`, no `page`. The server streams one pass with the visitor's permissions and only the report's columns. Group, sum and sort those rows in memory. |
 | A table in a site that shows a page at a time | `limit` 25–50, `select` only the columns shown, `sort=-_id` (or `_id`). Other orders apply to the rows already loaded. |
 | Every record, in a script (export, scan, clean-up) | Cursor on `_id`: `sort=_id`, `limit=500`, `select` the fields used, and each next call adds `{"_id":{"$gt":"<last _id>"}}` to `xquery` (inside `$and` with the other filters). One call at a time; stop at a cap you state. Sort by date afterwards, in memory. |
 | How many records match | One call with `limit=1&select=_id`; read `pagination.count`. Over 2,000 rows, use the report stream instead of pages. |
+| A page with filters (period, branch, seller…) over one object | Load the object's rows **once per visit** with the cursor above (or the report stream) and keep them in memory; every filter, tab and period change filters in memory and makes **no** call. Only an explicit "Refresh" reads again. |
 
 ## Never
 
@@ -50,8 +51,20 @@ collection. Keep the
 - Reloading everything on every filter change, on a timer, or on every visit to a page many
   people open. Load once; filter in memory.
 - `populate` over many pages; read the references once by `_id` with `$in` (100 per call).
+- Two operators on one field in one object (`{"createdAt":{"$gte":a,"$lte":b}}`): the API keeps only
+  the **last** one, so a date range silently becomes "everything up to b" and the page reads far
+  more than it shows. Put each condition in its own object inside `$and`.
+- A sort kept in a variable or a default (`sort || '-createdAt'`): it costs the same as writing it
+  in the URL.
 
 ## Before you ship
+
+`_shared/heavy-read-check.js` checks a site before it is published (`prolibu-sites`,
+`prolibu-extended-quote-sites`) and every skill script (`test/prolibu-skill-scripts-heavy-reads.test.js`):
+sorts on fields without an index (also kept in variables), calls in parallel (also through the
+page's own helper functions, across files), and two operators on one field. A finding kept on
+purpose needs `// heavy-read-ok: <reason>` on its line or the line above, and only a short
+configuration list (stages, users, workspaces) is a valid reason.
 
 Say, in one line, how many calls the page or script makes per visit or per run, on which
 objects, and what each one sorts and filters on. If any of them sorts on a field other than

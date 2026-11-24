@@ -653,10 +653,11 @@ async function cmdGoals(client, args, flags) {
     query.startDate = { $lte: `${p.endDate}T23:59:59.999Z` };
     query.endDate = { $gte: `${p.startDate}T00:00:00.000Z` };
   }
-  const rows = await list(client, 'goal', {
-    xquery: query, sort: '-startDate', limit: '200', select: 'goalCode goalName assignee startDate endDate targetValue currency updatedAt',
+  // Newest created first by _id (indexed); startDate has no index. Latest period first is applied in memory.
+  const rows = (await list(client, 'goal', {
+    xquery: query, sort: '-_id', limit: '200', select: 'goalCode goalName assignee startDate endDate targetValue currency updatedAt',
     populatePath: [{ path: 'assignee', select: 'firstName lastName email' }],
-  });
+  })).sort((a, b) => String(b.startDate || '').localeCompare(String(a.startDate || '')));
   const prefs = await preferences(client);
   const legacy = rows.filter((g) => !g.goalName);
   return {

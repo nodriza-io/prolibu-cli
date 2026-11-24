@@ -68,9 +68,9 @@ reads the key itself). Answer in the user's language, in plain words.
      buttons of your own. Read [`../_shared/COBALT.md`](../_shared/COBALT.md) first, and design
      to [`../_shared/UI-QUALITY.md`](../_shared/UI-QUALITY.md): one primary action, aligned
      cards, nothing cut at 1440, 1024 or 390 px.
-   - For React or Vue, read `references/templates.md` first: the repo's templates must be
-     fixed before use (their login calls a route that does not exist), and there is no Vue
-     template.
+   - For React or Vue, start from `templates/site-react/` or `templates/site-vue/` (read
+     `references/templates.md`): they use `prolibu-session.js`, relative paths (`base: './'`)
+     and Cobalt, with no login page.
    - A build-tool site: run `npm install` and `npm run build` in the site folder yourself;
      the script publishes the output and warns when the sources are newer than the build.
 2. **Sign-in, when the page needs the user.** Load the helper, then call the API:
@@ -124,7 +124,7 @@ by `createdAt` did). Before writing code, read [`../_shared/HEAVY-READS.md`](../
 then build it this way:
 
 1. **Figures come from a Prolibu report.** Totals, counts, sums by stage, advisor or month,
-   funnels and goals: build the report with `prolibu-dashboards` first. Often that report (or
+   funnels and goals: build the report with `prolibu-reports-dashboards` first. Often that report (or
    a dashboard) is the whole answer; offer it before a custom site.
 2. **Rows come from that report, in one call.** The page calls
    `ProlibuSession.api('/report/generate/?reportId=<reportCode>&downloadFormat=json&xquery=' + encodeURIComponent(JSON.stringify(period)))`
@@ -191,6 +191,7 @@ teaches users to type their password into pages.
 | 403 `AccessDenied` XML on a deep link | `Static` site with client routes | `--site-type SPA`, then publish |
 | 403 on every URL | Inactive, or type changed without a new publish | `--active on`; publish again |
 | Blank page, assets 404 | Absolute asset paths (`/assets/…`) | `base: './'`; `check` lists them |
+| Preview blocks with `notCreator` | Another user created the site; publishing would empty it, even as admin or from the app | Tell the user who the creator is (the blocker names them) and the two ways: the creator uploads it in the app, or their API key in `profile.<name>.json` and `--profile <name>` |
 | 400 "…must contain an index.html file" | No `index.html` at the root, or another user published; the site is now empty | Fix the folder, publish with the creator's profile, or publish the backup |
 | 400 "Malicious content detected in file" | The account's content scanner is on | An admin turns it off; never obfuscate the code |
 | 413 "File exceeds the maximum upload size" | Zip over the account's limit | Smaller build, or an admin raises the limit |
@@ -217,4 +218,4 @@ teaches users to type their password into pages.
 Every publish and settings change follows [`../_shared/WRITE-FLOW.md`](../_shared/WRITE-FLOW.md):
 domain, reads only, plain summary, explicit yes, write, read back. A site inside the quote
 editor is `prolibu-extended-quote-sites`; server logic behind a page is `prolibu-endpoints`;
-how objects relate is `prolibu-platform-map`.
+how objects relate is `prolibu-platform-map`. Site packages live in the creator's drive under `public/<siteCode>/`; never edit them through the drive (`prolibu-files` refuses them).

@@ -1,6 +1,6 @@
 ---
 name: prolibu-catalog
-description: Create and update a Prolibu catalog the way the app's own import does it — products, price lists and each product's price in them (currency, cost, taxes, volume discounts), families, categories, groups, taxes and coupons, one record or a whole catalog loaded from an Excel or CSV file — with a preview against the account, checks for the values the server accepts silently but that break quotes, and a read-back that proves every price can be quoted. Use it whenever someone wants to add or change products, prices or price lists, load or update a catalog or price list from a spreadsheet, set up taxes, volume or quantity discounts or coupons, or reports a product that does not show in the quote editor, prices in the wrong currency, a tax charged 100 times over, a volume discount that does nothing, or an import that duplicated products. Spanish triggers: "catálogo", "lista de precios", "cargar productos desde Excel", "crear productos", "actualizar precios", "impuestos", "descuento por volumen", "cupones".
+description: Create and update a Prolibu catalog the way the app's own import does it — products, price lists and each product's price in them (currency, cost, taxes, volume discounts), families, categories, groups, taxes and coupons, one record or a whole catalog loaded from an Excel or CSV file — with a preview against the account, checks for the values the server accepts silently but that break quotes, and a read-back that proves every price can be quoted. Use it whenever someone wants to add or change products, prices or price lists, load or update a catalog or price list from a spreadsheet, set up taxes, volume or quantity discounts or coupons, or reports a product that does not show in the quote editor, prices in the wrong currency, a tax charged 100 times over, a volume discount that does nothing, or an import that duplicated products. Also loads or updates tens of thousands of prices at once (many price lists, one per branch or plan; a yearly update by a factor such as an inflation or UVR index) through the importer, paced under the request limit, with a per-row result and resume. Spanish triggers: "catálogo", "lista de precios", "cargar productos desde Excel", "crear productos", "actualizar precios", "impuestos", "descuento por volumen", "cupones", "carga masiva de precios", "actualización anual de precios", "UVR", "IPC", "subir los precios un porcentaje".
 ---
 
 # Prolibu Catalog
@@ -33,6 +33,7 @@ node .claude/skills/prolibu-catalog/scripts/catalog.js <command> …
 
 Plans and mappings are inline JSON or a JSON file in a temp folder. Output is JSON. Exit
 codes: 0 ok, 1 API error, 2 usage error (nothing sent), 3 blocked (nothing written).
+More than about 300 prices go through `scripts/bulk-prices.js` ("Thousands of prices").
 
 ## Ask the user first
 
@@ -105,6 +106,33 @@ If `accounts/` has several domains, ask which one.
    `saved` is false, say what was written and the error; after the fix, preview again
    (written records show as unchanged).
 
+## Thousands of prices
+
+One call per price stops at the per-key limit (2,500 calls without a full minute's gap → `429`
+for everyone using that key) and is slow. `bulk-prices.js` writes prices through the
+account's importer, which counts as one call per chunk. Details: `references/bulk-prices.md`.
+
+```
+node .claude/skills/prolibu-catalog/scripts/bulk-prices.js <command> …
+  preview <domain> <file.csv|.xlsx|.json> [--map '<json>'] [--pricebooks a,b]   load a file
+  preview <domain> --pricebooks a,b --factor <n> [--round <step>]               yearly update
+  apply   <domain> --version <v> --confirmed [--chunk 100] [--max-rows <n>]     write, or resume
+```
+
+1. Products and price lists must exist (create them with `catalog.js`). Agree on the lists
+   (`--pricebooks` refuses rows for others), currency and taxes; map the file's columns
+   (`--map`; a column per list is `"wide"`). For a yearly update, ask for the old and new
+   reference value (factor = new ÷ old), the rounding step and whether cost changes too.
+2. Run `preview`. Tell the user the counts, `priceTotals` (raised, lowered, sums before and
+   after, smallest and largest change in %), the sample and the error rows (all in
+   `detailFile`), and `sideEffects`: webhooks, scripts and agent triggers run once per row
+   (`unknown`: ask an admin); `canWritePrices: false` means every row would fail. Then stop. **Changes to existing prices need their own yes**.
+3. `apply` with the version; first with `--max-rows 500` to learn the time per row
+   (`seconds`), then again without it. The same command resumes after a stop (it skips what
+   is written); after a timeout, wait a couple of minutes first.
+4. Report `counts`, `verified`, `failedRows` with errors, rows `changed since preview` (edited
+   by someone; left alone) and `resultFile` (one line per row). Never run two applies at once.
+
 ## How the platform behaves
 
 Details and evidence are in `references/catalog-model.md`. Read it when a case falls outside
@@ -137,6 +165,7 @@ the steps.
 | Every quote with a product fails: "The 'rate' is required in 'tax'…" | A 0% tax on its price | Remove that tax from the price |
 | Volume discount does nothing | Schedule on the price list, or rate given as 10 instead of 0.1 | Put it in the price's `discountSchedules`; decimal rates |
 | A second load duplicated products | Rows without codes got random codes | Load with codes; deactivate the duplicates with the user |
+| `429 Too many requests` while loading prices | Thousands of single calls on one key | Wait a full minute; use `bulk-prices.js` |
 | Import deleted the catalog | `drop` in the datamap | Restore from the user's backup; never use `drop` |
 | "Cannot validate field against product rule" on quotes | A rule checks a field the line lacks | Show the user the product's rules; an admin decides |
 
@@ -154,6 +183,7 @@ the steps.
 - Write catalog records with the generic helper when this script covers them, or call the API
   any other way (`node -e`, curl, reading `profile.json`). If the script lacks something, say so.
 - Delete products or price lists, or use the import's `drop`.
+- Load thousands of prices with `catalog.js apply`, or with parallel calls.
 - Create a tax with rate 0 or a percentage, or attach one to a price.
 - Put a discount schedule on the price list and expect it to apply.
 - Pick between two records with the same name yourself; ask.
@@ -168,4 +198,4 @@ stock are written with the generic flow in `prolibu-platform-map`. Product rules
 and checked with `prolibu-commercial-exceptions`; attaching them to a product or price-list
 entry is done here (an entry's rules replace the product's). Bookable units and calendars are
 set up with `prolibu-calendars`. Which products and prices a public quote page (`/pw`) shows
-is set in `prolibu-proposal-wizard`.
+is set in `prolibu-proposal-wizard`. Files attached to records live under `.api/<Model>/<id>/<field>/`: change them on the record. Drive files and public links: `prolibu-files`.

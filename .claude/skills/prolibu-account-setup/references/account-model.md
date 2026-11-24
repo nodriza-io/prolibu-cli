@@ -79,7 +79,7 @@ Traps, reproduced on throwaway local repositories:
 
   | Setting | Default | In the app | Needed by |
   | --- | --- | --- | --- |
-  | `integrations.mcp.enabled` | off | Preferences › Integrations › MCP | The MCP server, `prolibu-dashboards` |
+  | `integrations.mcp.enabled` | off | Preferences › Integrations › MCP | The MCP server, `prolibu-reports-dashboards` |
   | `integrations.webhooks.enabled` | off | Preferences › Integrations › Webhooks | `prolibu-webhooks` |
   | `integrations.lifecycleHooks.enabled` + objects | — | Preferences › Integrations | Scripts on record events |
   | `security.oauthServer.enabled` | off | Preferences › Security › OAuth server | OAuth clients only |
@@ -116,9 +116,9 @@ production. The helper prints a warning on every write to a production-looking d
   `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`, but
   no client self-registration. An OAuth client needs an OAuth app an admin creates. For
   Claude Code, the key header is the way.
-- The developer guide chapter `docs/integrations-for-ai-agents/08-ai-and-mcp.md` still
-  describes the older stateful server (SSE on `GET`, `DELETE` to close, `Mcp-Session-Id`, a
-  30-minute expiry) and lists fewer tools. The server no longer works that way.
+- The developer guide chapters `docs/integrations-for-ai-agents/08-ai-and-mcp.md` and
+  `12-integration-recipes.md` describe this stateless server. The tool list there may lag
+  behind the server: `GET /v2/mcpsession/metadata` has the current one.
 
 ## Claude Code
 

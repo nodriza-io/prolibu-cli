@@ -155,4 +155,4 @@ Details and evidence are in `references/scoring-model.md`.
 Reads and writes follow [`../_shared/WRITE-FLOW.md`](../_shared/WRITE-FLOW.md): domain, reads
 only, plain summary, explicit yes, write, read back. Each `plan` / `*-preview` is the summary
 step. Changing contact or deal fields so a criterion fires belongs to the generic flow in
-`prolibu-platform-map`. Reports grouped by score belong to `prolibu-dashboards`.
+`prolibu-platform-map`. Reports grouped by score belong to `prolibu-reports-dashboards`.

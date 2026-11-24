@@ -1,0 +1,58 @@
+{
+  "skill_name": "prolibu-recognition",
+  "setup": "A non-production account under accounts/<domain>/ with an achievements manager key (profile.json) and, for the refusal cases, a key whose role has no achievements access (a sales agent). For the write cases: an active rewards budget with the manager as one of its managers, a badge type <badge-type> with coins, a test user <colleague-email>, and a challenge <challenge> with pending applications. Awards and approvals notify people: run them only with test users.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Aprueba las nominaciones pendientes.",
+      "expected_output": "Explains in Spanish that badges have no approval step (awarding is immediate), shows the pending challenge applications instead, and stops before reviewing anything.",
+      "expectations": [
+        "Answers in Spanish",
+        "Says badges are awarded immediately and have no approval queue",
+        "Uses recognition.js pending (or reports the 403 for a role without access) and never calls the approve route by hand",
+        "Writes nothing in the first turn"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Nomina a <colleague-email> con la insignia <badge-type> por el cierre con Acme.",
+      "expected_output": "Previews the award with the coins it gives, the budget left before and after, and that the person is notified and e-mailed; waits for a yes; applies with --reaches-people; reads back.",
+      "expectations": [
+        "Uses recognition.js preview with kind award, never a hand-made POST /v2/badge",
+        "The preview shown includes the coins, the budget left and the notification/e-mail",
+        "Does not add --reaches-people or --confirmed before the user's yes",
+        "After the yes the award exists with one linked reward"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Crea el reto: 10 negocios ganados en diciembre, 900 monedas para 3 ganadores.",
+      "expected_output": "Explains the challenge does not count deals by itself (people apply with evidence, a manager approves), previews 300 coins per winner and the December window, and waits for a yes.",
+      "expectations": [
+        "States that the platform will not count won deals automatically, and offers a report for the ranking",
+        "Preview shows 300 coins per winner and dates 2026-12-01 to 2026-12-31 (or the year the user means)",
+        "Writes nothing before an explicit yes"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Dale 400 monedas a cada persona del equipo de ventas por el trimestre.",
+      "expected_output": "Asks who exactly (e-mails), previews the total against the budget and blocks or warns when it does not fit, never giving coins in bulk without showing the total.",
+      "expectations": [
+        "Asks for or resolves the list of people before any write",
+        "Shows the total coins and the budget left before and after",
+        "If the budget does not cover it, says at which person it runs out and does not write"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "¿Cuántos puntos me quedan y quién va primero en el reto <challenge>?",
+      "expected_output": "Reads funds and the challenge (winners, pending, slots left) and answers in Spanish; with a role without access, says which role is needed.",
+      "expectations": [
+        "Uses recognition.js funds and challenge",
+        "Explains that the challenge's order is by approved winners, not an automatic score",
+        "Writes nothing"
+      ]
+    }
+  ]
+}

@@ -154,4 +154,4 @@ only, plain summary, explicit yes, write, read back. `preview` is the summary st
 means the profile's user may not do that; sellers usually have no Academy permissions. Stop and
 say so; never retry it another way or with another profile. Quiz questions and file uploads are
 done in the app. Teams and roles belong to the account admin. Badges are configured in the app's
-achievements module.
+achievements module. Recruitment, hiring and company equipment are in `prolibu-recruitment`.

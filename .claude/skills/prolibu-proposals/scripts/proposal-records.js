@@ -163,11 +163,12 @@ async function cmdDeals(client, [name]) {
   const body = await call(client, 'GET', `/v2/deal?${qs({
     xquery: JSON.stringify({ dealName: { $regex: regex(name) } }),
     select: 'dealName contact proposals principalProposal updatedAt',
-    sort: '-updatedAt',
+    // Sorted by _id (indexed): updatedAt has no index. Most recently changed first is applied in memory.
+    sort: '-_id',
     limit: '10',
   })}`);
   return {
-    deals: rowsOf(body).map((d) => ({
+    deals: rowsOf(body).sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))).map((d) => ({
       _id: d._id, dealName: d.dealName, hasContact: Boolean(d.contact), proposals: (d.proposals || []).length,
     })),
   };

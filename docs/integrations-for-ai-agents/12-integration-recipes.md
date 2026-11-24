@@ -706,10 +706,9 @@ curl -is -X POST "https://<domain>/v2/mcpsession/ses" \
       "clientInfo": { "name": "sales-agent", "version": "1.0.0" }
     }
   }'
-# Response header carries: Mcp-Session-Id: <uuid>  — echo it on every later call.
 ```
 
-Send `Mcp-Session-Id` on every subsequent request; sessions expire after 30 minutes of inactivity.
+The server is stateless: it returns no `Mcp-Session-Id`, and every later request stands on its own with its bearer token (`POST` only; `GET` and `DELETE` answer `405`).
 
 ### Step 4 — Ground the agent: who am I, and what can I touch
 
@@ -720,7 +719,6 @@ curl -s -X POST "https://<domain>/v2/mcpsession/ses" \
   -H "Authorization: Bearer <SCOPED_KEY>" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -H "Mcp-Session-Id: <uuid>" \
   -d '{ "jsonrpc": "2.0", "id": 2, "method": "tools/call",
         "params": { "name": "getMyProfile", "arguments": {} } }'
 ```
@@ -738,7 +736,6 @@ curl -s -X POST "https://<domain>/v2/mcpsession/ses" \
   -H "Authorization: Bearer <SCOPED_KEY>" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -H "Mcp-Session-Id: <uuid>" \
   -d '{
     "jsonrpc": "2.0", "id": 3, "method": "tools/call",
     "params": {
@@ -763,11 +760,11 @@ The decoded result carries `{ modelName: "Deal", data, webUrl, previewUrl, track
 ### Testing Recipe 5 against a sandbox
 
 1. **Discovery before enablement:** `GET /v2/mcpsession/metadata` returns `200` even before MCP is on — confirms the endpoint. A `tools/call` before enablement returns `403`, confirming the gate.
-2. **Auth boundary:** call `/v2/mcpsession/ses` with no token → `401`; with the scoped key → session initializes and returns an `Mcp-Session-Id`.
+2. **Auth boundary:** call `/v2/mcpsession/ses` with no token → `401`; with the scoped key → `initialize` answers `200` with the server's capabilities and no `Mcp-Session-Id`.
 3. **Least-privilege proof:** with the Step 1 scopes (no `Contact.create`), have the agent attempt `create` on `Contact`; the tool result comes back with `isError: true` and a `403`-style message — proving the token, not the LLM, enforces the boundary.
 4. **Grounding:** `getMyProfile` returns the token user's `permissions` map matching the scopes you granted; `describeModel` for `Deal` inlines the `proposal.quote` line-item schema.
 5. **Write path:** `createProposal` returns a `Deal` with `proposal.enabled: true` and a computed `quote.total`; read it back over REST (`GET /v2/deal/<id>?select=dealName proposal`) to confirm the agent's write landed and is stamped to the token's user.
-6. **Session hygiene:** let the session idle > 30 minutes, reuse the stale `Mcp-Session-Id`, and confirm the call fails — then re-`initialize` to recover.
+6. **Statelessness:** send `tools/list` with no prior `initialize` and no session header → `200` with the tools; `GET /v2/mcpsession/ses` → `405`.
 
 ---
 
@@ -1057,7 +1054,7 @@ else render(r.output.results)
 
 **Recipe 5 — AI-native (MCP)**
 - [ ] Admin enabled MCP; issued a least-privilege API key (or user-delegated OAuth token).
-- [ ] Discovered via `/v2/mcpsession/metadata`; initialized a session and echoed `Mcp-Session-Id`.
+- [ ] Discovered via `/v2/mcpsession/metadata`; sent every request as a `POST` with the bearer token (no session id).
 - [ ] Called `getMyProfile` + `describeModel` before writing; used `find`/`findOne`/`search` for reads.
 - [ ] Built deal proposals only with `createProposal` / `updateProposal`; previewed with `calculateQuote`.
 - [ ] Verified the auth boundary (`401`/`403`), least-privilege enforcement, and session expiry against a sandbox.

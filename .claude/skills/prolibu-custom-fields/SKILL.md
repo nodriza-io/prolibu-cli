@@ -186,4 +186,4 @@ Details, sources of each status and the CLI commands are in
 Reads and writes follow [`../_shared/WRITE-FLOW.md`](../_shared/WRITE-FLOW.md): domain, reads
 only, plain summary, explicit yes, write, read back. `preview` is the summary step and
 `apply` the write. Values on records go through the helper in that file. For how objects
-relate, see the `prolibu-platform-map` skill.
+relate, see the `prolibu-platform-map` skill. Hotel event fields on deals are not the Event Manager; business events are `prolibu-events`.

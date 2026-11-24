@@ -13,7 +13,7 @@ If you only need deterministic, non-AI automation on a record event or a schedul
 | Prolibu | Salesforce | Notes |
 |---|---|---|
 | MCP endpoint + built-in tools | Einstein tool-calling / external actions | The whole data model is exposed to the LLM as callable tools. |
-| MCP client session (`Mcp-Session-Id`) | Agent session | One session per connected client; API-key authenticated. |
+| MCP client connection (stateless; no `Mcp-Session-Id`) | Agent session | Every request is authenticated on its own with the API key; nothing is kept between calls. |
 | Server `instructions` (system prompt) | Agent instructions / prompt template | Global behavioral rules the agent receives on connect. |
 | Native AI agent (schedule / record-event triggered) | Agentforce Agent + Scheduled / Record-Triggered Flow | LLM automation bound to a trigger. |
 | `serviceCredential` (`providerType`) | Named Credential / Einstein model config | Where the LLM provider API key is stored (encrypted). |
@@ -32,17 +32,17 @@ Prolibu exposes a single Model Context Protocol server per account over **stream
 
 | Method + Path | Purpose |
 |---|---|
-| `POST /v2/mcpsession/ses` | Initialize a session and send JSON-RPC MCP requests (`initialize`, `tools/list`, `tools/call`). |
-| `GET /v2/mcpsession/ses` | Open the server→client event stream for an existing session (SSE). |
-| `DELETE /v2/mcpsession/ses` | Close an existing session. |
+| `POST /v2/mcpsession/ses` | Every JSON-RPC MCP request (`initialize`, `tools/list`, `tools/call`). Each one is served on its own. |
+| `GET /v2/mcpsession/ses` | `405 Method not allowed`: the server is stateless and opens no server→client stream. |
+| `DELETE /v2/mcpsession/ses` | `405 Method not allowed`: there is no session to close. |
 | `GET /v2/mcpsession/metadata` | **Public.** Discovery document: endpoint URL, protocol version, capabilities, and OAuth 2.0 endpoints. No auth required. |
 
 The MCP surface follows the standard protocol, so any conformant MCP client library works. The details a client needs:
 
-- **Transport:** streamable HTTP (`POST` for requests, `GET` for the SSE stream).
+- **Transport:** streamable HTTP, **stateless**: only `POST`. The answer to each request comes in that same response (JSON or a short SSE body); there is no long-lived stream.
 - **Protocol version:** `2025-03-26`.
 - **Capabilities:** `tools` only (`resources` and `prompts` are not served).
-- **Session header:** after `initialize`, the server returns an `Mcp-Session-Id`. Send it back on every subsequent request on that session. Sessions expire after **30 minutes** of inactivity — re-`initialize` to get a fresh one.
+- **No session.** The server does not return an `Mcp-Session-Id` and keeps nothing between requests: each `POST` is authenticated with its bearer token and served end to end by whichever server receives it. A client that still sends an old `Mcp-Session-Id` is fine — it is ignored. There is nothing to expire, re-initialize or close. (An earlier stateful mode kept the session in one server's memory and failed behind the load balancer with "Server not initialized"; it is gone.)
 
 ### 1.1 Enable MCP first
 
@@ -94,11 +94,11 @@ A well-behaved MCP client reads this to find `endpoint` and, if using OAuth, the
 
 ---
 
-## 2. Session lifecycle
+## 2. Connection lifecycle
 
-An MCP session is the standard three-step handshake, all over `/v2/mcpsession/ses`:
+A client follows the standard three steps, all as `POST /v2/mcpsession/ses`. Because the server is stateless, the steps do not depend on each other on the server side: a `tools/call` works without a prior `initialize` in the same connection, and any tool state (who the user is, the arguments) travels with each request.
 
-1. **`initialize`** — the client announces its protocol version and capabilities; the server replies with its own and issues an `Mcp-Session-Id` (returned as a response header). Keep that id.
+1. **`initialize`** — the client announces its protocol version and capabilities; the server replies with its own capabilities and `instructions`. No session id is issued.
 2. **`tools/list`** — the client discovers the available tools. Each tool comes back with a `name`, a `description`, and a JSON-Schema `inputSchema` describing its arguments.
 3. **`tools/call`** — the client invokes a tool by `name` with an `arguments` object. The server runs it as the authenticated user and returns a result.
 
@@ -168,6 +168,21 @@ These tools are available out of the box in every session, over **any** object i
 
 > **`draftEmail` / `sendEmail` need a connected mailbox** (a Google or Microsoft mailbox the user has authorized). Without one, both tools return a `connectUrl` and do nothing. The `from` address is **always** taken from that connected mailbox — the agent cannot spoof an arbitrary sender.
 
+### 3.6 Reports & dashboards
+
+A **report** is one object (deals, contacts…) with its columns, measures and pages of charts, KPIs and tables. A **dashboard** is a canvas that brings together pages and widgets of *different* reports. Build both with these tools, never with the generic `create` / `update`: those accept a broken configuration with `201` and it only fails when it renders.
+
+| Tool | Main args | Behavior |
+|---|---|---|
+| `buildReport` | the report: object, columns, measures, filters, pages and widgets | Builds a whole report (report + pages + widgets) in one call. Validates it on the server first; if anything does not check out it writes nothing and returns the problems. |
+| `editReport` | the report, and the widgets, pages, columns, measures or filters to add, change or remove | Changes an existing report. Validates the **resulting** report; applies nothing if it fails. |
+| `planReport` | the widgets about to be built | Announces a new report's widgets before building it, so a user watching the editor sees it take shape and can stop it. Only for the in-app chat. |
+| `buildDashboard` | the dashboard and the report pages or widgets it shows | Builds a new dashboard from existing reports, validated before writing. |
+| `editDashboard` | the dashboard and the changes | Pins report pages or widgets, adds texts and images, moves, resizes, removes, renames; example data, auto-refresh and sharing. Validated; all or nothing. |
+| `captureSnapshot` | the dashboard | Freezes the figures shown right now as example data for a demo. Works only while the user has that dashboard open in the editor (the capture happens in their browser). |
+
+The server's own descriptions (in `tools/list` and in `GET /v2/mcpsession/metadata`) carry the exact argument schema and are the reference; this table may lag behind them.
+
 For the field-level detail behind `describeModel`, `create`, and the proposal tools, see [Custom Objects & Fields](02-custom-objects-and-fields.md).
 
 ---
@@ -222,7 +237,7 @@ The call returns immediately with a `jobId` (and a `conversationId`); the agent'
 
 ### 5.1 Connect, list tools, and query (raw JSON-RPC over HTTP)
 
-Most integrators use an MCP client library, but the wire protocol is plain JSON-RPC over `POST`. First, **initialize** a session and capture the session id:
+Most integrators use an MCP client library, but the wire protocol is plain JSON-RPC over `POST`. First, **initialize** (optional for the server, expected by most client libraries):
 
 ```bash
 curl -i -X POST "https://<domain>/v2/mcpsession/ses" \
@@ -241,20 +256,13 @@ curl -i -X POST "https://<domain>/v2/mcpsession/ses" \
   }'
 ```
 
-The response headers include the session id you must echo on every later request:
-
-```
-Mcp-Session-Id: 6b1f0c8e-...-a2d4
-```
-
-Now **discover the tools** on that session:
+There is no `Mcp-Session-Id` in the response: every later request stands on its own. Now **discover the tools**:
 
 ```bash
 curl -X POST "https://<domain>/v2/mcpsession/ses" \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -H "Mcp-Session-Id: 6b1f0c8e-...-a2d4" \
   -d '{ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }'
 ```
 
@@ -280,7 +288,6 @@ curl -X POST "https://<domain>/v2/mcpsession/ses" \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -H "Mcp-Session-Id: 6b1f0c8e-...-a2d4" \
   -d '{
     "jsonrpc": "2.0",
     "id": 3,
@@ -399,11 +406,11 @@ No `Deal` is created — this is a pure pricing calculation you can show the use
 1. **MCP is off by default.** Until an administrator enables it in the account's integration preferences, every `/v2/mcpsession/ses` request returns `403`. The public `metadata` document still responds, which can be misleading — discovery working does not mean sessions will.
 2. **Call `getMyProfile` first.** It tells the agent who it is (`profile`), whether it is an admin, and — for non-admins — the `permissions` map of what it may touch. Skipping it leaves the agent guessing.
 3. **The permission map is advisory to the agent, not a hard gate at the tool layer.** Authorization for MCP tool calls is enforced by the **API key's own permissions/scopes** (the same permission model as the REST API — see [Security & Permissions](10-security-and-permissions.md)). Do not rely on the LLM policing itself: give an agent an API key scoped to exactly the objects and actions it needs, and no more.
-4. **Send `Mcp-Session-Id` on every call after `initialize`.** Omitting it (or reusing an expired one) breaks the session; sessions time out after 30 minutes of inactivity — re-`initialize` to recover.
+4. **The server is stateless.** Use `POST` only (`GET` and `DELETE` answer `405`), expect no `Mcp-Session-Id`, and keep any conversation state in the client. A client configured for the old stateful mode keeps working: the header it sends is ignored.
 5. **`createProposal` / `updateProposal` — not `create` / `update` — for deal proposals.** Building a proposal quote with the generic tools produces broken pricing. And `updateProposal` **replaces** the entire `lineItems` set: any item you leave out is deleted.
 6. **`update` replaces arrays wholesale.** For any array field, send the full array; a partial array overwrites the stored value.
 7. **`draftEmail` / `sendEmail` require a connected mailbox.** Without a Google/Microsoft mailbox authorized for the user, both return a `connectUrl` and send nothing. The sender address always comes from that mailbox.
-8. **Search returns small pages by default.** `find` defaults to `limit: 20`, `search` to `limit: 10`, both clamped to `1–100`. For large scans, page with `skip` / `page`.
+8. **Search returns small pages by default.** `find` defaults to `limit: 20`, `search` to `limit: 10`, both clamped to `1–100`. For large scans, sort by `_id` and continue after the last `_id` seen; sorting on any other field (`createdAt` included) makes the shared database read the whole collection on every page.
 9. **Scope the agent's API key.** The agent acts as the token's user with that user's full reach. An admin key gives an autonomous agent unrestricted access — prefer a purpose-scoped key.
 10. **Native scheduled agents can't run sub-minute.** A scheduled trigger uses a standard cron expression and requires a time zone; the minimum interval is once per minute.
 11. **Agent-initiated writes don't recursively re-trigger record-event agents.** A native agent that creates or updates records will not cause its own or another record-event agent to fire again in the same run — don't design a flow that depends on that chaining.
@@ -417,7 +424,7 @@ No `Deal` is created — this is a pure pricing calculation you can show the use
 - [ ] Ask an administrator to enable MCP in the account's integration preferences (otherwise `/v2/mcpsession/ses` → `403`).
 - [ ] Fetch `GET /v2/mcpsession/metadata` to discover the `endpoint` and (if using OAuth) the authorization/token endpoints.
 - [ ] Obtain a bearer credential: an API key scoped to the objects/actions the agent needs, or a user-delegated OAuth token.
-- [ ] `initialize` a session, capture the `Mcp-Session-Id`, and send it on every subsequent request.
+- [ ] `POST` every request with the bearer token; expect no session id (the server is stateless).
 - [ ] `tools/list` to discover tools, then `getMyProfile` before any real work.
 - [ ] Use `describeModel` to learn an object's fields before `create` / `update`.
 

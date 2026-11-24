@@ -2,3 +2,4 @@ dist.zip
 node_modules/
 .DS_Store
 *.log
+_prolibu_config.js

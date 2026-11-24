@@ -2,13 +2,20 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- An internal tool: keep it out of search engines and do not leak its URL to other sites. -->
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="no-referrer" />
     <title>Prolibu Site</title>
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <script src="/_prolibu_config.js"></script>
+    <!-- Cobalt, Prolibu's design system, served by the account itself (same version as the app).
+         vite-ignore keeps these tags as they are: the files exist only on the account's domain. -->
+    <link rel="stylesheet" href="/ui/static/cobalt/tokens/tokens.css" vite-ignore />
+    <script type="module" src="/ui/static/cobalt/cobalt/cobalt.esm.js" vite-ignore></script>
+    <!-- Reads the app's session (localStorage.apiKey on this same origin); copied from public/ as is. -->
+    <script src="./prolibu-session.js" vite-ignore></script>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>

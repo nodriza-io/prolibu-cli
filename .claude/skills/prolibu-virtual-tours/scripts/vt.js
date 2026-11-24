@@ -517,20 +517,24 @@ async function buildPlan(client, domain, prefix, folder, rootDir) {
 async function cmdList(client, rest, flags) {
   if (rest.length) throw new UsageError('Usage: list <domain> [--search <text>]');
   const tours = [];
-  for (let page = 1; page < 100; page += 1) {
-    const q = new URLSearchParams({
-      select: 'virtualTourName virtualTourCode eventType scenes floorPlans updatedAt', sort: '-updatedAt', limit: '100', page: String(page),
-    });
-    const body = await call(client, 'GET', `/v2/virtualtour?${q}`);
-    for (const t of body.data || []) {
+  // Cursor on _id (indexed), one call at a time, at most 99 × 100 tours; updatedAt has no index.
+  // Most recently changed first is applied in memory.
+  let lastId = null;
+  for (let n = 1; n < 100; n += 1) {
+    const params = { select: 'virtualTourName virtualTourCode eventType scenes floorPlans updatedAt', sort: '_id', limit: '100' };
+    if (lastId) params.xquery = JSON.stringify({ _id: { $gt: lastId } });
+    const body = await call(client, 'GET', `/v2/virtualtour?${new URLSearchParams(params)}`);
+    const batch = body.data || [];
+    for (const t of batch) {
       tours.push({
         _id: t._id, virtualTourCode: t.virtualTourCode, virtualTourName: t.virtualTourName, eventType: t.eventType || null,
         scenes: (t.scenes || []).length, floorPlans: (t.floorPlans || []).length, updatedAt: t.updatedAt, link: viewerLink(client.domain, t._id),
       });
     }
-    const p = body.pagination || {};
-    if (!p.lastPage || page >= p.lastPage) break;
+    if (batch.length < 100) break;
+    lastId = String(batch[batch.length - 1]._id);
   }
+  tours.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
   const term = flags.search ? nameToSlug(flags.search) : '';
   const shown = term ? tours.filter((t) => nameToSlug(`${t.virtualTourName} ${t.virtualTourCode}`).includes(term)) : tours;
   return { count: shown.length, total: tours.length, tours: shown };

@@ -145,6 +145,8 @@ write them.
 - **`drop` wipes the whole collection first.** Only Store, Contact, Product and
   PricebookEntry can be dropped, so a `drop` on a Product or PricebookEntry sheet deletes the
   entire catalog of the account before loading.
+- Thousands of prices load through the same importer with a JSON body, paced and checked:
+  `bulk-prices.js` and `bulk-prices.md`.
 - The team uses this format for price lists (one workbook: Tax, ProductGroup, Pricebook,
   Product, PricebookEntry). `catalog.js from-sheet` reads it, ignores unknown columns the same
   way, and refuses `drop`.

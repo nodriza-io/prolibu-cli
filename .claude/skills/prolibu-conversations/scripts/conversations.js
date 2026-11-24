@@ -357,7 +357,9 @@ async function cmdFind(client, rest, flags, ctx) {
   let total = 0;
   for (const q of queries) {
     const body = await call(client, 'GET', `/v2/conversation?${qs({
-      xquery: JSON.stringify(q.filter), select: CONV_SELECT, populate: 'contact', sort: '-lastEventAt', limit: String(limit),
+      // Newest conversations first by _id (indexed); lastEventAt has no index. Latest activity first
+      // is applied in memory below.
+      xquery: JSON.stringify(q.filter), select: CONV_SELECT, populate: 'contact', sort: '-_id', limit: String(limit),
     })}`);
     total += body.pagination ? body.pagination.count : (body.data || []).length;
     for (const c of body.data || []) {
@@ -366,6 +368,7 @@ async function cmdFind(client, rest, flags, ctx) {
       found.push({ conv: c, linked: q.linked });
     }
   }
+  found.sort((a, b) => String(b.conv.lastEventAt || '').localeCompare(String(a.conv.lastEventAt || '')));
   const { list } = await describeConversations(client, found.map((f) => f.conv), ctx.now());
   list.forEach((row, i) => { if (found[i].linked === false) row.linkedBy = 'phone only (no contact on the conversation)'; });
   return {
@@ -495,9 +498,11 @@ async function cmdFlows(client, [term]) {
   const filter = term ? { conversationFlowName: { $regex: `(?i)${escapeRegex(String(term).slice(0, 100))}` } } : {};
   const body = await call(client, 'GET', `/v2/conversationflow?${qs({
     xquery: JSON.stringify(filter), select: 'conversationFlowCode conversationFlowName active channels triggerType startNodeId nodes updatedAt',
-    sort: '-updatedAt', limit: '50',
+    // Sorted by _id (indexed): updatedAt has no index. Most recently changed first is applied in memory.
+    sort: '-_id', limit: '50',
   })}`);
-  return { count: body.pagination ? body.pagination.count : (body.data || []).length, flows: (body.data || []).map(flowRow) };
+  const flows = (body.data || []).slice().sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+  return { count: body.pagination ? body.pagination.count : flows.length, flows: flows.map(flowRow) };
 }
 
 async function loadFlow(client, id) {

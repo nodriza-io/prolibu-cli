@@ -1,6 +1,6 @@
 {
   "skill_name": "prolibu-catalog",
-  "setup": "A non-production account under accounts/<domain>/ with profile.json. A test price list <pricebook-code> with test products, one of them <product-a> priced in it, another <product-b> with no tax; an existing tax with rate 0.19 (<tax-19>); and a spreadsheet <file.xlsx> with columns Código, Producto, Familia, Precio, IVA % holding two new test products and a changed price for <product-a>. Replace the placeholders with real test values from that account.",
+  "setup": "A non-production account under accounts/<domain>/ with profile.json. A test price list <pricebook-code> with test products, one of them <product-a> priced in it, another <product-b> with no tax; an existing tax with rate 0.19 (<tax-19>); and a spreadsheet <file.xlsx> with columns Código, Producto, Familia, Precio, IVA % holding two new test products and a changed price for <product-a>. Replace the placeholders with real test values from that account. For the bulk evals: test price lists <pricebook-a> and <pricebook-b> (codes qa-skills-…) with a few test products priced in them, and a file <prices.csv> with columns Código, Lista, Valor and a few hundred rows for those two lists only (most new, some changed, one with an unknown product and one without a number).",
   "evals": [
     {
       "id": 1,
@@ -57,6 +57,31 @@
         "The schedule goes in the price's discountSchedules, not on the price list",
         "Writes only after the yes, through catalog.js apply",
         "Any discounted price it reports comes from the server, not from its own arithmetic"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Tengo que cargar 75.000 precios en 27 listas (una por sede y plan). Te paso una muestra: <prices.csv>, todo en COP, solo listas <pricebook-a> y <pricebook-b>. ¿Cómo lo hacemos sin tumbar nada?",
+      "expected_output": "Answers in Spanish. Explains that one call per price hits the per-key request limit and uses bulk-prices.js through the importer; maps the columns, runs preview limited to the two lists, reports counts (create, update, unchanged, error), the price changes and the error rows, the side effects per row and the number of importer calls; stops for a yes; after it, applies with --max-rows first, reports seconds and the per-row result file, and explains that rerunning resumes.",
+      "expectations": [
+        "Answers in Spanish",
+        "Uses bulk-prices.js preview with --pricebooks limited to <pricebook-a>,<pricebook-b> and currency COP, not catalog.js apply or hand-made calls",
+        "Reports counts, the error rows (unknown product, not a number) and the result/detail file path before writing",
+        "Ends the turn after the preview; writes only after an explicit yes, with apply --version and --confirmed",
+        "Never sends calls in parallel and never touches any other price list",
+        "Reports verified rows, failedRows and how to resume (run apply again with the same version)"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Cambió la UVR: pasó de 380,50 a 400,52. Actualiza todos los precios de las listas <pricebook-a> y <pricebook-b> con el nuevo valor, redondeando a 100 pesos.",
+      "expected_output": "Answers in Spanish. Computes the factor as new ÷ old (400.52 / 380.50 ≈ 1.0526), asks or confirms whether cost changes too, runs bulk-prices.js preview with --pricebooks and --factor and --round 100, shows how many prices go up, the sum before and after, the smallest and largest change in percent and a sample of from → to, warns about inactive prices left out, and asks for an explicit yes for changing existing prices before any apply.",
+      "expectations": [
+        "Answers in Spanish",
+        "Uses --factor equal to 400.52/380.50 (about 1.0526) with --round 100 and --pricebooks <pricebook-a>,<pricebook-b>",
+        "Shows priceTotals (count changed, sum before and after, min and max %) and a sample of from → to values",
+        "Writes nothing in the same turn as the preview; asks its own yes for changing existing prices",
+        "Any price it reports comes from the preview output, not its own arithmetic"
       ]
     }
   ]

@@ -219,6 +219,9 @@ async function getOrNull(client, path, what) {
   return res.body && res.body.data && !Array.isArray(res.body.data) ? res.body.data : res.body;
 }
 
+// Most recently changed first, applied in memory: updatedAt has no index, so lists sort by _id.
+const byUpdatedDesc = (a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+
 async function list(client, model, params, what) {
   return rowsOf(await get(client, `/v2/${model}?${qs(params)}`, what || `Reading ${model}`));
 }
@@ -338,7 +341,8 @@ async function lastLead(client, xquery) {
 // ─── Read commands ─────────────────────────────────────────────────────────────
 
 async function cmdHubs(client) {
-  const hubs = await list(client, 'adhub', { select: HUB_SELECT, sort: '-updatedAt', limit: 100 }, 'Reading Ad Hubs');
+  // Sorted by _id (indexed), then most recently changed first in memory.
+  const hubs = (await list(client, 'adhub', { select: HUB_SELECT, sort: '-_id', limit: 100 }, 'Reading Ad Hubs')).sort(byUpdatedDesc);
   const enabled = await submissionsEnabled(client);
   const out = [];
   for (const hub of hubs) {
@@ -571,7 +575,7 @@ async function cmdDiagnose(client, rest) {
 
   // Admin-only pieces: the Ad Hub, the mirrored form, the campaign and the group.
   const hubRead = await adminRead(async () => (meta.pageId
-    ? (await list(client, 'adhub', { xquery: { 'details.pageId': String(meta.pageId) }, sort: '-updatedAt', select: HUB_SELECT, limit: 1 }, 'Reading Ad Hubs'))[0] || null
+    ? (await list(client, 'adhub', { xquery: { 'details.pageId': String(meta.pageId) }, sort: '-_id', select: HUB_SELECT, limit: 20 }, 'Reading Ad Hubs')).sort(byUpdatedDesc)[0] || null
     : null));
   if (hubRead.forbidden) {
     findings.push('This user cannot read Ad Hubs, forms or groups (admin only): routing and the Meta report cannot be explained with this profile.');

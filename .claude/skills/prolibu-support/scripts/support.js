@@ -355,9 +355,12 @@ function deliverable(article, now = Date.now()) {
 // ---------- read commands ----------
 
 async function cmdSetup(client) {
-  const [stages, caseTypes, rules, hubs, prefs] = await Promise.all([
-    loadStages(client), loadCaseTypes(client), loadRules(client), loadHubs(client), loadPrefs(client),
-  ]);
+  // One call at a time: parallel reads add up on the shared database.
+  const stages = await loadStages(client);
+  const caseTypes = await loadCaseTypes(client);
+  const rules = await loadRules(client);
+  const hubs = await loadHubs(client);
+  const prefs = await loadPrefs(client);
   const teams = {};
   for (const ct of caseTypes) {
     const gid = idOf(ct.assignmentGroup);
@@ -507,7 +510,10 @@ async function cmdContacts(client, words) {
 
 async function cmdRoute(client, _rest, flags) {
   if (!flags.subject && !flags.from) throw new UsageError('Usage: route <domain> --subject "<text>" --from <email> [--hub <code or id>]');
-  const [hubs, rules, caseTypes] = await Promise.all([loadHubs(client), loadRules(client), loadCaseTypes(client)]);
+  // One call at a time: parallel reads add up on the shared database.
+  const hubs = await loadHubs(client);
+  const rules = await loadRules(client);
+  const caseTypes = await loadCaseTypes(client);
   if (!hubs || !hubs.length) throw new Blocked('No mailbox is readable on this account: e-mail does not become tickets here.');
   let hub = hubs[0];
   if (flags.hub) hub = hubs.find((h) => [String(h._id), h.emailHubCode].includes(flags.hub));
@@ -536,7 +542,9 @@ async function cmdContent(client, words) {
   const select = 'articleCode articleTitle status active publishAt expireAt';
   const articles = term
     ? rows((await client.request('GET', `/v2/article/search?${qs({ term, select, limit: '20' })}`)).body)
-    : rows(await call(client, 'GET', `/v2/article?${qs({ select, sort: '-updatedAt', limit: '30' })}`));
+    // Sorted by _id (indexed): updatedAt has no index. Most recently changed first is applied in memory.
+    : rows(await call(client, 'GET', `/v2/article?${qs({ select: `${select} updatedAt`, sort: '-_id', limit: '30' })}`))
+      .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
   return {
     portals: portals.map((p) => ({
       _id: p._id,
@@ -580,7 +588,10 @@ async function planCreate(client, plan, me) {
       throw new UsageError(`"${key}" cannot be set on create here.`);
     }
   }
-  const [stages, caseTypes, prefs] = await Promise.all([loadStages(client), loadCaseTypes(client), loadPrefs(client)]);
+  // One call at a time: parallel reads add up on the shared database.
+  const stages = await loadStages(client);
+  const caseTypes = await loadCaseTypes(client);
+  const prefs = await loadPrefs(client);
   const body = { subject, description: toHtml(plan.description) };
   const summary = { subject };
 

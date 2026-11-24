@@ -513,6 +513,7 @@ async function cmdList(client, [name]) {
   const query = new URLSearchParams({
     xquery: JSON.stringify(xquery),
     select: 'formName formCode active access.mode access.enableCaptcha mappings.modelName submissions.persist updatedAt',
+    // heavy-read-ok: forms are a short configuration list (tens per account), not records that grow with sales.
     sort: '-updatedAt',
     limit: '20',
   });

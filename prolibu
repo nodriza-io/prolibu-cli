@@ -5,8 +5,11 @@ const { parseFlags } = require('./cli/core/flags');
 const argv = process.argv;
 const flags = parseFlags(argv);
 const args = argv.slice(2);
-const objectType = args[0]; // script, site, plugin
-const command = args[1]; // create, dev, prod, import, test
+const HELP = new Set(['--help', '-h', 'help']);
+// `./prolibu --help` (or -h, help) prints the same help as `./prolibu` alone.
+const objectType = HELP.has(args[0]) ? undefined : args[0]; // script, site, plugin
+// `./prolibu <object> --help` prints that object's usage, as `./prolibu <object>` alone does.
+const command = HELP.has(args[1]) ? undefined : args[1]; // create, dev, prod, import, test
 
 (async () => {
   // Show help if no arguments

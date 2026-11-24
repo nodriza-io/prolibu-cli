@@ -121,4 +121,4 @@ Details, every code and the edge cases are in `references/access-model.md`.
 This skill only reads. It still follows [`../_shared/WRITE-FLOW.md`](../_shared/WRITE-FLOW.md)
 to choose the domain and profile. Fixes go to the app (Users, Roles, Workspaces, Teams, User
 groups, Settings → Security). Sign-in failures and who changed a user or role go to
-`prolibu-diagnostics`; commercial-exception approvers to `prolibu-commercial-exceptions`.
+`prolibu-diagnostics`; commercial-exception approvers to `prolibu-commercial-exceptions`. The achievements manager role can give coins and approve challenge winners: see `prolibu-recognition`. Who can open a file, or which files are public: `prolibu-files public` / `show`.

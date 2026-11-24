@@ -1,0 +1,55 @@
+/* Layout only: every color, space and font comes from a Cobalt --co-* token. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* co-* components set display on their host, which beats the hidden attribute. */
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  font-family: var(--co-font-family-primary);
+  color: var(--co-semantic-text-default);
+  background: var(--co-semantic-surface-page);
+}
+
+.header,
+.main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--co-spacing-lg);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--co-spacing-md);
+  padding-top: var(--co-spacing-2xl);
+}
+
+.main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--co-spacing-md);
+  padding-top: 0;
+}
+
+h1 {
+  font-size: var(--co-font-size-16);
+  margin: 0;
+}
+
+h2 {
+  font-size: var(--co-font-size-14);
+  margin: 0 0 var(--co-spacing-sm);
+}
+
+.muted {
+  color: var(--co-semantic-text-muted);
+  margin: 0;
+}

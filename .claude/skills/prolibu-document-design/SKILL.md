@@ -137,4 +137,4 @@ Details and evidence are in `references/design-model.md`.
 Reads and writes follow [`../_shared/WRITE-FLOW.md`](../_shared/WRITE-FLOW.md). A `403` means
 the profile's user may not do that: stop and say so; never retry another way or with another
 profile. A deal's proposal, its versions and contract templates: `prolibu-proposals`. E-mail
-templates (MessageTemplate) and campaigns: `prolibu-messaging`.
+templates (MessageTemplate) and campaigns: `prolibu-messaging`. Drive files and their public links: `prolibu-files`; files attached to a design are changed on the design.

@@ -419,10 +419,13 @@ async function cmdInvoices(client, rest, flags) {
   if (flags.status && !STATUSES.includes(flags.status)) throw new UsageError(`--status must be one of ${STATUSES.join(', ')}.`);
   const q = new URLSearchParams({
     xquery: JSON.stringify(invoiceFilter(flags)), select: INVOICE_SELECT, populatePath: CONTACT_POP,
-    sort: '-issueDate', limit: String(flags.limit || 20),
+    // Newest created first by _id (indexed); issueDate has no index. Latest issue date first is
+    // applied in memory to the rows read.
+    sort: '-_id', limit: String(flags.limit || 20),
   });
   const body = await call(client, 'GET', `/v2/invoice?${q}`);
-  const list = rows(body).map(summarizeInvoice);
+  const list = rows(body).map(summarizeInvoice)
+    .sort((a, b) => String(b.issueDate || '').localeCompare(String(a.issueDate || '')));
   return {
     count: (body.pagination && body.pagination.count) ?? list.length,
     invoices: list,
@@ -451,17 +454,23 @@ async function cmdReceivables(client, rest, flags) {
   if (flags.contact) and.push({ contact: flags.contact });
   const all = [];
   let truncated = false;
-  for (let page = 1; page <= MAX_PAGES; page += 1) {
+  // Cursor on _id (indexed), one call at a time, at most MAX_PAGES × 500 invoices. dueDate has
+  // no index: sorting or paging on it re-reads the whole collection on every call.
+  let lastId = null;
+  for (let n = 1; n <= MAX_PAGES; n += 1) {
+    const filter = lastId ? [...and, { _id: { $gt: lastId } }] : and;
     const q = new URLSearchParams({
-      xquery: JSON.stringify({ $and: and }), select: INVOICE_SELECT, populatePath: CONTACT_POP,
-      sort: 'dueDate', limit: '500', page: String(page),
+      xquery: JSON.stringify({ $and: filter }), select: INVOICE_SELECT, populatePath: CONTACT_POP,
+      sort: '_id', limit: '500',
     });
     const body = await call(client, 'GET', `/v2/invoice?${q}`);
-    all.push(...rows(body));
-    const last = body.pagination ? body.pagination.lastPage : 1;
-    if (page >= last) break;
-    if (page === MAX_PAGES) truncated = true;
+    const batch = rows(body);
+    all.push(...batch);
+    if (batch.length < 500) break;
+    lastId = String(batch[batch.length - 1]._id);
+    if (n === MAX_PAGES) truncated = true;
   }
+  all.sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || '')));
   return {
     ...agingReport(all, asOf),
     openInvoices: all.length,
@@ -499,9 +508,12 @@ async function cmdSubscriptions(client, [ref]) {
   const select = 'subscriptionCode title contact deal contractCode startDate endDate termMonths paymentInterval autoRenew activatedAt cancelledAt source payments';
   const filter = ref ? (ID_RE.test(ref) ? { _id: ref } : { subscriptionCode: ref }) : {};
   if (ref && (ref.length > 64 || /[$\s{}]/.test(ref))) throw new UsageError('Give a subscription code or _id.');
-  const q = new URLSearchParams({ xquery: JSON.stringify(filter), select, populatePath: CONTACT_POP, sort: '-startDate', limit: ref ? '2' : '50' });
+  // Newest created first by _id (indexed); startDate has no index. Latest start first is applied
+  // in memory to the rows read.
+  const q = new URLSearchParams({ xquery: JSON.stringify(filter), select, populatePath: CONTACT_POP, sort: '-_id', limit: ref ? '2' : '50' });
   const body = await call(client, 'GET', `/v2/subscription?${q}`);
-  const list = rows(body).map((s) => {
+  const read = rows(body).sort((a, b) => String(b.startDate || '').localeCompare(String(a.startDate || '')));
+  const list = read.map((s) => {
     const entries = (s.payments || []).filter((p) => !p.removedByEvent);
     return {
       _id: s._id, subscriptionCode: s.subscriptionCode, title: s.title, contact: contactName(s.contact) || refId(s.contact),

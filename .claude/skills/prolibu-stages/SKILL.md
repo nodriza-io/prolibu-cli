@@ -154,4 +154,4 @@ Details, factory ids and per-model effects are in `references/stage-model.md`.
 Reads and writes follow [`../_shared/WRITE-FLOW.md`](../_shared/WRITE-FLOW.md): domain, reads
 only, plain summary, explicit yes, write, read back. `move` without `--confirmed` is the summary
 step. For a deal's quote see `prolibu-quotes`; for which object holds what, `prolibu-platform-map`;
-for reacting to stage changes from outside, `prolibu-webhooks`.
+for reacting to stage changes from outside, `prolibu-webhooks`. Event and candidate-event stages, and promoting a candidate event: `prolibu-events`. Who receives the satisfaction survey a closing stage sends, its results and link: `prolibu-polls`.

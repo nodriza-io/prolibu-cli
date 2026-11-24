@@ -497,7 +497,9 @@ function owners(deal) {
 async function cmdDeals(client, [name]) {
   if (!name || !String(name).trim()) throw new UsageError('Usage: exception.js deals <domain> <part of the deal name>');
   const pattern = `(?i)${String(name).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`;
-  const rows = rowsOf(await call(client, 'GET', `/v2/deal?${qs({ xquery: { dealName: { $regex: pattern } }, select: 'dealName updatedAt', sort: '-updatedAt', limit: '10' })}`));
+  // Sorted by _id (indexed): updatedAt has no index. Most recently changed first is applied in memory.
+  const rows = rowsOf(await call(client, 'GET', `/v2/deal?${qs({ xquery: { dealName: { $regex: pattern } }, select: 'dealName updatedAt', sort: '-_id', limit: '10' })}`))
+    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
   return { deals: rows.map((d) => ({ _id: idOf(d), dealName: d.dealName, updatedAt: d.updatedAt })) };
 }
 
@@ -616,10 +618,11 @@ async function prepareRequest(client, plan) {
   if (stage && stage.endFlowStage) blockers.push(`The deal is in "${stage.stageName}", an end-of-flow stage: an approval would not reach the quote.`);
   const value = checkValue(plan.field, plan.value, line[plan.field]);
 
-  const [entries, pointer, approvers, pending] = await Promise.all([
-    loadEntries(client, quote), loadPointer(client, quote), approverList(client, deal),
-    findExceptions(client, { deal: plan.dealId, requestType: 'Request', status: 'Pending' }, { limit: 50 }),
-  ]);
+  // One call at a time: parallel reads add up on the shared database.
+  const entries = await loadEntries(client, quote);
+  const pointer = await loadPointer(client, quote);
+  const approvers = await approverList(client, deal);
+  const pending = await findExceptions(client, { deal: plan.dealId, requestType: 'Request', status: 'Pending' }, { limit: 50 });
   const entry = entries.get(idOf(line.pricebookEntry));
   const { rules } = effectiveRules(entry);
   const limits = limitsOf(rules).filter((l) => l.field === plan.field);
@@ -876,11 +879,13 @@ async function prepareDecision(client, plan) {
     else warnings.push('Approving saves the deal: the quote is recalculated, and the account\'s deal scripts and webhooks run.');
   }
   const recipientIds = [...new Set([idOf(record.createdBy), owners(deal)[0]].filter(Boolean))];
-  const recipients = await Promise.all(recipientIds.map(async (id) => {
+  const recipients = [];
+  // One call at a time: parallel reads add up on the shared database.
+  for (const id of recipientIds) {
     const r = record.createdBy && idOf(record.createdBy) === id && typeof record.createdBy === 'object' ? record.createdBy
       : await call(client, 'GET', `/v2/user/search?${qs({ xquery: { _id: id }, select: 'firstName lastName email', limit: '1' })}`).then((b) => rowsOf(b)[0]).catch(() => null);
-    return r ? `${fullName(r)} <${r.email}>` : id;
-  }));
+    recipients.push(r ? `${fullName(r)} <${r.email}>` : id);
+  }
   return {
     user, record, summary, deal, body, finalValue, reachesQuote, blockers, warnings, self,
     recipients: recipientIds.filter((id) => id !== user._id).length ? recipients : [],

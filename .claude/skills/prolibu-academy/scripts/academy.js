@@ -289,11 +289,14 @@ async function cmdProgress(client, [ref], flags) {
   }
   const rows = await list(client, 'enrollment', {
     xquery,
-    select: 'enrollmentCode assignee program status progressPercent score lastLesson completedAt createdAt',
+    select: 'enrollmentCode assignee program status progressPercent score lastLesson completedAt createdAt updatedAt',
     populatePath: [{ path: 'assignee', select: 'firstName lastName email' }, { path: 'lastLesson', select: 'lessonName' }],
-    sort: '-updatedAt',
+    // Newest enrollments first by _id (indexed); updatedAt has no index. Most recent activity
+    // first is applied in memory to the rows read.
+    sort: '-_id',
     limit: String(flags.limit || 100),
   });
+  rows.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
   const enrollments = rows.map((e) => ({
     enrollment: idOf(e),
     code: e.enrollmentCode,
@@ -323,9 +326,12 @@ async function cmdCertificates(client, args, flags) {
     xquery,
     select: 'certificateCode type assignee enrollment issuedAt expiresAt status pdfFile',
     populatePath: [{ path: 'assignee', select: 'firstName lastName email' }, { path: 'enrollment', select: 'course program', populate: { path: 'course', select: 'courseName' } }],
-    sort: '-issuedAt',
+    // A certificate is created when it is issued: newest _id first is newest issued first,
+    // and _id is indexed (issuedAt is not). The exact order is applied in memory.
+    sort: '-_id',
     limit: String(flags.limit || 50),
   });
+  rows.sort((a, b) => String(b.issuedAt || '').localeCompare(String(a.issuedAt || '')));
   return {
     certificates: rows.map((c) => ({
       _id: idOf(c),

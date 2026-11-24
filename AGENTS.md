@@ -18,7 +18,7 @@ working from memory or from the guide.
 | Store another system's id on a record (`refId` / `refUrl`) | [`prolibu-external-refs`](.claude/skills/prolibu-external-refs/SKILL.md) |
 | Import contacts, companies or deals from CSV/Excel without duplicates; bulk edits; import results | [`prolibu-imports`](.claude/skills/prolibu-imports/SKILL.md) |
 | Add fields to an object, or create a custom object | [`prolibu-custom-fields`](.claude/skills/prolibu-custom-fields/SKILL.md) |
-| Catalog: products, price lists and prices, taxes, volume discounts, coupons; load a catalog from Excel | [`prolibu-catalog`](.claude/skills/prolibu-catalog/SKILL.md) |
+| Catalog: products, price lists and prices, taxes, volume discounts, coupons; load a catalog from Excel; thousands of prices at once (yearly UVR/IPC update) | [`prolibu-catalog`](.claude/skills/prolibu-catalog/SKILL.md) |
 | Add, change or remove products on a deal's quote, including discounts that expire | [`prolibu-quotes`](.claude/skills/prolibu-quotes/SKILL.md) |
 | Set up a deal's proposal and template, its versions, contract templates and contracts ready for e-signature | [`prolibu-proposals`](.claude/skills/prolibu-proposals/SKILL.md) |
 | A product picker or configurator inside the quote editor | [`prolibu-extended-quote-sites`](.claude/skills/prolibu-extended-quote-sites/SKILL.md) |
@@ -26,8 +26,8 @@ working from memory or from the guide.
 | Tasks, notes, meetings and calls on a record; a record's activity history | [`prolibu-activities`](.claude/skills/prolibu-activities/SKILL.md) |
 | Support tickets: open, assign, reply or note; case types, routing; articles and portal | [`prolibu-support`](.claude/skills/prolibu-support/SKILL.md) |
 | E-mail templates with variables, contact lists and e-mail campaigns (test, launch, schedule) | [`prolibu-messaging`](.claude/skills/prolibu-messaging/SKILL.md) |
-| Reports and dashboards: build, add pages, combine reports, goals vs. actuals, zeros | [`prolibu-dashboards`](.claude/skills/prolibu-dashboards/SKILL.md) |
-| Custom report page or site, export of all records, reading many records: report first, one streamed read, sort only by `_id` | [`prolibu-dashboards`](.claude/skills/prolibu-dashboards/SKILL.md) + [`_shared/HEAVY-READS.md`](.claude/skills/_shared/HEAVY-READS.md) |
+| Reports and dashboards: build, add pages, combine reports, goals vs. actuals, zeros | [`prolibu-reports-dashboards`](.claude/skills/prolibu-reports-dashboards/SKILL.md) |
+| Custom report page or site, export of all records, reading many records: report first, one streamed read, sort only by `_id` | [`prolibu-reports-dashboards`](.claude/skills/prolibu-reports-dashboards/SKILL.md) + [`_shared/HEAVY-READS.md`](.claude/skills/_shared/HEAVY-READS.md) |
 | Native AI agents: instructions, model, skills, actions, scheduled and record-event triggers, runs and token cost | [`prolibu-ai-agents`](.claude/skills/prolibu-ai-agents/SKILL.md) |
 | Virtual tours: create, upload scenes, update, download | [`prolibu-virtual-tours`](.claude/skills/prolibu-virtual-tours/SKILL.md) |
 | Commercial exceptions and product rules: why a rule blocks a quote, request, approve or reject an exception, create or edit rules | [`prolibu-commercial-exceptions`](.claude/skills/prolibu-commercial-exceptions/SKILL.md) |
@@ -47,6 +47,11 @@ working from memory or from the guide.
 | Academy: courses and programs, enrollment, progress, certificates | [`prolibu-academy`](.claude/skills/prolibu-academy/SKILL.md) |
 | Saved filters, default columns, menu links, row actions and widgets | [`prolibu-ui-customization`](.claude/skills/prolibu-ui-customization/SKILL.md) |
 | Promote or compare configuration between accounts (dev to prod) without pushing profiles | [`prolibu-config-promotion`](.claude/skills/prolibu-config-promotion/SKILL.md) |
+| Cloud Drive: upload, public or private links, move, rename, trash and restore, share, audit public files; short links | [`prolibu-files`](.claude/skills/prolibu-files/SKILL.md) |
+| Business events (Event Manager): expenses, contacts and deals attributed through the event campaign, ROI, candidate events | [`prolibu-events`](.claude/skills/prolibu-events/SKILL.md) |
+| Satisfaction surveys (votes): closing-stage survey, results, public-link exposure, guarded vote removal | [`prolibu-polls`](.claude/skills/prolibu-polls/SKILL.md) |
+| Recruitment: vacancies with their public page and form, candidates, interviews, hiring; company equipment hand-over and return | [`prolibu-recruitment`](.claude/skills/prolibu-recruitment/SKILL.md) |
+| Recognitions: badges, coins against rewards budgets, challenges and approvals, prizes and redemptions, leaderboards | [`prolibu-recognition`](.claude/skills/prolibu-recognition/SKILL.md) |
 | Create a new skill, or rebuild one that does not work | [`prolibu-skill-creator`](.claude/skills/prolibu-skill-creator/SKILL.md) |
 
 Every skill that writes to an account follows

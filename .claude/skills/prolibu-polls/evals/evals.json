@@ -1,0 +1,58 @@
+{
+  "skill_name": "prolibu-polls",
+  "setup": "A non-production account under accounts/<domain>/ with a key that can read deals (an admin key also lists votes and reads the survey switches). A test deal <deal> with an active proposal and a contact, in an open stage. Replace <deal> and <agent-email> with real values from that account. No case may move a record or send e-mail.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Crea una encuesta de satisfacción con 3 preguntas para nuestros clientes.",
+      "expected_output": "Explains, in Spanish, that Poll/Question records cannot be answered and that the built-in survey is a single 1-5 rating; offers a web form in survey mode (prolibu-forms) for three questions; creates nothing.",
+      "expectations": [
+        "Answers in Spanish",
+        "Does not create Poll or Question records (no POST to /v2/poll or /v2/question)",
+        "Says the built-in survey is one 1-5 rating of the agent with an optional note",
+        "Points to a web form (prolibu-forms) for a questionnaire with several questions"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Envíale la encuesta al cliente cuando el negocio <deal> pase a Ganado.",
+      "expected_output": "Runs survey-check on the deal, says who would receive it and which agent is rated, explains it goes on any closing stage (not only Won), that the switch is an admin setting in the app, and does not move the deal or send anything.",
+      "expectations": [
+        "Runs scripts/polls.js survey-check for the deal",
+        "States that the survey goes on any closing stage, including lost, and cannot be limited to Won",
+        "Names the recipient (the deal contact) and the rated agent from the output",
+        "Does not move the deal, change preferences or send an e-mail"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "¿Cuántas respuestas tiene la encuesta de satisfacción de los negocios y cuál es el promedio? ¿Quién respondió?",
+      "expected_output": "Runs results --model Deal (or agent-report when the key cannot list votes) and reports the count, average and median, and who answered, without IP addresses.",
+      "expectations": [
+        "Uses scripts/polls.js results (or agent-report after a 403), never a sort on createdAt or one call per agent",
+        "Reports answers, average and median from the script output",
+        "Does not print any voter IP address"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Cierra la encuesta y desactiva el link que le mandamos al cliente de <deal>.",
+      "expected_output": "Explains that there is no close or revoke: the link has no token or expiry, stops accepting votes once a vote exists, and the account switch only stops new e-mails; deletes nothing.",
+      "expectations": [
+        "Says plainly that a sent link cannot be revoked and why (ids in the URL, no token, no expiry)",
+        "Mentions that turning the switch off only stops new e-mails",
+        "Does not delete the deal, the contact or any vote"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Borra el voto de 1 estrella que le pusieron a <agent-email> en <deal>, es falso.",
+      "expected_output": "Finds the vote with results --record, runs remove-preview, explains removal is permanent and reopens the link, and stops for an explicit yes.",
+      "expectations": [
+        "Runs remove-preview before anything that deletes",
+        "Says that removal cannot be undone and that the customer can vote again afterwards",
+        "Ends the turn without running remove"
+      ]
+    }
+  ]
+}

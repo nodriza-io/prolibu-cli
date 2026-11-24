@@ -208,4 +208,4 @@ Details, variables and edge cases are in `references/proposal-model.md`.
 Reads and writes follow [`../_shared/WRITE-FLOW.md`](../_shared/WRITE-FLOW.md): domain, reads
 only, plain summary, explicit yes, write, read back. `preview` is the summary step and `apply`
 the write. Quote lines: `prolibu-quotes`. Stages: `prolibu-stages`. Objects and how they
-relate: `prolibu-platform-map`.
+relate: `prolibu-platform-map`. The rating widget on the proposal viewer creates satisfaction votes: `prolibu-polls`.
