@@ -166,4 +166,4 @@ Details, evidence and edge cases are in `references/imports-model.md`.
 Reads and writes follow [`../_shared/WRITE-FLOW.md`](../_shared/WRITE-FLOW.md): domain, reads
 only, plain summary, explicit yes, write, read back. `preview` is the summary step and `apply`
 the write. External ids follow `prolibu-external-refs` (the script runs its sync check whenever
-`refId` is mapped). For how objects relate, see `prolibu-platform-map`.
+`refId` is mapped). For how objects relate, see `prolibu-platform-map`. Prices (PricebookEntry) in bulk: use `prolibu-catalog` (`bulk-prices.js`), which resolves `_id`s, paces under the request limit and resumes.

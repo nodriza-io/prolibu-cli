@@ -71,6 +71,9 @@ In plain terms:
    - who the key acts as (`user`), whether it is an admin, and `access`: `admin` (everything),
      `admin-scoped` (an admin's key limited to its scopes: admin-only actions are refused),
      `roles` (a non-admin);
+   - `keyType`: `API` (an API key) or `Session` (a browser sign-in copied from the app). A
+     session dies when that user signs out, switches user, or at `expiresAt`: say so and ask
+     for an API key (step 4); use the session only for short work meanwhile;
    - the account switches that are off, and that only an admin turns them on in the app;
    - each skill's status (`ready`, `missing permissions` with what is missing, `switch off`);
    - every `note`.
@@ -117,6 +120,7 @@ outside the steps.
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | `check`: `keyWorks: false`, 401 | Wrong, expired or revoked key, or inactive user | New key (step 4), paste it, `check` |
+| A key that worked stops with 401 after someone signed out | It was a browser session (`keyType: Session`), not an API key | API key (step 4) |
 | 403 on actions the user's role now allows | The key froze the old permissions | New key |
 | A `./prolibu` command asks for an API key | No `profile.json` (named profiles do not count) | `init`, paste, `check` |
 | `account import` asks "already exists…" | The folder exists | `account pull` instead |

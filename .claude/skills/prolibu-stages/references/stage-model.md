@@ -130,9 +130,10 @@ Stage" takes the stage `percentage`.
 
 - Time in stage: `now − pipelineStages.<field>.movedAt` (what the app's cards use).
   `stageMovedAt` exists only for the main `stage` field and on some models.
-- History: `GET /v2/stagehistory?xquery={"origin.modelName":"Deal","origin.docId":"<id>"}&sort=-movedAt`
-  (`fromStage`, `toStage`, `stageField`, `movedAt`, `movedBy`). Rows cannot be created or
-  edited through the API. A row whose `_id` is not in the record's `stageHistory` comes from a
+- History: `GET /v2/stagehistory?xquery={"origin.modelName":"Deal","origin.docId":"<id>"}&sort=-_id`
+  (`fromStage`, `toStage`, `stageField`, `movedAt`, `movedBy`). The row is written by the move,
+  so newest `_id` first is newest move first; `movedAt` has no index, never sort on it. Rows
+  cannot be created or edited through the API. A row whose `_id` is not in the record's `stageHistory` comes from a
   refused move.
 
 ## The app's required-fields dialog

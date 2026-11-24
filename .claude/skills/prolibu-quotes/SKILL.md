@@ -201,4 +201,4 @@ Reads and writes follow [`../_shared/WRITE-FLOW.md`](../_shared/WRITE-FLOW.md): 
 only, plain summary, explicit yes, write, read back. `preview` is the summary step and `apply`
 the write. For a site that adds products from inside the quote editor, see the
 `prolibu-extended-quote-sites` skill. For objects and how they relate, see
-`prolibu-platform-map`.
+`prolibu-platform-map`. Hotel event deals are not the Event Manager; business events are `prolibu-events`.

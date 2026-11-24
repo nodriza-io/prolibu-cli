@@ -301,11 +301,12 @@ async function cmdDeals(client, [name]) {
   const body = await call(client, 'GET', `/v2/deal?${qs({
     xquery: JSON.stringify({ dealName: { $regex: regex(name) } }),
     select: 'dealName contact proposal.enabled proposal.title updatedAt',
-    sort: '-updatedAt',
+    // Sorted by _id (indexed): updatedAt has no index. Most recently changed first is applied in memory.
+    sort: '-_id',
     limit: '10',
   })}`);
   return {
-    deals: rowsOf(body).map((d) => ({
+    deals: rowsOf(body).sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))).map((d) => ({
       _id: d._id, dealName: d.dealName, hasContact: Boolean(d.contact),
       proposalEnabled: Boolean(d.proposal && d.proposal.enabled), proposalTitle: (d.proposal && d.proposal.title) || null,
     })),
@@ -358,7 +359,8 @@ async function cmdLayouts(client, [term]) {
   const xquery = { templateType: 'layout', active: { $ne: false } };
   if (term && String(term).trim()) xquery.contentTemplateName = { $regex: regex(term) };
   const body = await call(client, 'GET', `/v2/contenttemplate?${qs({
-    xquery: JSON.stringify(xquery), select: 'contentTemplateName taxonomy.language updatedAt', sort: '-updatedAt', limit: '50',
+    // Sorted by _id (indexed): updatedAt has no index. Most recently changed first is applied below.
+    xquery: JSON.stringify(xquery), select: 'contentTemplateName taxonomy.language updatedAt', sort: '-_id', limit: '50',
   })}`);
   let defaultLayout = null;
   try {
@@ -370,7 +372,7 @@ async function cmdLayouts(client, [term]) {
   return {
     defaultLayout,
     total: body && body.pagination ? body.pagination.count : undefined,
-    layouts: rowsOf(body).map((t) => ({ _id: t._id, name: t.contentTemplateName, language: (t.taxonomy && t.taxonomy.language) || null })),
+    layouts: rowsOf(body).sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))).map((t) => ({ _id: t._id, name: t.contentTemplateName, language: (t.taxonomy && t.taxonomy.language) || null })),
   };
 }
 

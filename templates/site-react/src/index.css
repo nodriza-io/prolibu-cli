@@ -1,54 +1,55 @@
-:root {
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
-  --bg: #f9fafb;
-  --surface: #ffffff;
-  --text: #111827;
-  --text-secondary: #6b7280;
-  --border: #e5e7eb;
-  --radius: 8px;
-}
-
+/* Layout only: every color, space and font comes from a Cobalt --co-* token. */
 *,
 *::before,
 *::after {
   box-sizing: border-box;
-  margin: 0;
-  padding: 0;
 }
 
-html {
-  font-size: 16px;
-  -webkit-text-size-adjust: 100%;
+/* co-* components set display on their host, which beats the hidden attribute. */
+[hidden] {
+  display: none !important;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-  background: var(--bg);
-  color: var(--text);
-  line-height: 1.5;
-  min-height: 100dvh;
+  margin: 0;
+  font-family: var(--co-font-family-primary);
+  color: var(--co-semantic-text-default);
+  background: var(--co-semantic-surface-page);
 }
 
-#root {
-  min-height: 100dvh;
+.header,
+.main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--co-spacing-lg);
+}
+
+.header {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--co-spacing-md);
+  padding-top: var(--co-spacing-2xl);
 }
 
-button {
-  cursor: pointer;
-  font: inherit;
+.main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--co-spacing-md);
+  padding-top: 0;
 }
 
-input,
-textarea,
-select {
-  font: inherit;
+h1 {
+  font-size: var(--co-font-size-16);
+  margin: 0;
 }
 
-a {
-  color: var(--primary);
-  text-decoration: none;
+h2 {
+  font-size: var(--co-font-size-14);
+  margin: 0 0 var(--co-spacing-sm);
+}
+
+.muted {
+  color: var(--co-semantic-text-muted);
+  margin: 0;
 }

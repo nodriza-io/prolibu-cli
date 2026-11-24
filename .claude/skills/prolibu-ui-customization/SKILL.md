@@ -137,4 +137,4 @@ Reads and writes follow [`../_shared/WRITE-FLOW.md`](../_shared/WRITE-FLOW.md). 
 the profile's user may not do that: stop and say so; never retry it another way or with
 another profile. Stage ids and pipelines go to `prolibu-stages`; who can see which records
 to `prolibu-access-review`; new fields to `prolibu-custom-fields`; report columns and
-dashboards to `prolibu-dashboards`.
+dashboards to `prolibu-reports-dashboards`.

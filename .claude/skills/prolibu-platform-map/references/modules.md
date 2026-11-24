@@ -24,8 +24,8 @@ also add its own Custom Objects; they appear in the account's OpenAPI document b
 | AdHub | `adhub` | A connected ad-platform account (for example Meta) that brings in leads and reports conversions. |
 | AdHubForm | `adhubform` | A lead form discovered on a connected ad-platform account, linked to the Prolibu form that receives its leads. |
 | Campaign | `campaign` | An older, minimal campaign record (code and name) that nothing else points to. For ad campaigns use AdCampaign. |
-| BusinessEvent | `businessevent` | An event the company runs or attends (conference, trade show): venue, dates, budget, attendees and results. |
-| EventProspect | `eventprospect` | A candidate event being evaluated; promoting it creates a BusinessEvent. |
+| BusinessEvent | `businessevent` | An event the company runs or attends (conference, trade show): venue, dates, budget, attendees and results. Skill: `prolibu-events`. |
+| EventProspect | `eventprospect` | A candidate event being evaluated (not a person); promoting it creates a BusinessEvent. Skill: `prolibu-events`. |
 | EventExpense | `eventexpense` | An expense recorded against a business event, converted to the workspace currency. |
 
 ## Contacts and companies
@@ -90,7 +90,7 @@ also add its own Custom Objects; they appear in the account's OpenAPI document b
 | ContactList | `contactlist` | A named list of contacts. |
 | EmailCampaign | `emailcampaign` | A bulk email to a list of contacts, sent once or as a sequence, with stats. |
 | Contract | `contract` | A document to be signed by signers and reviewers, with its audit trail and signed files. |
-| File | `file` | A file or folder in the account's cloud drive. |
+| File | `file` | A file or folder in the account's cloud drive. Skill: `prolibu-files`. |
 
 ## Calendars and scheduling
 
@@ -126,7 +126,7 @@ also add its own Custom Objects; they appear in the account's OpenAPI document b
 | Object | API path | What it is for |
 | --- | --- | --- |
 | Employee | `employee` | An employment record for a platform user: company, hire date, status and manager. |
-| Vacancy | `vacancy` | An open position, published with an application form. |
+| Vacancy | `vacancy` | An open position, published with an application form. Skill: `prolibu-recruitment` (all of HR except the academy). |
 | Candidate | `candidate` | A person in recruiting, with CV, skills and stage. |
 | JobApplication | `jobapplication` | One candidate's application to a vacancy, with stage, interviews and outcome. |
 | Interview | `interview` | An interview for a job application. |
@@ -146,7 +146,7 @@ also add its own Custom Objects; they appear in the account's OpenAPI document b
 
 | Object | API path | What it is for |
 | --- | --- | --- |
-| BadgeNomination | `badgenomination` | A kind of badge that can be awarded, with its icon and coin reward. |
+| BadgeNomination | `badgenomination` | A kind of badge that can be awarded, with its icon and coin reward. Skill: `prolibu-recognition`. |
 | Badge | `badge` | A badge awarded to a user. |
 | Challenge | `challenge` | A challenge with a coin pot shared among its winners. |
 | ChallengeApplication | `challengeapplication` | A user's entry to a challenge, approved or rejected by a manager. |
@@ -233,11 +233,11 @@ also add its own Custom Objects; they appear in the account's OpenAPI document b
 | Widget | `widget` | A chart or figure built from a report. |
 | Scoring | `scoring` | A scoring profile that rates records by rules, AI, or both. |
 | Plugin | `plugin` | An add-on package (bundle and assets) with its options. |
-| Poll | `poll` | A poll made of questions, with a closing date. |
-| Question | `question` | A poll question and its options. |
-| Vote | `vote` | A rating of a user or contact, given by a user or contact, about a deal or a ticket. |
+| Poll | `poll` | A poll made of questions, with a closing date. Unused: nothing answers it and there is no screen; satisfaction ratings are `Vote` (`prolibu-polls`). |
+| Question | `question` | A poll question and its options. Unused, like `Poll`. |
+| Vote | `vote` | A rating of a user or contact, given by a user or contact, about a deal or a ticket: the satisfaction survey. Skill: `prolibu-polls`. |
 | PaymentMethod | `paymentmethod` | A stored payment method (card or bank account) of a contact or company. |
-| ShortUrl | `shorturl` | A short link that redirects to a URL. |
+| ShortUrl | `shorturl` | A short link that redirects to a URL. Skill: `prolibu-files`. |
 | HealthCheck | `healthcheck` | A monitor that checks a URL on an interval and alerts on failure. |
 | LiveStream | `livestream` | Forwards the activity notifications of chosen users (publishers) to a list of subscriber users, for the events in its event subscription. |
 

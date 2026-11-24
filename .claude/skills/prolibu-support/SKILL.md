@@ -155,4 +155,4 @@ Details, ids and evidence: `references/support-model.md`.
 
 Reads and writes follow [`../_shared/WRITE-FLOW.md`](../_shared/WRITE-FLOW.md): domain, reads
 only, plain summary, explicit yes, write, read back. Each command without `--confirmed` is the
-summary step. Stages: `prolibu-stages`. Other objects: `prolibu-platform-map`.
+summary step. Stages: `prolibu-stages`. Other objects: `prolibu-platform-map`. Who receives the satisfaction survey when a ticket closes, its results and link: `prolibu-polls`.

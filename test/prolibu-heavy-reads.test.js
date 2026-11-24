@@ -93,4 +93,55 @@ describe('heavyReadFindings', () => {
     const bundle = file('assets/index-abc.js', 'const e=await t.api("/deal?"+new URLSearchParams({sort:"-updatedAt",limit:"500",page:String(n)}));');
     expect(rules([bundle])).toContain('blocker:heavyListSort');
   });
+
+  test('a heavy sort kept in a variable or a default is blocked', () => {
+    const page = file('js/common.js', `
+      async function list(object, select, xquery, sort) {
+        const order = sort || '-createdAt';
+        return fetch(location.origin + '/v2/' + object + '?limit=500&sort=' + encodeURIComponent(order));
+      }`);
+    const lib = file('lib/report.js', `
+      RG.list = async function (object, op) {
+        const q = 'limit=500&sort=' + encodeURIComponent(op.sort || 'closeDate');
+        return RG.api('/' + object + '?' + q);
+      };
+      RG.api = (route) => fetch('/v2' + route);`);
+    expect(rules([page])).toContain('blocker:heavyListSort');
+    expect(rules([lib])).toContain('blocker:heavyListSort');
+  });
+
+  test('two operators on one field are blocked; the same range inside $and passes', () => {
+    const bad = file('a.js', `
+      const range = { $gte: iso(from), $lte: iso(to) };
+      await fetch('/v2/deal?xquery=' + JSON.stringify({ createdAt: range }));`);
+    const good = file('b.js', `
+      const xq = { $and: [{ createdAt: { $gte: iso(from) } }, { createdAt: { $lte: iso(to) } }] };
+      await fetch('/v2/deal?sort=_id&xquery=' + JSON.stringify(xq));`);
+    expect(rules([bad])).toContain('blocker:sameFieldOperators');
+    expect(rules([good])).not.toContain('blocker:sameFieldOperators');
+  });
+
+  test('parallel calls through the page own helpers are blocked, also across files', () => {
+    const common = file('js/common.js', `
+      async function request(route) { return (await fetch('/v2' + route)).json(); }
+      async function listAll(object) { return request('/' + object + '?limit=500&sort=_id'); }
+      window.APP = { loadNotes: async function () { return listAll('note'); }, loadTasks: async () => listAll('task') };
+      async function pages(rest) {
+        for (let i = 0; i < rest.length; i += 5) await Promise.all(rest.slice(i, i + 5).map((n) => request('/deal?page=' + n)));
+      }
+      async function load() {
+        return Promise.all([listAll('deal'), listAll('deal'), listAll('deal')]);
+      }`);
+    const team = file('js/team.js', `
+      const r = await Promise.all([APP.loadNotes(), APP.loadTasks(), APP.loadNotes()]);`);
+    const found = heavyReadFindings([common, team]).filter((f) => f.rule === 'parallelListCalls');
+    expect(found.map((f) => f.file + ':' + f.line)).toEqual(['js/common.js:6', 'js/common.js:9', 'js/team.js:2']);
+  });
+
+  test('sort values that are chart options are not fields', () => {
+    const page = file('chart.js', `
+      await fetch('/v2/deal?sort=_id');
+      chart.setOption({ series: [{ type: 'funnel', sort: 'none' }] });`);
+    expect(heavyReadFindings([page])).toEqual([]);
+  });
 });

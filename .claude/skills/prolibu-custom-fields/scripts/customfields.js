@@ -564,9 +564,11 @@ async function ruleChecks(client, objectName, current, next) {
 }
 
 async function prepare(client, ctx, plan) {
-  const [records, cobs, liveSchemas, info] = await Promise.all([
-    loadRecords(client), loadCobs(client), loadLiveSchemas(client), serverInfo(ctx),
-  ]);
+  // One call at a time: parallel reads add up on the shared database.
+  const records = await loadRecords(client);
+  const cobs = await loadCobs(client);
+  const liveSchemas = await loadLiveSchemas(client);
+  const info = await serverInfo(ctx);
   const knownModels = new Set([...Object.keys(liveSchemas || {}), ...cobs.map((c) => c.modelName)]);
   const blockers = [];
   const warnings = [];
@@ -702,7 +704,11 @@ async function cmdList(client) {
 
 async function cmdShow(client, [name], flags, ctx) {
   if (!name) throw new UsageError('Usage: customfields.js show <domain> <Object>');
-  const [records, cobs, liveSchemas, info] = await Promise.all([loadRecords(client), loadCobs(client), loadLiveSchemas(client), serverInfo(ctx)]);
+  // One call at a time: parallel reads add up on the shared database.
+  const records = await loadRecords(client);
+  const cobs = await loadCobs(client);
+  const liveSchemas = await loadLiveSchemas(client);
+  const info = await serverInfo(ctx);
   const objectName = resolveObject(name, { liveSchemas, records, cobs });
   if (!objectName) throw new UsageError(`No object named "${name}" on this account.`);
   const record = records.find((r) => r.objectAssigned === objectName) || null;

@@ -91,7 +91,8 @@ async function list(client, object, params) {
 // Count with a filter only when the server echoes it back; otherwise say it is unknown.
 async function countWhere(client, object, xquery, select) {
   try {
-    const res = await list(client, object, { limit: SAMPLE, select, xquery, sort: '-updatedAt' });
+    // A sample, newest first by _id (indexed); updatedAt has no index.
+    const res = await list(client, object, { limit: SAMPLE, select, xquery, sort: '-_id' });
     const kept = res.query && Object.keys(xquery).every((k) => k in res.query);
     if (!kept) return { count: null, note: 'The server ignored this filter; the number of uses is unknown.' };
     return { count: res.count, sample: res.data };

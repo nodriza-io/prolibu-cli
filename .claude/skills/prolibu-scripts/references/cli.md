@@ -79,7 +79,9 @@ so a build error leaves it with placeholder code.
 - The README's `require("lib/…")` examples do not resolve.
 - The production copy is named `<p>`, but the platform sets `env = "prod"` only for codes
   ending in `-prod`, so `env` is `"dev"` in both copies.
-- `script create` prints "Scripts '<p>-dev' and '<p>-prod' created"; the second is `<p>`.
+- `script create` prints "Scripts '<p>-dev' (development) and '<p>' (production) created".
+  Renaming the production copy to `<p>-prod` would need a migration: on an existing account
+  the next `script prod` would create a second active script and every hook would run twice.
 - `script create` rewrites `profile.json` with only `apiKey`.
 
 ## Local tests of a script

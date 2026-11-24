@@ -563,9 +563,11 @@ async function cmdHistory(client, [kind, id], flags) {
     const stage = await loadStage(client, parent.stage);
     out.parent.stage = stage ? stage.stageName : null;
     out.parent.closed = !!(stage && stage.endFlowStage);
+    // A stage-history row is written by the move itself (it cannot be created later through the
+    // API), so newest _id first is newest move first; _id is indexed, movedAt is not.
     const moves = await call(client, 'GET', `/v2/stagehistory?${qs({
       xquery: JSON.stringify({ 'origin.docId': id, stageField: 'stage' }),
-      sort: '-movedAt',
+      sort: '-_id',
       limit: 100,
       populatePath: JSON.stringify([{ path: 'fromStage', select: 'stageName' }, { path: 'toStage', select: 'stageName' }, { path: 'movedBy', select: 'firstName lastName' }]),
     })}`);

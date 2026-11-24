@@ -1,95 +1,78 @@
-import { useEffect } from 'react'
-import { Routes, Route, Link, useLocation } from 'react-router-dom'
-import { useAuth } from '../store/auth'
+import { useEffect, useState } from 'react'
+import { Routes, Route } from 'react-router-dom'
+import { session, errorText, displayName, type Me } from '../session'
+
+interface Deal {
+  _id: string
+  dealName?: string
+}
 
 function Dashboard() {
+  const [deals, setDeals] = useState<Deal[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    // One small page of records per visit: newest first by _id (indexed), only the fields shown.
+    // For totals or many rows, read a Prolibu report instead (see HEAVY-READS.md).
+    const query = new URLSearchParams({ limit: '5', sort: '-_id', select: 'dealName' })
+    session
+      .api<{ data?: Deal[] }>(`/deal?${query}`)
+      .then((res) => { if (!cancelled) setDeals(res?.data ?? []) })
+      .catch((err) => { if (!cancelled) setError(errorText(err)) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
   return (
-    <div style={{ padding: 16 }}>
-      <h2>Dashboard</h2>
-      <p style={{ color: 'var(--text-secondary)', marginTop: 8 }}>
-        Welcome to your Prolibu site. Edit <code>src/pages/Home.tsx</code> to
-        get started.
-      </p>
-    </div>
+    <co-card variant="outlined" padding="sm">
+      <h2>Latest deals</h2>
+      {loading && <co-skeleton />}
+      {!loading && !error && deals.length === 0 && (
+        <co-empty-state heading="No deals yet" description="Deals you can see will show up here." icon="briefcase" variant="plain" />
+      )}
+      {deals.map((deal) => (
+        <co-list-item key={deal._id} label={deal.dealName || '(no name)'} icon="briefcase" />
+      ))}
+      {error && <co-helper-text status="error">{error}</co-helper-text>}
+    </co-card>
   )
 }
 
 export default function Home() {
-  const { logout, hydrate, me } = useAuth()
-  const location = useLocation()
+  const [me, setMe] = useState<Me | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    hydrate()
-  }, [hydrate])
+    session.me().then(setMe).catch((err) => setError(errorText(err)))
+  }, [])
 
   return (
     <>
-      {/* ── Header ── */}
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '12px 16px',
-          background: 'var(--surface)',
-          borderBottom: '1px solid var(--border)',
-        }}
-      >
-        <strong>
-          {(me as Record<string, unknown>)?.name
-            ? String((me as Record<string, unknown>).name)
-            : 'Prolibu Site'}
-        </strong>
-        <button
-          onClick={logout}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: 'var(--primary)',
-            fontSize: 14,
-          }}
-        >
-          Logout
-        </button>
+      <header className="header">
+        <div>
+          <h1>Prolibu Site</h1>
+          <p className="muted">{me ? `Signed in as ${displayName(me)}` : error ?? 'Checking your session…'}</p>
+        </div>
+        {me && (
+          <co-button variant="stroke" shape="square" onClick={() => session.signOut()}>
+            Sign out
+          </co-button>
+        )}
       </header>
 
-      {/* ── Content ── */}
-      <main style={{ flex: 1, overflow: 'auto' }}>
-        <Routes>
-          <Route index element={<Dashboard />} />
-          {/* Add more routes here */}
-        </Routes>
+      <main className="main">
+        {me && (
+          <Routes>
+            <Route index element={<Dashboard />} />
+            {/* Add more routes here. config.json must say "siteType": "SPA" for client routes. */}
+          </Routes>
+        )}
+        <p className="muted">
+          Edit <code>src/pages/Home.tsx</code> to build your site.
+        </p>
       </main>
-
-      {/* ── Bottom Nav (mobile) ── */}
-      <nav
-        style={{
-          display: 'flex',
-          borderTop: '1px solid var(--border)',
-          background: 'var(--surface)',
-        }}
-      >
-        {[{ to: '/', label: 'Home' }].map(({ to, label }) => (
-          <Link
-            key={to}
-            to={to}
-            style={{
-              flex: 1,
-              textAlign: 'center',
-              padding: '10px 0',
-              fontSize: 13,
-              color:
-                location.pathname === to
-                  ? 'var(--primary)'
-                  : 'var(--text-secondary)',
-              fontWeight: location.pathname === to ? 600 : 400,
-              textDecoration: 'none',
-            }}
-          >
-            {label}
-          </Link>
-        ))}
-      </nav>
     </>
   )
 }

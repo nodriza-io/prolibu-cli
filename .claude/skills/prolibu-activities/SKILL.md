@@ -145,4 +145,4 @@ Details, evidence and edge cases are in `references/activity-model.md`.
 Reads and writes follow [`../_shared/WRITE-FLOW.md`](../_shared/WRITE-FLOW.md): domain, reads
 only, plain summary, explicit yes, write, read back. `preview` is the summary step and `apply`
 the write. Moving a task to "Done" or a deal to another stage is `prolibu-stages`. For objects
-and how they relate, see `prolibu-platform-map`.
+and how they relate, see `prolibu-platform-map`. Business events (trade shows, fairs) with budget, expenses and ROI are `prolibu-events`, not meetings.

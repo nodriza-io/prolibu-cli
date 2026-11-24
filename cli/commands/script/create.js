@@ -208,7 +208,8 @@ module.exports = async function createScript(flags) {
   await apiClient.createScript(scriptPrefix, 'prod', domain, repo, 'index');
 
   const chalk = (await import('chalk')).default;
-  console.log(`Scripts '${scriptPrefix}-dev' and '${scriptPrefix}-prod' created for domain '${domain}'.`);
+  // The production copy's code is the bare prefix (see sync.js), not `<prefix>-prod`.
+  console.log(`Scripts '${scriptPrefix}-dev' (development) and '${scriptPrefix}' (production) created for domain '${domain}'.`);
   console.log('\nNext steps:');
   console.log(`To start development, run:\n  ${chalk.green(`./prolibu script dev --domain ${domain} --prefix ${scriptPrefix} --watch`)}`);
   console.log(`To start production, run:\n  ${chalk.green(`./prolibu script prod --domain ${domain} --prefix ${scriptPrefix} --watch`)}`);

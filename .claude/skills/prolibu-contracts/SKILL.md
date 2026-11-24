@@ -145,4 +145,4 @@ only, plain summary, explicit yes, write, read back. The `*-preview` commands ar
 step; `send`, `remind` and `withdraw` the writes, and the first two reach people. On a
 production account say so in the summary. A `403` means the profile's user may not do this:
 stop and say so. Templates, drafts and participants: `prolibu-proposals`. Deal stages:
-`prolibu-stages`. Objects and how they relate: `prolibu-platform-map`.
+`prolibu-stages`. Objects and how they relate: `prolibu-platform-map`. Hand-over and return acts for company assets are created as drafts by `prolibu-recruitment`. Drive files and their public links: `prolibu-files`; files attached to a contract are changed on the contract.

@@ -46,7 +46,7 @@ const SKILL_NEEDS = [
   { skill: 'prolibu-quotes', needs: ['Deal.update', 'Quote.calculate', 'Quote.formatLineItem', 'Quote.productSearch'] },
   { skill: 'prolibu-extended-quote-sites', needs: ['Site.create', 'Site.update'] },
   { skill: 'prolibu-stages', needs: ['Stage.find', 'Deal.update'] },
-  { skill: 'prolibu-dashboards', needs: ['Report.create', 'Report.update', 'Dashboard.create', 'Dashboard.update'], switch: 'mcp' },
+  { skill: 'prolibu-reports-dashboards', needs: ['Report.create', 'Report.update', 'Dashboard.create', 'Dashboard.update'], switch: 'mcp' },
   { skill: 'mcp-server (Prolibu tools inside Claude)', needs: [], switch: 'mcp' },
 ];
 
@@ -83,6 +83,30 @@ function keyState(file) {
   } catch {
     return 'not valid JSON';
   }
+}
+
+// The key's last 4 characters, only to find its own token record (never printed).
+function keyLastDigits(file) {
+  try {
+    const key = String(JSON.parse(fs.readFileSync(file, 'utf8')).apiKey || '').trim();
+    return key.length >= 8 ? key.slice(-4) : null;
+  } catch {
+    return null;
+  }
+}
+
+// What kind of credential the key is: an API key ('API') or a browser sign-in ('Session').
+// A session dies when its user signs out (or at expiresAt); an API key does not expire unless set.
+async function keyKind(client, userId, lastDigits) {
+  if (!userId || !lastDigits) return { keyType: null };
+  const xquery = JSON.stringify({ $and: [{ apiKeyLastDigits: lastDigits }, { createdBy: userId }] });
+  const res = await get(client, `/v2/token?${new URLSearchParams({ xquery, select: 'tokenType expiresAt', sort: '-_id', limit: '5' })}`);
+  const rows = res.ok && res.body && Array.isArray(res.body.data) ? res.body.data : null;
+  if (!rows) return { keyType: null, keyTypeNote: 'This key cannot read its own token record, so whether it is an API key or a browser session is unknown.' };
+  const types = [...new Set(rows.map((t) => t.tokenType || 'Session'))];
+  if (types.length !== 1) return { keyType: null, keyTypeNote: rows.length ? 'Several tokens of this user end with the same characters; the kind of this key is unknown.' : 'No token record matched this key.' };
+  const one = rows.find((t) => (t.tokenType || 'Session') === types[0]);
+  return { keyType: types[0], expiresAt: (one && one.expiresAt) || null };
 }
 
 function fileMode(file) {
@@ -315,7 +339,7 @@ function writePermissions(scopes) {
   return byModel;
 }
 
-async function cmdCheck(client) {
+async function cmdCheck(client, lastDigits = null) {
   const { domain } = client;
   const meRes = await get(client, '/v2/user/me');
   if (meRes.status === 401) {
@@ -382,14 +406,18 @@ async function cmdCheck(client) {
     switches,
     skills: skillReadiness(access, scopes, switches),
   };
+  Object.assign(result, await keyKind(client, p._id, lastDigits));
   if (access !== 'admin') result.writePermissions = writePermissions(scopes);
   if (!switches) result.switchesNote = 'This key cannot read the account settings (Resource@User.preferences).';
   const notes = [];
   if (access === 'admin-scoped') notes.push('The user is an admin, but this key is limited to its scopes: admin-only actions are refused.');
   if (access === 'roles') notes.push('This key carries the permissions its user had when the key was created. If the user\'s roles changed later, the key did not follow: create a new key.');
   if (production) notes.push('The domain looks like production: every write needs a production warning and its own yes.');
+  if (result.keyType === 'Session') notes.push(`This is a browser sign-in (session), not an API key: it stops working when ${result.user.name || 'that user'} signs out of the app${result.expiresAt ? ` or on ${String(result.expiresAt).slice(0, 10)}` : ''}. Create an API key in the app (avatar menu › Security › API Keys) and put it in the profile file instead.`);
   result.notes = notes;
-  result.nextStep = 'Tell the user who the key acts as, whether it is admin, which switches are off and which skills will refuse work. Never change a switch: an admin does it in the app.';
+  result.nextStep = result.keyType === 'Session'
+    ? 'Tell the user this key is a browser session that will stop working when that user signs out, and ask for an API key (avatar menu › Security › API Keys). Use it meanwhile only for short work. Also tell who the key acts as, whether it is admin and which switches are off.'
+    : 'Tell the user who the key acts as, whether it is admin, which switches are off and which skills will refuse work. Never change a switch: an admin does it in the app.';
   return { exitCode: 0, result };
 }
 
@@ -483,7 +511,7 @@ async function main(argv, opts = {}) {
     }
     client = createClient({ domain, rootDir, profile: flags.profile, fetchImpl: opts.fetchImpl, stderr });
     if (command === 'check') {
-      const { exitCode, result } = await cmdCheck(client);
+      const { exitCode, result } = await cmdCheck(client, keyLastDigits(path.join(rootDir, 'accounts', domain, fileName)));
       print(result);
       return exitCode;
     }
@@ -509,5 +537,5 @@ if (require.main === module) {
 }
 
 module.exports = {
-  main, keyState, safeRemote, accessOf, skillReadiness, serverName, readSwitches, SKILL_NEEDS,
+  main, keyState, keyKind, safeRemote, accessOf, skillReadiness, serverName, readSwitches, SKILL_NEEDS,
 };

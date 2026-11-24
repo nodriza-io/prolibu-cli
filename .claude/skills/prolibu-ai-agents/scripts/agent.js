@@ -71,7 +71,8 @@ async function call(client, method, path, opts) {
 
 const qs = (params) => new URLSearchParams(params).toString();
 
-async function list(client, object, { xquery, select, sort = '-updatedAt', limit = 100 } = {}) {
+// Default order: newest first by _id (indexed); updatedAt has no index.
+async function list(client, object, { xquery, select, sort = '-_id', limit = 100 } = {}) {
   const params = { limit: String(limit), sort };
   if (select) params.select = select;
   if (xquery) params.xquery = JSON.stringify(xquery);

@@ -104,11 +104,11 @@ const KINDS = {
   },
   report: {
     path: 'report', key: 'reportCode', name: 'reportName', order: 9, apply: false,
-    why: 'Reports are rebuilt in the target with prolibu-dashboards (its tools validate them); this skill only exports and compares them.',
+    why: 'Reports are rebuilt in the target with prolibu-reports-dashboards (its tools validate them); this skill only exports and compares them.',
   },
   dashboard: {
     path: 'dashboard', key: 'dashboardCode', name: 'dashboardName', order: 9, apply: false,
-    why: 'Dashboards point to widgets of reports by id; rebuild them in the target with prolibu-dashboards.',
+    why: 'Dashboards point to widgets of reports by id; rebuild them in the target with prolibu-reports-dashboards.',
   },
   customField: {
     path: 'customfield', key: 'objectAssigned', name: 'objectAssigned', order: 0, apply: false,

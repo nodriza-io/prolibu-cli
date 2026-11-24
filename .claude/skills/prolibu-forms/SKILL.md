@@ -179,4 +179,4 @@ Details and sources: `references/form-model.md`.
 Reads and writes follow [`../_shared/WRITE-FLOW.md`](../_shared/WRITE-FLOW.md): domain, reads
 only, plain summary, explicit yes, write, read back. `preview` is the summary step; `create`,
 `update` and `submit-test` are the writes. For objects and how they relate, see
-`prolibu-platform-map`; for custom fields on the target object, `prolibu-custom-fields`.
+`prolibu-platform-map`; for custom fields on the target object, `prolibu-custom-fields`. The built-in satisfaction rating (one 1–5 question) is `prolibu-polls`; a vacancy's application form is created and turned off by `prolibu-recruitment`.

@@ -173,4 +173,4 @@ only, plain summary, explicit yes, write, read back. Each `preview-*` is the sum
 `403` means the profile's user may not see or change wizards (sales roles usually cannot): stop
 and say so, never retry it another way or with another profile. Products and prices:
 **prolibu-catalog**. The deal's quote: **prolibu-quotes**. The linked form: **prolibu-forms**.
-Moving the deal: **prolibu-stages**. For objects and how they relate, see `prolibu-platform-map`.
+Moving the deal: **prolibu-stages**. For objects and how they relate, see `prolibu-platform-map`. The quote links it makes are short links without an owner; to inspect or repoint a short link, see `prolibu-files` (admin key for the app's own links).

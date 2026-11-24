@@ -157,8 +157,9 @@ async function countUsers(client, warnings) {
 const UI_SELECT = 'customUiCode customUiName customUiType active allowEveryone assignee collaborators createdBy updatedAt workspace sideBar rowAction cellWidget fieldWidget defaultColumns code';
 
 async function loadUiList(client) {
-  const body = await call(client, 'GET', `/v2/customui?${qs({ select: UI_SELECT, sort: '-updatedAt', limit: '500' })}`);
-  return { records: body.data || [], total: body.pagination ? body.pagination.count : (body.data || []).length };
+  // Sorted by _id (indexed): updatedAt has no index. Most recently changed first is applied in memory.
+  const body = await call(client, 'GET', `/v2/customui?${qs({ select: UI_SELECT, sort: '-_id', limit: '500' })}`);
+  return { records: (body.data || []).slice().sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))), total: body.pagination ? body.pagination.count : (body.data || []).length };
 }
 
 async function loadUi(client, ref) {

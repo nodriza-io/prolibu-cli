@@ -183,4 +183,4 @@ only, plain summary, explicit yes, write, read back. Each `*-preview` is the sum
 A `403` means the profile's user may not see or change that calendar or booking: stop and
 say so, never retry it another way or with another profile. For a CRM meeting on a contact
 (not a bookable calendar), use `prolibu-activities`. For objects and how they relate, see
-`prolibu-platform-map`.
+`prolibu-platform-map`. Business events (trade shows, fairs) with budget, expenses and ROI are `prolibu-events`, not calendar events.

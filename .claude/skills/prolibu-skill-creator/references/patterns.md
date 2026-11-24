@@ -69,9 +69,9 @@ nextStep: 'Show this to the user. STOP HERE and end your turn; never write in th
   never guess ids.
 - Follow the user's "base first" rule: never create something the app's UI cannot show or edit
   afterwards.
-- Read files the user gives (CSV, XLSX) with a reader that needs no new dependency; reuse an
-  existing one (`prolibu-imports/scripts/sheet.js`, `prolibu-catalog/scripts/sheet-reader.js`)
-  instead of writing a third.
+- Read files the user gives (CSV, TSV, XLSX) with `_shared/sheet.js`, the one reader every
+  skill shares (no dependency; Latin-1 and UTF-16 CSV, every sheet, dates by format). Never
+  write another one; add what you need to it, with a test.
 - Write local output (reports, detail files) to `$CLAUDE_SCRATCHPAD` or the OS temp folder,
   never into the repo.
 - A script may call another skill's script through its exports (`require('../../prolibu-external-refs/scripts/refs.js')`);

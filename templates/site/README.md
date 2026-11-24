@@ -21,9 +21,12 @@ reverse-proxies, but it leaks the owner record id — do not hand it out.
 ./prolibu site dev --domain <domain> --sitePrefix <prefix> --watch --port 3000
 ```
 
-Serves `public/` locally with live reload and writes `_prolibu_config.js` (domain + API base
-URL) next to your files. Press `p` to publish, `x` to exit. The generated config file is
-removed on exit — do not commit it.
+Serves `public/` locally with live reload. Press `p` to publish, `x` to exit. The CLI also
+writes `_prolibu_config.js` next to your files and removes it on exit; the page does not need
+it (it calls `/v2` on its own origin) — do not commit it or load it from `index.html`.
+
+There is no Prolibu session on `localhost`: the page shows a notice instead of data. Test
+signed-in behavior on the published `-dev` URL.
 
 ## Production
 
@@ -34,7 +37,10 @@ removed on exit — do not commit it.
 ## Structure
 
 - `public/` — what gets zipped and shipped (HTML, CSS, JS, images). Its **root must hold
-  `index.html`**; an upload without one is rejected.
+  `index.html`**; an upload without one is rejected. `public/prolibu-session.js` reads the
+  app's session and calls the API (see below); keep it.
+- For React or Vue (`--template react|vue`) the build output (`settings.json` `outputDir`,
+  default `dist/`) is shipped instead, and `public/` holds files copied into it as is.
 - `config.json` — model data pushed to the platform (`siteType`, `readme`, `git.repositoryUrl`).
 - `settings.json` — local-only settings (dev server port).
 - `README.md` — this file; its contents are synced into the site's `readme` field.
@@ -109,6 +115,9 @@ visitor is already signed in.
 
 ### Getting a token for API calls
 
+The template already does this in `prolibu-session.js` (`ProlibuSession.api(path)`,
+`ProlibuSession.me()`); this section explains what it does.
+
 The gate and your JavaScript use two different copies of the same session:
 
 - **Page access** is checked server-side against the `apiKey` cookie, which is `httpOnly` — your
@@ -169,7 +178,8 @@ Expect up to ~60s for a change to the flag to take effect. Full walkthrough:
 
 ## Deploy notes
 
-- Max package size is 120 MB.
+- The zip must fit the account's upload limit (20 MB by default; an admin can raise it). Above it
+  the server answers `413`.
 - **`400 Malicious content detected in file`?** The account has the cloud-drive content scanner
   on (`modules.tools.cloudDrive.advancedSecurity.scanMaliciousContent`), which rejects any
   `<script>…</script>` tag — so no JavaScript site can deploy. It defaults to off; an

@@ -37,7 +37,7 @@
         const me = await ProlibuSession.me();
         $('who').textContent = 'Signed in as ' + ((me.profile && me.profile.email) || 'unknown');
 
-        const query = new URLSearchParams({ limit: '5', sort: '-updatedAt', select: 'dealName' });
+        const query = new URLSearchParams({ limit: '5', sort: '-_id', select: 'dealName' });
         const { data } = await ProlibuSession.api('/deal?' + query);
         $('deals').replaceChildren(...data.map((deal) =>
           Object.assign(document.createElement('co-list-item'), { label: deal.dealName, icon: 'briefcase' })));

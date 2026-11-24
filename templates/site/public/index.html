@@ -3,82 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- An internal tool: keep it out of search engines and do not leak its URL to other sites. -->
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="referrer" content="no-referrer">
     <title>Prolibu Site</title>
+    <!-- Cobalt, Prolibu's design system, served by the account itself (same version as the app). -->
+    <link rel="stylesheet" href="/ui/static/cobalt/tokens/tokens.css">
+    <script type="module" src="/ui/static/cobalt/cobalt/cobalt.esm.js"></script>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <!-- Header -->
     <header class="header">
-        <div class="header-content">
-            <img 
-                src="https://s3.us-east-1.amazonaws.com/public.prolibu.com/cdn/assets/logo/svg/safe-black-logo-horizontal.svg" 
-                alt="Prolibu" 
-                class="logo"
-            >
+        <div>
+            <h1>Prolibu Site</h1>
+            <p id="who" class="muted">Checking your session…</p>
         </div>
+        <co-button id="signout" variant="stroke" shape="square" hidden>Sign out</co-button>
     </header>
 
-    <!-- Main Content -->
     <main class="main">
-        <div class="container">
-            <h1>🚀 Welcome to Prolibu</h1>
-            <p class="subtitle">Your site is successfully deployed and running!</p>
-            
-            <div class="card">
-                <h2>Getting Started</h2>
-                <p>Edit the files in the <code>public/</code> folder to customize your site:</p>
-                
-                <div class="file-list">
-                    <div class="file-item">
-                        <span class="file-icon">📄</span>
-                        <div>
-                            <strong>index.html</strong>
-                            <p>Main HTML structure</p>
-                        </div>
-                    </div>
-                    <div class="file-item">
-                        <span class="file-icon">🎨</span>
-                        <div>
-                            <strong>styles.css</strong>
-                            <p>Styling and design</p>
-                        </div>
-                    </div>
-                    <div class="file-item">
-                        <span class="file-icon">⚡</span>
-                        <div>
-                            <strong>script.js</strong>
-                            <p>JavaScript functionality</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="features">
-                <div class="feature">
-                    <div class="feature-icon">📦</div>
-                    <div class="feature-title">Easy Deployment</div>
-                    <div class="feature-desc">Deploy your site with a single command</div>
-                </div>
-                <div class="feature">
-                    <div class="feature-icon">🔥</div>
-                    <div class="feature-title">Hot Reload</div>
-                    <div class="feature-desc">Watch mode automatically syncs your changes</div>
-                </div>
-                <div class="feature">
-                    <div class="feature-icon">⚡</div>
-                    <div class="feature-title">Fast & Simple</div>
-                    <div class="feature-desc">Built for speed and developer experience</div>
-                </div>
-            </div>
-        </div>
+        <co-card variant="outlined" padding="sm">
+            <h2>Latest deals</h2>
+            <co-skeleton id="loading"></co-skeleton>
+            <div id="deals"></div>
+            <co-empty-state id="empty" heading="No deals yet" description="Deals you can see will show up here." icon="briefcase" variant="plain" hidden></co-empty-state>
+            <co-helper-text id="error" status="error" hidden></co-helper-text>
+        </co-card>
+        <p class="muted">Edit <code>public/index.html</code>, <code>public/styles.css</code> and <code>public/script.js</code> to build your site.</p>
     </main>
 
-    <!-- Footer -->
-    <footer class="footer">
-        <p>Powered by <strong>Prolibu CLI</strong></p>
-    </footer>
-
-    <script src="_prolibu_config.js"></script>
+    <!-- Reads the app's session (localStorage.apiKey on this same origin) and calls /v2. -->
+    <script src="prolibu-session.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

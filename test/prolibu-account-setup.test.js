@@ -26,6 +26,11 @@ async function fakeFetch(url, init) {
   calls.push({ method: init.method, path: u.pathname, auth: init.headers.Authorization });
   if (u.pathname === '/v2/user/me') return respond(server.me.status, server.me.body);
   if (u.pathname === '/v2/user/preferences') return respond(server.prefs.status, server.prefs.body);
+  if (u.pathname === '/v2/token') {
+    // The real list filters by the key's last 4 characters and its user; never returns the key.
+    calls[calls.length - 1].xquery = JSON.parse(u.searchParams.get('xquery'));
+    return respond(server.tokens.status, server.tokens.body);
+  }
   if (u.pathname === '/v2/mcpsession/metadata') {
     return respond(200, { endpoint: `https://${D}/v2/mcpsession/ses`, tools: [{ name: 'find' }, { name: 'getMyProfile' }] });
   }
@@ -62,12 +67,14 @@ function initRepo(dir, gitignore) {
 }
 
 const adminMe = { status: 200, body: { profile: { _id: 'u1', firstName: 'Ana', lastName: 'QA', email: 'qa-skills@example.com', status: 'Active', isAdmin: true, roles: [], locale: { language: 'es', currency: 'USD' } }, permissions: [] } };
+const apiToken = { status: 200, body: { pagination: { count: 1 }, data: [{ _id: 't1', tokenType: 'API' }] } };
+const sessionToken = { status: 200, body: { pagination: { count: 1 }, data: [{ _id: 't2', tokenType: 'Session', expiresAt: '2026-12-03T12:00:00.000Z' }] } };
 const prefsOn = { status: 200, body: { integrations: { mcp: { enabled: true }, webhooks: { enabled: true }, lifecycleHooks: { enabled: true, enabledEntities: ['Contact'] } }, security: { oauthServer: { enabled: false } } } };
 
 beforeEach(() => {
   rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'acct-setup-'));
   calls = [];
-  server = { me: adminMe, prefs: prefsOn };
+  server = { me: adminMe, prefs: prefsOn, tokens: apiToken };
 });
 
 afterEach(() => {
@@ -171,7 +178,10 @@ describe('check', () => {
     expect(r.user).toMatchObject({ name: 'Ana QA', language: 'es', currency: 'USD' });
     expect(r.switches).toMatchObject({ mcp: 'on', webhooks: 'on', oauthServer: 'off', lifecycleHooksObjects: ['Contact'] });
     expect(r.skills.every((s) => s.status === 'ready')).toBe(true);
-    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(['GET /v2/user/me', 'GET /v2/user/preferences']);
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(['GET /v2/user/me', 'GET /v2/user/preferences', 'GET /v2/token']);
+    expect(calls[2].xquery).toEqual({ $and: [{ apiKeyLastDigits: KEY.slice(-4) }, { createdBy: 'u1' }] });
+    expect(r.keyType).toBe('API');
+    expect(r.notes.join(' ')).not.toMatch(/session/i);
     expect(calls.every((c) => c.auth === `Bearer ${KEY}`)).toBe(true);
     expect(out).not.toContain(KEY);
   });
@@ -210,9 +220,26 @@ describe('check', () => {
     expect(await run('check', D)).toBe(0);
     const r = json();
     expect(r.switches.mcp).toBe('off');
-    expect(r.skills.find((s) => s.skill === 'prolibu-dashboards').status).toBe('switch off');
+    expect(r.skills.find((s) => s.skill === 'prolibu-reports-dashboards').status).toBe('switch off');
     expect(r.skills.find((s) => s.skill.startsWith('mcp-server')).status).toBe('switch off');
     expect(r.skills.find((s) => s.skill === 'prolibu-webhooks').status).toBe('switch off');
+  });
+
+  test('a browser session used as a key is named, with when it dies and what to do', async () => {
+    server.tokens = sessionToken;
+    expect(await run('check', D)).toBe(0);
+    const r = json();
+    expect(r).toMatchObject({ keyWorks: true, keyType: 'Session', expiresAt: '2026-12-03T12:00:00.000Z' });
+    expect(r.notes.join(' ')).toMatch(/browser sign-in .*signs out.*2026-12-03.*API Keys/);
+    expect(r.nextStep).toMatch(/browser session/);
+    expect(out).not.toContain(KEY);
+  });
+
+  test('a key that cannot read its token record leaves the kind unknown, without failing', async () => {
+    server.tokens = { status: 403, body: { statusCode: 403, error: 'Forbidden' } };
+    expect(await run('check', D)).toBe(0);
+    expect(json()).toMatchObject({ keyWorks: true, keyType: null });
+    expect(json().keyTypeNote).toMatch(/unknown/);
   });
 
   test('a refused key (401) says so and exits 1', async () => {

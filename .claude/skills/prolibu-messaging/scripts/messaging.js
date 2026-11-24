@@ -771,19 +771,24 @@ async function listOrSearch(client, object, term, params) {
   return body.data || [];
 }
 
+// Lists sort by _id (indexed): updatedAt has no index. Most recently changed first is applied in memory.
+const byUpdatedDesc = (a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+
 async function cmdTemplates(client, [term], flags) {
   if (flags.whatsapp) {
     const rows = await listOrSearch(client, 'messagetemplate', term, {
       xquery: JSON.stringify({ modelName: 'Message' }),
       select: 'messageTemplateName language category whatsappStatus syncStatus rejectionReason channel updatedAt',
-      sort: '-updatedAt', limit: '50',
+      sort: '-_id', limit: '50',
     });
+    rows.sort(byUpdatedDesc);
     return { whatsappTemplates: rows, note: 'Read only: creating or changing a WhatsApp template submits it to WhatsApp for review, so it is done in the app.' };
   }
   const rows = await listOrSearch(client, 'messagetemplate', term, {
     xquery: JSON.stringify({ modelName: { $in: [null, 'Email'] } }),
-    select: 'messageTemplateName modelName subject content design.format updatedAt', sort: '-updatedAt', limit: '50',
+    select: 'messageTemplateName modelName subject content design.format updatedAt', sort: '-_id', limit: '50',
   });
+  rows.sort(byUpdatedDesc);
   return {
     templates: rows.map((t) => ({
       id: t._id, name: t.messageTemplateName, type: t.modelName || 'generic', subject: t.subject || null,
@@ -794,7 +799,7 @@ async function cmdTemplates(client, [term], flags) {
 }
 
 async function cmdLists(client, [term]) {
-  const rows = await listOrSearch(client, 'contactlist', term, { select: 'contactListName description contacts updatedAt', sort: '-updatedAt', limit: '50' });
+  const rows = (await listOrSearch(client, 'contactlist', term, { select: 'contactListName description contacts updatedAt', sort: '-_id', limit: '50' })).sort(byUpdatedDesc);
   return { lists: rows.map((l) => ({ id: l._id, name: l.contactListName, description: l.description || null, contacts: (l.contacts || []).length, updatedAt: l.updatedAt })) };
 }
 
@@ -809,9 +814,9 @@ function campaignSummary(c) {
 async function cmdCampaigns(client, [term]) {
   const rows = await listOrSearch(client, 'emailcampaign', term, {
     select: 'emailCampaignName status provider from contacts sequence consentRequest testContact scheduledAt sentAt stats updatedAt',
-    sort: '-updatedAt', limit: '50',
+    sort: '-_id', limit: '50',
   });
-  return { campaigns: rows.map(campaignSummary) };
+  return { campaigns: rows.sort(byUpdatedDesc).map(campaignSummary) };
 }
 
 async function cmdContacts(client, [term]) {
@@ -1118,12 +1123,14 @@ async function cmdConversations(client, rest, flags) {
   if (flags.channelType) filter.channelType = flags.channelType;
   const body = await call(client, 'GET', `/v2/conversation?${qs({
     xquery: JSON.stringify(filter), select: 'channelType status contact participantName lastInboundAt unreadCount updatedAt',
-    populate: 'contact', sort: '-updatedAt', limit: String(Math.min(Number(flags.limit) || 20, 100)),
+    // Newest conversations first by _id (indexed); updatedAt has no index. Latest activity first
+    // is applied in memory to the rows read.
+    populate: 'contact', sort: '-_id', limit: String(Math.min(Number(flags.limit) || 20, 100)),
   })}`);
   const now = Date.now();
   return {
     count: body.pagination ? body.pagination.count : (body.data || []).length,
-    conversations: (body.data || []).map((c) => ({
+    conversations: (body.data || []).slice().sort(byUpdatedDesc).map((c) => ({
       id: c._id, channelType: c.channelType, status: c.status, contact: c.contact && typeof c.contact === 'object' ? { id: c.contact._id, name: fullName(c.contact) } : idOf(c.contact),
       participantName: c.participantName || null, lastInboundAt: c.lastInboundAt || null, unread: c.unreadCount || 0,
       whatsappWindowOpen: c.channelType === 'whatsapp' ? Boolean(c.lastInboundAt && now - new Date(c.lastInboundAt).getTime() < 24 * 3600 * 1000) : undefined,

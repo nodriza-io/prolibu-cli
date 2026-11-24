@@ -477,6 +477,20 @@ async function me(client) {
   return { _id: idOf(p), email: p.email };
 }
 
+// Who created a site, to name them when someone else tries to publish it. A user who may not
+// read other users gets only the id.
+async function creatorOf(client, id) {
+  const res = await client.request('GET', `/v2/user/${encodeURIComponent(id)}?select=firstName%20lastName%20email`);
+  const u = res.status === 200 && res.body && typeof res.body === 'object' ? res.body : null;
+  const name = u ? [u.firstName, u.lastName].filter(Boolean).join(' ') : '';
+  return { _id: id, name: name || null, email: (u && u.email) || null };
+}
+
+function notCreatorMessage(creator) {
+  const who = creator.name ? `${creator.name}${creator.email ? ` (${creator.email})` : ''}` : `the user ${creator._id}`;
+  return `${who} created this site, not the user of this key. The server deletes the creator's files, unzips into the publisher's drive and then looks for index.html in the creator's, so this publish would leave the site empty, also for an admin and also from the app. Two ways: (1) ${creator.name || 'the creator'} signs in to the app and uploads the package in Sites › the site › edit; or (2) put ${creator.name ? `${creator.name}'s` : 'the creator\'s'} API key in accounts/<domain>/profile.<name>.json and publish with --profile <name>.`;
+}
+
 // Upload limits: the size cap is visible to every user; the scanner and blocked extensions only to admins.
 async function accountLimits(client) {
   const limits = { maxFileSizeMB: DEFAULT_MAX_MB, blockExtensions: [], scanMaliciousContent: null, known: false };
@@ -604,9 +618,10 @@ function visitorFindings(probe, indexHtml) {
 
 async function cmdList(client, rest, flags) {
   const who = await me(client);
-  const params = new URLSearchParams({ limit: '100', sort: '-updatedAt', select: SITE_SELECT });
+  // Sorted by _id (indexed): updatedAt has no index. Most recently changed first is applied in memory.
+  const params = new URLSearchParams({ limit: '100', sort: '-_id', select: SITE_SELECT });
   const body = await call(client, 'GET', `/v2/site?${params.toString()}`);
-  const rows = Array.isArray(body) ? body : body.data || [];
+  const rows = (Array.isArray(body) ? body : body.data || []).slice().sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
   const term = (flags.search || '').toLowerCase();
   const sites = rows.map((s) => siteView(s, who._id))
     .filter((s) => !term || `${s.siteCode} ${s.siteName || ''}`.toLowerCase().includes(term));
@@ -670,7 +685,8 @@ async function buildPlan(client, ctx, siteCode, input, flags) {
   if (site) {
     siteType = site.siteType || 'Static';
     if (idOf(site.createdBy) !== who._id) {
-      blockers.push({ rule: 'notCreator', message: 'Another user created this site. The server unzips into the publisher\'s drive but looks for index.html in the creator\'s, so the publish would fail after deleting the live files. Publish with the creator\'s profile.' });
+      const creator = await creatorOf(client, idOf(site.createdBy));
+      blockers.push({ rule: 'notCreator', creator, message: notCreatorMessage(creator) });
     }
     const wanted = flags.siteType || configType;
     if (wanted && wanted !== siteType) {

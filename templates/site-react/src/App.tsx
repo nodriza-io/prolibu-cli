@@ -1,26 +1,11 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
-import { useAuth } from './store/auth'
-import Login from './pages/Login'
+import { Routes, Route } from 'react-router-dom'
 import Home from './pages/Home'
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { apiKey } = useAuth()
-  if (!apiKey) return <Navigate to="/login" replace />
-  return <>{children}</>
-}
-
+// No login route: the platform's sign-in page handles that (see src/session.ts).
 export default function App() {
   return (
     <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route
-        path="/*"
-        element={
-          <ProtectedRoute>
-            <Home />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/*" element={<Home />} />
     </Routes>
   )
 }

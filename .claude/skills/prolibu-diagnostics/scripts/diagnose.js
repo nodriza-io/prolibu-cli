@@ -348,7 +348,9 @@ async function cmdRecord(client, [model, id], flags) {
   if (tracked) {
     const body = await optional(forbidden, 'stage history', () => get(client, `/v2/stagehistory?${qs({
       xquery: { origin: { modelName: model, docId: id } },
-      sort: '-movedAt',
+      // A stage-history row is written by the move itself (it cannot be created later through the
+      // API), so newest _id first is newest move first; _id is indexed, movedAt is not.
+      sort: '-_id',
       limit: '50',
       populatePath: [{ path: 'movedBy', select: 'firstName lastName email' }, { path: 'toStage', select: 'stageName' }, { path: 'fromStage', select: 'stageName' }],
     })}`));

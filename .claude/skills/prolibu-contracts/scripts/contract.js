@@ -238,10 +238,11 @@ async function cmdList(client, rest, flags) {
   const body = await call(client, 'GET', `/v2/contract?${qs({
     xquery: JSON.stringify(filter),
     select: 'contractName status signerEvidences origin options.deadlineDate updatedAt',
-    sort: '-updatedAt',
+    // Sorted by _id (indexed): updatedAt has no index. Most recently changed first is applied in memory.
+    sort: '-_id',
     limit: String(flags.limit || 20),
   })}`);
-  const contracts = (body.data || []).map((c) => {
+  const contracts = (body.data || []).slice().sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))).map((c) => {
     const ev = Object.values(c.signerEvidences || {}).filter(Boolean);
     return {
       contractId: c._id,

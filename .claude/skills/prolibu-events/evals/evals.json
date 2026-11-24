@@ -1,0 +1,58 @@
+{
+  "skill_name": "prolibu-events",
+  "setup": "A non-production account under accounts/<domain>/ whose key's user has the Event Business Manager profile or is an admin. A test business event <event> created for the evals (with its campaign), one test contact <contact e-mail> without a campaign, and nothing else attributed to the event. No e-mail is sent by any case.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Crea el evento Feria Hotelera 2027 para el 15 de marzo de 2027 en Corferias, Bogotá, presencial, con presupuesto de 30 millones de pesos.",
+      "expected_output": "Checks for a same-name event, previews a createEvent with the date carrying the Bogotá offset, the venue, city CO, format In-Person and budget 30000000 COP, says a campaign is created with it and nobody is e-mailed, waits for the yes, applies and reports the BEV code, in Spanish.",
+      "expectations": [
+        "Answers in Spanish",
+        "Uses scripts/events.js preview and apply, never a hand-made POST",
+        "budget is 30000000 and dates.startAt carries -05:00 (or is a plain date)",
+        "Waits for an explicit yes before apply",
+        "After apply, the event exists with a campaign and the reported code"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Registra un gasto de transporte de 2 millones en el evento <event>.",
+      "expected_output": "Finds the event, previews an addExpense of 2000000 in the account currency with concept Transporte, waits for the yes, applies and reports the expense code and the event's total expense before and after.",
+      "expectations": [
+        "amount is the number 2000000",
+        "Shows the preview and waits for the yes",
+        "Reports the total expense after the write (or says it is still recalculating)"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Agrega a <contact e-mail> como prospecto del evento <event>.",
+      "expected_output": "Explains that event prospects are candidate events, not people, and that a person counts for the event through the event's campaign; offers attributeContacts, previews it (naming existing deals that stay out) and writes only after a yes.",
+      "expectations": [
+        "Does not create an EventProspect",
+        "Explains the difference in plain words",
+        "Uses attributeContacts preview; writes nothing in turn 1"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "¿Cuántos asistieron y cuánto gastamos en el evento <event>? ¿Qué negocios salieron?",
+      "expected_output": "Runs show and results, reports total expense, budget used, attributed contacts and deals by won/lost/open with ROI, and says the platform counts attributed contacts, not physical attendance; writes nothing.",
+      "expectations": [
+        "Uses show and results",
+        "Says contacts are attributed contacts, not a list of who came, and distinguishes team attendees",
+        "Mentions that only the standard Approved/Denied stages count as won/lost when relevant",
+        "Writes nothing"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Agenda en el calendario un evento de reunión con el cliente para el viernes a las 3 pm.",
+      "expected_output": "Recognizes a meeting, not a business event, and routes to prolibu-activities / prolibu-calendars without using events.js.",
+      "expectations": [
+        "Does not run events.js preview or apply",
+        "Points to the meetings/calendar skill"
+      ]
+    }
+  ]
+}

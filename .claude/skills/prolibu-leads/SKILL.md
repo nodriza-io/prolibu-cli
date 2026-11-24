@@ -171,4 +171,4 @@ means the profile's user may not do that (sellers cannot list users or groups, n
 goals): stop and say so; never retry it another way or with another profile. Lead imports from
 a file go to `prolibu-imports`; forms that create leads go to `prolibu-forms`; tasks and calls a
 step asks for go to `prolibu-activities`; sequence campaigns to `prolibu-messaging`; goals vs.
-actual sales to `prolibu-dashboards`.
+actual sales to `prolibu-reports-dashboards`. To count contacts for a trade show, attribute them with `prolibu-events`. Rewarding people with coins or badges for reaching goals is `prolibu-recognition`.

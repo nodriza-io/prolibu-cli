@@ -111,7 +111,7 @@ workspace) are dropped.
 copied.
 
 **report, dashboard.** Compared only (ids left as they are). Reports point to pages and to
-other reports by id, dashboards to widgets; rebuild them with `prolibu-dashboards`, whose tools
+other reports by id, dashboards to widgets; rebuild them with `prolibu-reports-dashboards`, whose tools
 validate on the server.
 
 **customField, cob.** Compared only. Saving either restarts the account's servers. Custom
