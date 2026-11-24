@@ -94,6 +94,47 @@ added, calculation keeps the line as sent, without error.
 - Quote-level totals: `subTotal`, `discountAmount`, `taxAmount`, `total`, and `convertedTotal`
   in the account currency. The server overwrites any totals the client sends.
 
+## Time-limited discounts
+
+The quote can make its discounts expire: `quote.timeSensitiveDiscounts`.
+
+| Field | Who writes it | Meaning |
+| --- | --- | --- |
+| `enabled` | the user | The clock is on. |
+| `strategy` | the user | `Real-Time` or `Limited-Time`, exactly. |
+| `startFrom`, `endAt` | the user | The window, as instants. The app's editor works in whole days; the API takes any hour. |
+| `numberOfNotifications` | the user | Stored (at most 5), but nothing sends notices from it. |
+| `lostDiscountAmount`, `remainingDiscountAmount`, `discountAppliedAt`, `finalized`, `cutRate` | the server | Recomputed on each calculation. Never send them back. |
+
+How the server prices it, on every calculation, for the moment of the calculation only:
+
+- The clock runs on **every line that has a discount**, not on one product. The percentage
+  stays on each line (`discountRate` / `discountAmount`).
+- Before `startFrom` or after `endAt`, every discount is 0, whatever the strategy.
+- **Limited-Time**: inside the window, the full discount.
+- **Real-Time**: inside the window, `discount × (1 − elapsed / window length)`. 10% on
+  1,000,000 for one day is 100,000 off at the start, 50,000 after 12 hours, 0 at the end.
+- The first calculation with the clock on stores each line's discount as
+  `originalDiscountAmount` / `originalDiscountRate`, and later calculations start from that
+  original. A new discount on that line is ignored unless the original is removed (the script
+  removes it for every line whose discount the plan changes).
+- With `enabled: false`, every line gets its original discount back and the originals are
+  removed: turning the clock off restores the full discount, with no end date.
+- Under the clock, the stored `discountRate` of a line is not the rate that was asked for.
+  Read `originalDiscountRate`, and the amounts.
+- `PUT /v2/quote/calculate` takes no date: there is no server call that prices another
+  moment. The quote builder has a simulator for that.
+
+With the deal:
+
+- A deal save that carries the quote or a stage recalculates it, and sets `finalized` when
+  the stage is an end-of-flow stage. The proposal the customer sees then stops its countdown
+  and keeps the discount reached at that moment.
+- Reopening the deal (moving it out of the end-of-flow stage) after the window ended
+  recalculates the quote: every discount becomes 0, and stays 0 if the deal is approved
+  again.
+- The proposal shows the countdown when its template includes the quote block.
+
 ## Lines the server adds
 
 - **Included products.** A catalog line whose product has `includedProducts` and no
