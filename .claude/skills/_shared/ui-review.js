@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 'use strict';
+/* global document, window, getComputedStyle, Element */ // used inside page.evaluate(), which runs in the browser
 
 // Renders a local site folder in headless Chrome as the account would serve it, at several
 // screen widths, measures the layout problems a reviewer would catch (content cut off, cards of
