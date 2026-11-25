@@ -44,6 +44,12 @@ and read-only calls on a non-production account; what was checked only in code s
   account has webhooks on and one listens to prices, lifecycle scripts when the account
   enables them for PricebookEntry, and AI agent triggers on PricebookEntry. The live screen
   refresh is skipped.
+- **The server's own price code collides inside one import.** A new price without a code gets
+  `ENT-` + (the time in milliseconds + a random offset below 100,000). Rows saved a few
+  milliseconds apart share that window, so in a long import some draw the same code and fail
+  with `pricebookEntryCode 'ENT-…' already exists` (seen live: 1 row of 295 new prices). The
+  script gives every new price its own random code (`ENT-` + 16 hex characters), fixed in the
+  job at preview time.
 - Body limit 10 MB (about 30,000 short price rows); the script sends far less per call.
 - The file way (multipart, background job) keeps only the first 100 row errors in its import
   job, reports progress over the account socket only, and was seen waiting 15 minutes in the
@@ -96,7 +102,11 @@ or error, and writes the job (rows, `_id`s, values before and after) to
 `<temp>/prolibu-catalog-bulk/<version>/` with `preview.csv` (every row). It also counts the
 active webhooks, lifecycle scripts and agent triggers on prices (`unknown` when the key cannot
 read them), and says in `canWritePrices` whether the user's roles allow creating and changing
-prices. For 75,000 prices over 27 lists: about 150 reads of prices plus one per 100
+prices (any of the user's roles counts; a sales user who also holds a pricing role gets `true`).
+That is the role only: price lists and their prices are also shared record by record (owner,
+workspace, collaborators, "everyone"). A list the user cannot see stops the preview ("not found
+or not shared with this user"); a list the user sees whose prices are not shared with them
+gives the warning "No prices visible in …" — those prices are left out, not changed. For 75,000 prices over 27 lists: about 150 reads of prices plus one per 100
 products.
 
 **Factor mode** (the yearly update): every price of the given lists times `--factor` (new
@@ -121,11 +131,16 @@ sum before and after, and the smallest and largest change in percent.
    (`updated`, `created`, `failed` with the server's error, `unknown`).
 6. Stops at the first call that does not answer or is refused; those rows are `unknown` or
    `not sent`. The importer may still be writing an unanswered chunk: wait a couple of minutes
-   before running apply again.
+   before running apply again. If the script itself is stopped (Ctrl-C, closed terminal), the
+   chunk in flight is not in `result.csv`, but the server finishes it (seen live: a run stopped
+   during a 250-row call; the next run found all 250 written and listed them as
+   `already written`). `result.csv` keeps growing across runs of the same version.
 7. Re-reads the lists and checks every sent row now holds its new values (`verified`).
 
 `--max-rows` writes only that many pending rows (a first small run, or a run that must end
-before a time). Running apply again with the same version continues.
+before a time). Running apply again with the same version continues. A run that leaves rows
+for later answers `saved: false` and exit code 1 with `remaining` above 0: that is not an error,
+the next run writes the rest.
 
 ## Sizing and pacing
 
@@ -137,9 +152,10 @@ before a time). Running apply again with the same version continues.
 | Calls of the run | ~1,050 | ~510 |
 
 Both stay under the 2,000-call budget, so the pause rarely triggers; it is there for reruns
-and shared keys. The time per row is the server's save time per price, not measured yet on
-this account (see the private report); a first run with `--max-rows 500` gives `seconds` to
-estimate the rest. A call must answer within the client's 30 seconds: lower `--chunk` if a
+and shared keys. Measured on a non-production account with no webhooks, scripts or agent
+triggers on prices: about 15 ms per row, creates and updates alike (100 rows in under 2 s,
+300 updates in about 5 s including both reads). Webhooks, scripts or triggers on prices add
+their own time per row; a first run with `--max-rows 500` gives `seconds` to estimate the rest. A call must answer within the client's 30 seconds: lower `--chunk` if a
 call comes close.
 
 ## Not done

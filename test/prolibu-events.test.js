@@ -51,7 +51,14 @@ async function fakeFetch(url, init) {
   const [, , col, key] = u.pathname.split('/');
   const m = init.method;
   if (m === 'GET' && u.pathname === '/v2/user/me') return respond(200, { profile: { _id: ME, email: 'ana@example.com', firstName: 'Ana' } });
-  if (m === 'GET' && u.pathname === '/v2/user/preferences') return respond(200, { locale: { currency: 'COP' }, modules: { sales: { events: { autoCreateAdCampaign: true } } } });
+  if (m === 'GET' && u.pathname === '/v2/user/preferences') {
+    // Live shape: `locale` carries the caller's own override (here MXN); the account currency the
+    // server converts and sums in is `globalLocale`.
+    return respond(200, {
+      locale: { currency: state.userCurrency || 'COP' }, globalLocale: { currency: 'COP' },
+      modules: { sales: { events: { autoCreateAdCampaign: true } } },
+    });
+  }
   if (m === 'GET' && col === 'stage') {
     const types = xq(u).stageType.$in;
     return respond(200, { data: state.stages.filter((s) => types.includes(s.stageType)) });
@@ -283,6 +290,14 @@ describe('addExpense', () => {
     expect(r.totalExpenseAfter).toBe(2000000);
     expect(writes()[0].body).toEqual({ businessEvent: EVENT, concept: 'Transporte', amount: 2000000, currency: 'COP' });
   }, 10000);
+
+  test('totals currency is the account one, not the caller\'s own locale override', async () => {
+    state.userCurrency = 'MXN';
+    expect(await run(['preview', D, plan(p)])).toBe(0);
+    const r = json();
+    expect(r.totalsCurrency).toBe('COP');
+    expect(r.warnings.join(' ')).not.toMatch(/converted to/);
+  });
 
   test('a twin expense blocks unless allowDuplicate', async () => {
     state.expenses.x = { _id: id('x'), businessEvent: EVENT, expenseCode: 'EXP-9', concept: 'transporte', amount: 2000000, currency: 'COP', exchangeRate: 1, convertedAmount: 2000000 };

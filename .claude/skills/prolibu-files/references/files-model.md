@@ -13,7 +13,7 @@ the platform's code and, where marked "live", on a test account.
 | `parent` | The folder record (set by the server; missing parent folders are created). |
 | `isPublic` | Who opens the URL (below). Default `false`. |
 | `url` | `https://s3.amazonaws.com/<store>/domains/<domain>/files/<ownerId>/<path>`, URL-encoded. |
-| `size`, `mimeType`, `family`, `sha256`, `thumbnail` | Set by the server on upload. JPEG, PNG and video files get a `.thumb-<name>.jpg` record next to them that is **always public**, even when the file is private. |
+| `size`, `mimeType`, `family`, `sha256`, `thumbnail` | Set by the server on upload. JPEG, PNG and video files get a `.thumb-<name>.jpg` record next to them (`isThumbnail`), created **public** even when the file is private; the file's `thumbnail` holds its URL. Closing it: `visibility` → private on that record. |
 | `allowEveryone.view`, `collaborators` | In-app sharing (signed-in users only). |
 | `trashedAt`, `trashedFrom` | Set on the trash copy: when, and the original `{filePath, isPublic}`. |
 | `fileCode` | `FLE-…`; the trash copy gets `<code>-trash`. |
@@ -65,11 +65,16 @@ share (live).
 
 - Moving or renaming a **file** copies the stored bytes to the new name with the file's current
   access and recomputes `url`; the old copy stays. If the file was public, the old URL keeps
-  working and nothing in the API can close it (verified in code only). The script avoids it with
-  private → move → public, unless a public folder forces the file public.
+  working, and making the file private later does not reach it (live-verified). The only way
+  through the API: upload a private placeholder at the exact old path, which replaces the stored
+  copy as private (live-verified: old URL 200 → 403). The script avoids the leak with
+  private → move → public (live-verified: old URL 403, new 200), unless a public folder forces the
+  file public, and checks the old URL after the move.
+- The preview image is **not** moved or renamed: its record and URL keep the old name and access.
 - Moving or renaming a **folder** rewrites the children's `filePath` in the database only: their
   bytes and `url` stay at the old path, so private children no longer open with a signed link
-  (verified in code only). The script blocks folders that have files.
+  (live-verified: signed link 200 before, 404 after; renaming the folder back repairs it). The
+  script blocks folders that have files.
 
 ## Trash
 

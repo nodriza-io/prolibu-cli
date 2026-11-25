@@ -116,6 +116,7 @@ async function fakeProbe(url) {
     const l = state.links.find((x) => `/r/${x.shortUrlCode}` === u.pathname);
     return { status: l ? 302 : 404, headers: { get: (h) => (h === 'location' && l ? l.url : null) } };
   }
+  if ((state.leftOpen || []).includes(url)) return { status: 200, headers: { get: () => null } };
   const f = state.files.find((x) => x.url === url);
   const open = f && f.isPublic && !state.closed.includes(url);
   return { status: open ? 200 : 403, headers: { get: () => null } };
@@ -293,6 +294,32 @@ describe('writes', () => {
     const { code } = await previewThenApply({ action: 'move', ids: [id(5)], to: 'Contratos/' });
     expect(code).toBe(0);
     expect(writes().map((c) => c.body)).toEqual([{ isPublic: false }, { filePath: 'Contratos/oferta.pdf' }, { isPublic: true }]);
+  });
+
+  test('a move checks the old public URL from outside and reports a copy left open there', async () => {
+    const oldUrl = state.files.find((f) => f._id === id(5)).url;
+    let r = await previewThenApply({ action: 'move', ids: [id(5)], to: 'Contratos/' });
+    expect(r.result.done[0].oldLinkCheck).toMatchObject({ checked: true, status: 403, opensWithoutSignIn: false });
+    expect(r.result.saved).toBe(true);
+    // Live shape: the platform copies the bytes and keeps the old copy with its access.
+    state.leftOpen = [state.files.find((f) => f._id === id(5)).url];
+    r = await previewThenApply({ action: 'move', ids: [id(5)], to: '' });
+    expect(r.result.saved).toBe(false);
+    expect(r.result.problems.join(' ')).toMatch(/old public URL .* still opens/);
+    expect(probes).toContain(oldUrl);
+  });
+
+  test('an image preview is its own public record: show gives its id and how to close it; a move warns it stays behind', async () => {
+    const thumbPath = 'Contratos/.thumb-foto.jpg';
+    state.files.push(fileDoc(20, thumbPath, { isPublic: true, isThumbnail: true }));
+    state.files.push(fileDoc(21, 'Contratos/foto.png', { thumbnail: `${S3}/${ME}/${encodeURI(thumbPath)}` }));
+    expect(await run(['show', D, id(21)])).toBe(0);
+    const { thumbnail } = json().exposure;
+    expect(thumbnail).toMatchObject({ id: id(20), public: true, check: { status: 200, opensWithoutSignIn: true } });
+    expect(thumbnail.howToClose).toContain(`"ids":["${id(20)}"],"public":false`);
+    out = '';
+    expect(await run(['preview', D, JSON.stringify({ action: 'move', ids: [id(21)], to: 'Catalogos/' })])).toBe(0);
+    expect(json().warnings.join(' ')).toMatch(/preview image: it stays at the old name/);
   });
 
   test('a folder that holds files cannot be moved or renamed', async () => {

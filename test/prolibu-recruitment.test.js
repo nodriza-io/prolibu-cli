@@ -107,7 +107,11 @@ function fakeFetch(url, init) {
   if (method === 'GET') {
     if (a) {
       const r = rows.find((x) => x._id === a);
-      return r ? respond(200, populated(r, u.searchParams.get('populatePath'))) : respond(404, { error: 'not found' });
+      if (!r) return respond(404, { error: 'not found' });
+      // Like the live server, a select on a single record returns only those fields (plus _id).
+      const sel = u.searchParams.get('select');
+      const picked = sel ? Object.fromEntries(Object.entries(r).filter(([k]) => k === '_id' || sel.split(' ').includes(k))) : r;
+      return respond(200, populated(picked, u.searchParams.get('populatePath')));
     }
     const xq = u.searchParams.get('xquery') ? JSON.parse(u.searchParams.get('xquery')) : {};
     const data = rows.filter((r) => matches(r, xq)).map((r) => populated(r, u.searchParams.get('populatePath')));
@@ -296,6 +300,11 @@ describe('vacancies', () => {
     expect(r.code).toBe(0);
     const v = state.vacancy.find((x) => x.title === 'Data analyst');
     expect(v).toMatchObject({ assignee: RECRUITER, stage: S('vacancy', 'draft'), openings: 2 });
+  });
+  test('create reads back the long texts it sent (they are outside the summary select)', async () => {
+    const { r } = await previewApply({ kind: 'vacancy', set: { title: 'Support lead', location: 'Cali', description: 'Plain text only' } });
+    expect(r.code).toBe(0);
+    expect(r.json.problems).toEqual([]);
   });
   test('publish edits the stage through the record route first, then creates the form', async () => {
     const { p, r } = await previewApply({ kind: 'publish', vacancy: 'VAC-1' });

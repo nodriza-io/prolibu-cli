@@ -48,7 +48,7 @@ Output is JSON. Exit codes: 0 ok, 1 API error, 2 usage error (nothing sent), 3 b
    Say it is immediate and notifies the person.
 2. **Challenge:** the name, the coin pot, how many winners, the application window (dates). A
    challenge does **not** count deals or amounts by itself; ask how winners will prove it.
-3. **Prize:** coins and stock (a stock number is required). **Budget:** managers, total, period.
+3. **Prize:** coins (0 makes it free, limited only by stock) and stock (a stock number is required). **Budget:** managers, total, period.
 4. **Review:** which applications to approve or reject, with an optional note.
 
 If `accounts/` has several domains, ask which one.
@@ -57,7 +57,7 @@ If `accounts/` has several domains, ask which one.
 
 1. **Read.** `overview` for the badge types, prizes, challenges, budgets and settings
    (`budgetsEnforced`, coin name). Use `pending`, `challenge`, `budgets`, `funds` or
-   `leaderboard` for the question asked. Fields at `null` are admin-only settings.
+   `leaderboard` for the question asked. Fields at `null` are admin-only settings (read from the admin-only preferences; any other key sees them as unknown).
 2. **Plan.** One JSON object with `kind`:
 
    ```json

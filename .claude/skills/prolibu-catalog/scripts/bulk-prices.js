@@ -455,7 +455,10 @@ async function planFromFile(api, inputRows) {
       if (!Object.keys(changes).length) r.decided.push({ ...d, action: 'unchanged', entryId: String(existing._id), price: existing.price });
       else r.decided.push({ ...d, action: 'update', entryId: String(existing._id), before, changes });
     } else {
-      r.decided.push({ ...d, action: 'create', changes: { ...after, ...(code ? { pricebookEntryCode: code } : {}) } });
+      // The server's own code is "ENT-" + (time in ms + a random offset below 100,000): rows
+      // created in the same import collide often enough to fail ("pricebookEntryCode … already
+      // exists"). A random code of our own, fixed in the job, avoids it.
+      r.decided.push({ ...d, action: 'create', changes: { ...after, pricebookEntryCode: code || newEntryCode() } });
     }
   }
   return r;
@@ -476,9 +479,14 @@ async function planFromFactor(api, flags) {
   if (!refs.length) throw new UsageError('--factor needs --pricebooks <code,code>.');
   const pricebooks = await loadPricebooks(api, refs);
   const unknown = refs.filter((x) => !pricebooks.has(x));
-  if (unknown.length) throw new Blocked(`Price lists not found: ${unknown.join(', ')}.`);
+  if (unknown.length) throw new Blocked(`Price lists not found or not shared with this user: ${unknown.join(', ')}.`);
   const pbById = new Map([...pricebooks.values()].map((pb) => [String(pb._id), pb]));
   const entries = await loadEntries(api, [...pbById.keys()]);
+  // Prices are shared record by record (owner, workspace, collaborators) like their lists: a user
+  // who sees a list may see none of its prices, and the preview would silently say "nothing to write".
+  const seen = new Set(entries.map((e) => idOf(e.pricebook)));
+  const empty = [...pbById.values()].filter((pb) => !seen.has(String(pb._id))).map((pb) => pb.pricebookCode);
+  if (empty.length) r.warnings.push(`No prices visible in ${empty.join(', ')}: the list is empty, or its prices are not shared with this user (they are left out, not changed).`);
   const productIds = [...new Set(entries.map((e) => idOf(e.product)))];
   const products = new Map((await readIn(api, 'product', '_id', productIds, '_id productCode')).map((p) => [String(p._id), p]));
   let skippedInactive = 0;
@@ -636,6 +644,10 @@ async function cmdPreview(api, [file], flags, ctx) {
 }
 
 // ─── Apply ─────────────────────────────────────────────────────────────────────
+
+function newEntryCode() {
+  return `ENT-${crypto.randomBytes(8).toString('hex')}`;
+}
 
 function importerBody(d) {
   if (d.action === 'update') return { _id: d.entryId, ...d.changes };

@@ -598,7 +598,10 @@ async function applyVacancy(client, prep) {
   }
   const created = prep.record ? null : await call(client, 'POST', '/v2/vacancy', { data: prep.body, confirmed: true });
   const id = prep.record ? idOf(prep.record) : idOf(created);
-  const back = await call(client, 'GET', `/v2/vacancy/${id}?${qs({ select: VACANCY_SELECT })}`);
+  // Read back every field that was sent, not only the summary select (description and the
+  // other long texts are outside VACANCY_SELECT).
+  const select = [...new Set([...VACANCY_SELECT.split(' '), ...Object.keys(prep.body)])].join(' ');
+  const back = await call(client, 'GET', `/v2/vacancy/${id}?${qs({ select })}`);
   const same = (k, val) => (k === 'assignee' ? idOf(back[k]) === val : JSON.stringify(back[k]) === JSON.stringify(val));
   const problems = Object.entries(prep.body)
     .filter(([k, val]) => k !== 'salaryRange' && k !== 'closeDate' && !same(k, val))

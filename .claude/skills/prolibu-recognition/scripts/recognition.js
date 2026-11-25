@@ -267,10 +267,14 @@ async function usersById(client, ids) {
   return out;
 }
 
-// Achievements settings. A non-admin key sees only the public ones: unknown stays null.
+// Achievements settings. /v2/user/preferences carries only the public ones (coin name) for
+// every key, the admin's included; the budget, circulation and redemption switches come from
+// the admin-only /v2/preference/read. Any other key gets 403 there: unknown stays null.
 async function settings(client) {
-  const res = await optional(() => call(client, 'GET', '/v2/user/preferences'));
-  const a = (res.value && res.value.modules && res.value.modules.achievements) || {};
+  const admin = await optional(() => call(client, 'GET', '/v2/preference/read'));
+  const pub = admin.value ? null : await optional(() => call(client, 'GET', '/v2/user/preferences'));
+  const root = admin.value ? admin.value.preference : pub.value;
+  const a = (root && root.modules && root.modules.achievements) || {};
   const has = (o, k) => o && Object.prototype.hasOwnProperty.call(o, k);
   return {
     coinName: (a.rewards && a.rewards.coinName) || 'Coin',
@@ -674,7 +678,7 @@ async function planPrize(client, plan) {
   const body = {
     prizeName: requireText(plan.name, 'name', 150),
     description: optionalText(plan.description, 'description', 4000),
-    coins: requireCoins(plan.coins, 'coins'),
+    coins: requireCoins(plan.coins, 'coins', { allowZero: true }),
     stock: plan.stock,
     active: plan.active === undefined ? true : Boolean(plan.active),
     isNewPrize: plan.isNew === undefined ? undefined : Boolean(plan.isNew),
@@ -686,7 +690,10 @@ async function planPrize(client, plan) {
     summary: `Create the prize "${body.prizeName}" for ${body.coins} coins, ${body.stock} in stock${body.active ? ', available right away' : ', inactive'}. Nobody is notified.`,
     calls: [{ method: 'POST', path: '/v2/prize', data: JSON.parse(JSON.stringify(body)) }],
     blockers,
-    warnings: body.active ? ['Anyone with the prizes role can redeem it as soon as it is created, with no approval.'] : [],
+    warnings: [
+      ...(body.active ? ['Anyone with the prizes role can redeem it as soon as it is created, with no approval.'] : []),
+      ...(body.coins === 0 ? ['It costs 0 coins: anyone with the prizes role can take it for free until the stock runs out.'] : []),
+    ],
     versionParts: { body },
   };
 }

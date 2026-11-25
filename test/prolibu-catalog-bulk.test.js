@@ -62,9 +62,16 @@ function importRows(rows) {
       errors.push({ type: 'create', row: i, error: `pricebook '${row.pricebook}' already exists` });
       return;
     }
+    // The server's default code is "ENT-" + (ms + random offset): seen live colliding inside
+    // one import ("pricebookEntryCode 'ENT-…' ya existe."). fake.sameDefaultCode reproduces it.
+    const code = row.pricebookEntryCode || (fake.sameDefaultCode ? 'ENT-1795556607335' : `ENT-${seq + 1}`);
+    if (db.pricebookentry.some((e) => e.pricebookEntryCode === code)) {
+      errors.push({ type: 'create', row: i, error: `pricebookEntryCode '${code}' ya existe.` });
+      return;
+    }
     seq += 1;
     db.pricebookentry.push({
-      _id: id(900 + seq), pricebookEntryCode: `ENT-${seq}`, active: true, taxes: [], ...row,
+      _id: id(900 + seq), active: true, taxes: [], ...row, pricebookEntryCode: code,
     });
     created += 1;
   });
@@ -344,6 +351,15 @@ describe('yearly update by a factor', () => {
     expect(calls.some((c) => c.path === '/v2/pricebookentry' && /e-otra|"000000000000000000000012"/.test(c.params.xquery))).toBe(false);
   });
 
+  test('warns when a list shows no prices to this user (prices are shared record by record)', async () => {
+    // Seen live: a sales user who could see a shared list read 0 of its 50 prices.
+    db.pricebookentry = db.pricebookentry.filter((e) => e.pricebook !== id(11));
+    const { code, json } = await run('preview', D, '--pricebooks', 'sede-a,sede-b', '--factor', '1.05');
+    expect(code).toBe(0);
+    expect(json.warnings.join(' ')).toMatch(/No prices visible in sede-b: .*not shared with this user/);
+    expect(json.warnings.join(' ')).not.toMatch(/sede-a/);
+  });
+
   test('refuses a factor that more than halves or doubles prices, and needs the lists', async () => {
     expect((await run('preview', D, '--pricebooks', 'sede-a', '--factor', '3')).code).toBe(3);
     expect((await run('preview', D, '--factor', '1.1')).code).toBe(2);
@@ -377,13 +393,34 @@ describe('bulk apply', () => {
     expect(puts.every((c) => c.params.modelName === 'PricebookEntry' && c.params.silent === 'true')).toBe(true);
     expect(puts[0].body[0]).toEqual({ _id: id(30), price: 1100 });
     expect(puts[1].body[0]).toEqual({
-      pricebook: id(10), product: id(22), price: 300, currency: 'COP',
+      pricebook: id(10), product: id(22), price: 300, currency: 'COP', pricebookEntryCode: expect.stringMatching(/^ENT-[0-9a-f]{16}$/),
     });
     expect(calls.some((c) => c.method === 'POST' || c.method === 'PATCH')).toBe(false);
     expect(sleeps).toEqual([500]);
     const result = fs.readFileSync(res.resultFile, 'utf8');
     expect(result.split('\n').filter(Boolean).length).toBe(5);
     expect(db.pricebookentry.find((e) => e._id === id(30)).price).toBe(1100);
+  });
+
+  test('new prices carry their own random code, so the server default code cannot collide', async () => {
+    fake.sameDefaultCode = true;
+    const text = 'Código;Lista;Precio;Moneda\np3;sede-a;300;COP\np3;sede-b;400;COP\np1;otra;500;COP\n';
+    const { json } = await previewBasic(text);
+    calls = [];
+    const { code, json: res } = await run('apply', D, '--version', json.version, '--confirmed');
+    expect(code).toBe(0);
+    expect(res.counts).toEqual({ created: 3 });
+    const sent = calls.filter((c) => c.method === 'PUT').flatMap((c) => c.body).map((r) => r.pricebookEntryCode);
+    expect(new Set(sent).size).toBe(3);
+    expect(sent.every((c) => /^ENT-[0-9a-f]{16}$/.test(c))).toBe(true);
+  });
+
+  test('without its own code, two new prices in one import collide on the server default code', async () => {
+    fake.sameDefaultCode = true;
+    expect(importRows([
+      { pricebook: id(10), product: id(22), price: 1, currency: 'COP' },
+      { pricebook: id(11), product: id(22), price: 2, currency: 'COP' },
+    ]).errors).toEqual([{ type: 'create', row: 1, error: "pricebookEntryCode 'ENT-1795556607335' ya existe." }]);
   });
 
   test('resumes: a second run skips what is already written', async () => {

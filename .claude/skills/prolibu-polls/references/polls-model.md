@@ -91,6 +91,11 @@ works for customers who are not signed in.
   server drops filter fields it does not recognize), and computes the count, average, median,
   distribution and per-agent figures. Dates filter on the `_id` creation time.
 - The median follows the server: the middle value, or the mean of the two middle values.
+- Nested filters (`evaluation.modelName`, `evaluation.docId`, `candidate.docId`) are honored by
+  the server (it echoes them in `query` and counts only matching votes); the in-memory pass is a
+  safety net.
+- "Once per customer, agent and record" is checked in code only, with no unique index:
+  simultaneous submits store several votes. `results` lists them under `duplicates`.
 
 ## Who can see and do what
 

@@ -935,6 +935,9 @@ async function cmdApply(client, [planArg], flags, ctx) {
       if (action.section === 'entries' && action.type === 'create') {
         body.product = action.product.existing ? String(action.product.existing._id) : action.product.createdId;
         body.pricebook = resolveNew(action.pricebook.value);
+        // The server's default code is "ENT-" + (time in ms + a random offset below 100,000), so
+        // prices created in one run can collide on the unique index. Send a random code instead.
+        if (body.pricebookEntryCode === undefined) body.pricebookEntryCode = newEntryCode();
       }
       const nested = nest(body);
       // eslint-disable-next-line no-await-in-loop
@@ -1483,6 +1486,10 @@ async function main(argv, opts = {}) {
 
 if (require.main === module) {
   main(process.argv.slice(2)).then((code) => { process.exitCode = code; });
+}
+
+function newEntryCode() {
+  return `ENT-${crypto.randomBytes(8).toString('hex')}`;
 }
 
 module.exports = {
