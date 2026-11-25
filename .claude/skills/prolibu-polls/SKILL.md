@@ -70,7 +70,10 @@ Answer in the user's language. To find a deal or ticket by name, use
    just to test the survey: it e-mails a real person.
 3. **Results.** `results <domain> --model Deal` (add `--agent`, `--record`, `--since`).
    Report `answers`, `average`, `median`, `distribution` and `byAgent`; `respondents` answers
-   "who answered" (latest 50). Add `--with-notes` only when the user asks for the comments.
+   "who answered" (latest 50).
+   If `duplicates` appears, say that one customer rated the same agent on the same record more
+   than once (simultaneous submits; the platform does not block them) and that they are counted,
+   as in the app; removing extras is step 5 with its own yes. Add `--with-notes` only when the user asks for the comments.
    If it is blocked (the key cannot list votes), `agent-report` gives one agent's count,
    average and median exactly as the app's "View report" does.
 4. **Close or revoke.** Explain what exists (see "Links and exposure"). To stop new e-mails an

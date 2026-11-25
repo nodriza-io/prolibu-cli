@@ -41,7 +41,9 @@ A candidate event, not a person. Fields like the event's (name, description, for
 venue, address, website, eventType) plus `industries`, `price.admission` and `price.airfare`
 (cost to attend), `score` (0–100), `source` (for example `EventCrawler:<site>`), and
 `businessEvent` + `promotedAt` (set on promotion, read-only). It is created with **no
-stage**; people move it to Reviewing, Promoted or Dismissed. Integrations load candidates
+stage**; people move it to Reviewing, Promoted or Dismissed. The PATCH that moves it to
+Promoted answers without `businessEvent`; read the prospect again to get the new event (it is
+there on the next read). Integrations load candidates
 by find-or-create on `prospectCode` (unique).
 
 ## How the totals are computed
@@ -58,7 +60,10 @@ background:
 - `contacts` = ids of contacts with the event's campaign (same workspace).
 - `netResult` = won − totalExpense; `roi` = netResult / totalExpense × 100 (empty when
   nothing was spent); `costPerContact`, `costPerDeal` (empty when there are none).
-- `metricsCurrency` = the account currency; `computedAt` = when.
+- `metricsCurrency` = the account currency; `computedAt` = when. The account currency is the
+  account-wide one (`globalLocale.currency` in `GET /v2/user/preferences`), **not** the user's
+  own currency setting (`locale.currency`), which may differ: an admin set to MXN on a COP
+  account still gets totals in COP.
 
 A contact moved from one campaign to another recalculates only the **new** event; a deal
 moved recalculates both. Managers can force a recalculation with

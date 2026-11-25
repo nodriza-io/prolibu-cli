@@ -71,7 +71,8 @@ Codes are generated from the clock, so they are unique but not secret.
 - On success the prize stock is lowered and `spentFunds` saved. No approval, no notification
   (the preference "users notified on redemption" exists but nothing sends it).
 - Stock is read and written in two steps: two redemptions at the same moment can both pass.
-- A prize without `stock` or `coins` behaves badly; the script requires both.
+- A prize without `stock` or `coins` behaves badly; the script requires both. `coins: 0` is a
+  valid free prize (checked live: redeemed with `spentFunds: 0` and funds 0); the preview warns.
 - Deleting a redemption gives the coins back (funds are recomputed) but does not restore stock.
 
 ## Notifications (defaults; each user may change theirs)

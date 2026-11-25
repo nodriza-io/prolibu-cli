@@ -85,12 +85,18 @@ Details and routes are in `references/files-model.md`.
   Only the **owner** can change sharing, not even an admin.
 - **Public folders win.** A file inside a public folder is forced public; making it private alone
   is undone by the server. Make the folder private or move the file out.
-- **Previews of private images are public.** JPEG, PNG and video files get a small preview image
-  (`.thumb-<name>.jpg`) that is always public. `show` reports it; for a sensitive image, say so.
+- **Previews of private images are public.** JPEG, PNG and video files get a small preview image,
+  its own record `.thumb-<name>.jpg` next to the file, created public even for a private file.
+  `show` gives its id and checks it from outside. For a sensitive image, offer to close it with a
+  `visibility` plan on that id (the app then shows no preview for the file).
 - **Moving or renaming copies.** The stored bytes are copied to the new name and the old copy is
-  kept with its old access, with no record left to manage it. The script moves a public file as
-  private → move → public so no public copy stays behind; inside a public folder that is
-  impossible, and the preview warns.
+  kept with its old access, with no record left to manage it; making the file private later does
+  not reach it. The script moves a public file as private → move → public so no public copy stays
+  behind, and checks the old URL from outside; inside a public folder that is impossible, and the
+  preview warns. The preview image is not moved: it keeps the old name and its access.
+- **A public copy at an older name** (moved or renamed by the app while public) has no record. To
+  close it, upload a small private placeholder at exactly the old folder and name: the stored copy
+  is replaced and becomes private (then trash the placeholder if wanted). Check the old URL after.
 - **A folder with files cannot be moved or renamed safely**: only the names change, the bytes
   stay at the old place and private files stop opening. The script blocks it; create the new
   folder and move the files.
@@ -118,7 +124,7 @@ Details and routes are in `references/files-model.md`.
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | A file turned private "comes back public" | Its folder is public | `show` names the folder; change the folder or move the file |
-| The public link still opens after "quitar el enlace" | A copy left at an older name, or the folder is public | `show` the file. A copy at an older name has no record left, so nothing here can close it: give the old URL to Prolibu support |
+| The public link still opens after "quitar el enlace" | A copy left at an older name, the folder is public, or it is the preview image | `show` the file. Preview: `visibility` on its id. Copy at an older name: upload a private placeholder at that exact path |
 | 403 on restore, rename or make public | The role lacks `actions` / `update` | Say so; an admin does it |
 | 403 "modify sharing settings" | Not the owner | Only the owner shares |
 | "File already exists" | Same path for this owner | Another name, or trash the old file first |

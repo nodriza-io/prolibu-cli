@@ -217,6 +217,21 @@ describe('results', () => {
     expect(r.distribution).toEqual({ 1: 0, 2: 1, 3: 1, 4: 1, 5: 1 });
   });
 
+  test('flags several votes by one customer for one agent and record (live: three in the same second) and still counts them', async () => {
+    const voter = { modelName: 'Contact', docId: 'e'.repeat(24) };
+    state.votes = [vote(1, { voter, rating: 4 }), vote(2, { voter, rating: 5 }), vote(3, { voter, rating: 1 }),
+      vote(4, { voter: { modelName: 'Contact', docId: 'f'.repeat(24) } })];
+    await run(['results', D]);
+    const r = json();
+    expect(r.answers).toBe(4);
+    expect(r.duplicates).toEqual([expect.objectContaining({ voteIds: [vid(1), vid(2), vid(3)], ratings: [4, 5, 1], recordId: DEAL })]);
+    expect(r.duplicatesNote).toMatch(/separate decision/);
+    state.votes = [vote(5, { voter })];
+    out = '';
+    await run(['results', D]);
+    expect(json().duplicates).toBeUndefined();
+  });
+
   test('re-applies the filter when the server ignores it, and says so', async () => {
     state.serverIgnoresNested = true;
     state.votes = [vote(1), vote(2, { candidate: { modelName: 'User', docId: OTHER_AGENT } })];

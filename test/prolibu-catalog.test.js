@@ -536,7 +536,10 @@ describe('apply', () => {
     const tax = db.tax.find((t) => t.taxCode === 'ico8');
     const product = db.product.find((p) => p.productCode === 'te');
     const pb = db.pricebook.find((p) => p.pricebookCode === 'qa');
-    expect(w[4].body).toEqual({ currency: 'COP', price: 50, taxes: [tax._id], product: product._id, pricebook: pb._id });
+    const { pricebookEntryCode, ...entryBody } = w[4].body;
+    expect(entryBody).toEqual({ currency: 'COP', price: 50, taxes: [tax._id], product: product._id, pricebook: pb._id });
+    // A new price gets its own random code: the server's time-based default collides in bulk.
+    expect(pricebookEntryCode).toMatch(/^ENT-[0-9a-f]{16}$/);
     expect(res.quotable).toMatchObject({ checked: 2, quotable: 2, notQuotable: [] });
     expect(res.quotable.samples.find((s) => s.product === 'Té').total).toBe(54);
   });

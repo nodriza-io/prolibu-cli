@@ -82,7 +82,10 @@ async function fakeFetch(url, init) {
   calls.push({ method: init.method, path: u.pathname, query: Object.fromEntries(u.searchParams), body });
   if (forbid && forbid(init.method, u.pathname)) return respond(403, { error: 'Forbidden. User has no permission.' });
   if (u.pathname === '/v2/user/me') return respond(200, { profile: { _id: ME, email: 'me@example.com', firstName: 'Me', apiKey: KEY } });
-  if (u.pathname === '/v2/user/preferences') return respond(200, { modules: { achievements: prefs } });
+  // Live shape (dev12, admin key): user/preferences hides the admin-only switches even for the
+  // owner; preference/read (admins only) has them under preference.modules.
+  if (u.pathname === '/v2/user/preferences') return respond(200, { modules: { achievements: { rewards: { coinName: prefs.rewards.coinName } } } });
+  if (u.pathname === '/v2/preference/read') return respond(200, { preference: { modules: { achievements: prefs } } });
   if (u.pathname === '/v2/reward/getFunds') return respond(200, funds(ME));
   const m = /^\/v2\/challengeapplication\/(approve|reject)\/(.+)$/.exec(u.pathname);
   if (m && init.method === 'PUT') {
@@ -310,7 +313,7 @@ describe('give coins', () => {
   test('rejects non-integer coins before any call', async () => {
     const p = await preview({ kind: 'reward', to: 'laura@example.com', coins: 1.5, reason: 'x' });
     expect(p.code).toBe(2);
-    expect(calls.filter((c) => !['/v2/user/me', '/v2/user/preferences'].includes(c.path))).toEqual([]);
+    expect(calls.filter((c) => !['/v2/user/me', '/v2/user/preferences', '/v2/preference/read'].includes(c.path))).toEqual([]);
   });
 });
 
@@ -376,6 +379,12 @@ describe('challenges, prizes, budgets', () => {
     expect(p.code).toBe(2);
   });
 
+  test('a free prize (0 coins) is allowed with a warning', async () => {
+    const p = await preview({ kind: 'prize', name: 'Sticker', coins: 0, stock: 3 });
+    expect(p.code).toBe(0);
+    expect(p.json.warnings.join(' ')).toMatch(/0 coins/);
+  });
+
   test('a multi-manager budget warns that each manager may spend the whole total', async () => {
     const p = await preview({ kind: 'budget', name: 'Q1', managers: ['me@example.com', 'pedro@example.com'], totalCoins: 1000, startDate: '2027-01-01', endDate: '2027-03-31' });
     expect(p.code).toBe(0);
@@ -438,6 +447,14 @@ describe('reads', () => {
     const r = await preview({ kind: 'award', badgeType: 'Cliente Feliz', to: 'laura@example.com' });
     expect(r.code).toBe(3);
     expect(stderr).toMatch(/achievements manager role/);
+  });
+
+  test('admin settings come from preference/read; a non-admin key sees them as unknown', async () => {
+    let r = await run(['overview']);
+    expect(r.json.settings).toEqual({ coinName: 'Coin', budgetsEnforced: true, coinCirculationLimit: 0, redemptionsOff: false });
+    forbid = (method, p) => p === '/v2/preference/read';
+    r = await run(['overview']);
+    expect(r.json.settings).toEqual({ coinName: 'Coin', budgetsEnforced: null, coinCirculationLimit: null, redemptionsOff: null });
   });
 
   test('never prints the API key', async () => {

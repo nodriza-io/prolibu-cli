@@ -30,7 +30,7 @@ const SAMPLE = 50;
 const MAX_REMOVE = 50;
 const BLOCKED = 3;
 // Fields read from a vote. `ip` is stored by the platform but never read or printed here.
-const VOTE_FIELDS = '_id rating candidate evaluation voterName candidateName title annulled createdAt updatedAt';
+const VOTE_FIELDS = '_id rating candidate evaluation voter voterName candidateName title annulled createdAt updatedAt';
 
 class Blocked extends Error {}
 
@@ -270,6 +270,23 @@ function summarize(votes, withNotes) {
     date: v.createdAt || null,
     ...(withNotes ? { note: v.note || null } : {}),
   }));
+  // One customer may vote once per agent and record, but nothing in the database enforces it:
+  // simultaneous submits store several votes (seen live: three in the same second). The app's
+  // report counts them all, so they are counted here too and listed for the user to decide.
+  const groups = new Map();
+  for (const v of counted) {
+    const voterId = idOf(getPath(v, 'voter.docId'));
+    if (!voterId) continue;
+    const key = `${voterId}|${idOf(getPath(v, 'candidate.docId'))}|${idOf(getPath(v, 'evaluation.docId'))}`;
+    groups.set(key, [...(groups.get(key) || []), v]);
+  }
+  const duplicates = [...groups.values()].filter((g) => g.length > 1).map((g) => ({
+    voter: g[0].voterName || null,
+    about: `${getPath(g[0], 'evaluation.modelName') || ''}: ${g[0].title || ''}`.trim(),
+    recordId: idOf(getPath(g[0], 'evaluation.docId')),
+    voteIds: g.map((v) => v._id),
+    ratings: g.map((v) => v.rating),
+  }));
   return {
     answers: counted.length,
     annulledExcluded: votes.length - counted.length,
@@ -279,6 +296,10 @@ function summarize(votes, withNotes) {
     byAgent: [...byAgent.values()].map((r) => ({ agentId: r.agentId, agentName: r.agentName, answers: r.count, average: round(r.sum / r.count) }))
       .sort((a, b) => b.answers - a.answers),
     respondents,
+    ...(duplicates.length ? {
+      duplicates,
+      duplicatesNote: 'The same customer rated the same agent on the same record more than once (simultaneous submits; the platform does not block them). They are counted, as in the app. Removing the extra ones is a separate decision: remove-preview, then a yes.',
+    } : {}),
   };
 }
 

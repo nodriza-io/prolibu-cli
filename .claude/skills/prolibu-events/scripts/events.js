@@ -178,7 +178,10 @@ async function me(client) {
 async function accountCurrency(client) {
   const prefs = await call(client, 'GET', '/v2/user/preferences');
   return {
-    currency: (prefs.locale && prefs.locale.currency) || null,
+    // The server converts and sums in the ACCOUNT currency (globalLocale). `locale` is the
+    // caller's own override and may differ (a user set to MXN on a COP account).
+    currency: (prefs.globalLocale && prefs.globalLocale.currency)
+      || (prefs.locale && prefs.locale.currency) || null,
     autoCreateAdCampaign: !(prefs.modules && prefs.modules.sales && prefs.modules.sales.events
       && prefs.modules.sales.events.autoCreateAdCampaign === false),
   };

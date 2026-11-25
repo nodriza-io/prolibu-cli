@@ -304,6 +304,23 @@ async function findByPath(client, owner, filePath) {
   return (body.data || [])[0] || null;
 }
 
+// The preview image of a JPEG, PNG or video is its own File record (".thumb-<name>.jpg", always
+// created public). The file's "thumbnail" URL names it; after a rename or move it keeps the OLD
+// name. Making that record private is how a preview is closed.
+async function thumbRecord(client, f) {
+  if (!f.thumbnail) return null;
+  const marker = `/${f.createdBy}/`;
+  const at = String(f.thumbnail).indexOf(marker);
+  if (at < 0) return null;
+  let thumbPath;
+  try {
+    thumbPath = decodeURIComponent(String(f.thumbnail).slice(at + marker.length).split('?')[0]);
+  } catch {
+    return null;
+  }
+  return findByPath(client, f.createdBy, thumbPath);
+}
+
 async function publicAncestor(client, f) {
   const parents = ancestors(f.filePath);
   if (!parents.length) return null;
@@ -452,9 +469,16 @@ async function cmdShow(client, [id], flags, ctx) {
     exposure.indexing = 'the file store sends no noindex header: a search engine that finds the link can index it';
   } else {
     exposure.privateAccess = 'Only signed-in users with access (owner, admins, shared users, same-workspace rules) can open it, through a link signed for 15 minutes.';
-    if (f.thumbnail) {
-      exposure.thumbnail = { url: f.thumbnail, check: await probe(ctx, client.domain, f.thumbnail), note: 'The platform makes a small preview image of JPEG, PNG and video files and always makes it public, even for a private file.' };
-    }
+  }
+  if (f.thumbnail) {
+    const thumb = await thumbRecord(client, f);
+    exposure.thumbnail = {
+      url: f.thumbnail,
+      ...(thumb ? { id: thumb._id, path: thumb.filePath, public: Boolean(thumb.isPublic) } : {}),
+      check: await probe(ctx, client.domain, f.thumbnail),
+      note: 'The platform makes a small preview image of JPEG, PNG and video files as its own record and makes it public, even for a private file.',
+      ...(thumb && thumb.isPublic && !f.isPublic ? { howToClose: `visibility plan on the preview's id: {"action":"visibility","ids":["${thumb._id}"],"public":false} (the app then shows no preview for this file)` } : {}),
+    };
   }
   exposure.sharedInApp = { everyone: info.sharedWithEveryone, collaborators: info.collaborators };
   return { file: info, exposure, version: f.updatedAt };
@@ -717,6 +741,7 @@ function planPathChange(f, target, inside, viaFolder, blockers, warnings, steps)
     blockers.push(`"${f.filePath}" holds ${inside} item(s). Renaming or moving a folder that has files only rewrites their names: the stored files stay at the old place and private ones stop opening. Create the new folder and move the files one by one instead.`);
     return;
   }
+  if (f.type === 'File' && f.thumbnail) warnings.push(`"${f.filePath}" has a preview image: it stays at the old name ("${parentOf(f.filePath)}.thumb-…jpg") and keeps its access. If it is public and should not be, close it afterwards with a visibility plan on its id (show gives it).`);
   if (f.isPublic && f.type === 'File' && !viaFolder) {
     steps.push(`Move "${f.filePath}" → "${target}" in three writes: make it private, move it, make it public again (so no public copy stays at the old name).`);
     warnings.push(`The public URL changes to the new name; links already shared stop working.`);
@@ -824,7 +849,12 @@ async function cmdApply(client, [planArg], flags, ctx) {
       const after = await loadFile(client, it.id);
       if (after.filePath !== it.to) problems.push(`"${it.path}" is at "${after.filePath}", not "${it.to}".`);
       if (Boolean(after.isPublic) !== Boolean(before.isPublic)) problems.push(`"${after.filePath}" changed visibility.`);
-      done.push({ id: it.id, from: it.path, path: after.filePath, public: Boolean(after.isPublic), ...(after.isPublic && after.type === 'File' ? { url: after.url } : {}) });
+      const item = { id: it.id, from: it.path, path: after.filePath, public: Boolean(after.isPublic), ...(after.isPublic && after.type === 'File' ? { url: after.url } : {}) };
+      if (before.type === 'File' && before.isPublic && before.url && before.url !== after.url) {
+        item.oldLinkCheck = await probe(ctx, client.domain, before.url);
+        if (item.oldLinkCheck.checked && item.oldLinkCheck.opensWithoutSignIn) problems.push(`The old public URL of "${it.path}" still opens: a public copy stayed at the old name (see "A public copy at an older name" in the skill).`);
+      }
+      done.push(item);
     }
   }
 

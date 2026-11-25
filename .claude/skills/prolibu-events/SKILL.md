@@ -86,7 +86,8 @@ If `accounts/` has several domains, ask which one.
 
 Details and evidence are in `references/events-model.md`.
 
-- **Totals are the server's.** Expenses are converted to the **account currency** when saved
+- **Totals are the server's.** Expenses are converted to the **account currency** (the
+  account-wide one, not the user's own currency setting) when saved
   (rate of that moment) and summed; deal value is each quote's converted total. Totals are
   recalculated in the background after an expense, contact or deal changes, so a read right
   after a write may lag a second; `show` warns when the stored total differs from the sum.
